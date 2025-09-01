@@ -7,3 +7,4 @@ Team Iron - Fall 2025
 - jacobneff - Jacob Neff - jneff001@odu.edu
 - ashaf007 - Ahmer Shafiq - ashaf007@odu.edu
 - GDPMoses - Taran Moses - tmose008@odu.edu
+- Nich-Brew - Nicholas Brewster - nbrew004@odu.edu
