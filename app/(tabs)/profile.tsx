@@ -4,7 +4,7 @@ import { useUser } from "../context/UserContext";
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { status } = useUser(); // ✅ shared state
+  const { status } = useUser(); // shared state
 
   const handleLogout = () => {
     // Later → clear user session here

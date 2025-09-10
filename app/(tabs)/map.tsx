@@ -8,7 +8,7 @@ export default function MapScreen() {
   const [location, setLocation] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // ✅ use shared context instead of local state
+  // use shared context instead of local state
   const { status, setStatus } = useUser();
 
   useEffect(() => {
