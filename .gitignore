@@ -1,3 +1,6 @@
+# ========================
+# Gradle / Java ignores
+# ========================
 .gradle
 **/build/
 !**/src/**/build/
@@ -8,14 +11,56 @@ gradle-app.setting
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 
-# Avoid ignore Gradle wrappper properties
+# Avoid ignoring Gradle wrapper properties
 !gradle-wrapper.properties
 
 # Cache of project
 .gradletasknamecache
 
 # Eclipse Gradle plugin generated files
-# Eclipse Core
 .project
-# JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# ========================
+# React Native / Expo ignores
+# ========================
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# Expo reset project temp
+app-example
