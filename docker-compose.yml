@@ -1,0 +1,19 @@
+# version: "3.9"
+name: minglemap-db
+
+services:
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: minglemap-db
+    ports:
+      - "5432:5432"
+
+      # create a dependency for the stored SQL data in the container
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+volumes:
+  postgres-data:

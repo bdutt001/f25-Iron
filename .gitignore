@@ -22,3 +22,5 @@ gradle-app.setting
 
 #environment file
 .env
+
+output.txt

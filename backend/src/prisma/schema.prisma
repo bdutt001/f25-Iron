@@ -1,14 +1,17 @@
-
+// source of the db/ where its hosted at + the type of db it is
 datasource db {
-    provider = "postgressql"
+    provider = "postgresql"
     url = env("DATABASE_URL")
 }
 
+// makes useable orm for app/ generates prisma client
+// gives code for backend to import and query
 generator client {
     provider = "prisma-client-js"
     output = "../gnerated/prisma_client"
 }
 
+// user table
 model User {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
