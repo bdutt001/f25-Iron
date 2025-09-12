@@ -1,18 +1,36 @@
 # version: "3.9"
-name: minglemap-db
+
 
 services:
+  # In progress
+  # api:
+  #   # Target Dockerfile in backend folder
+  #   build: ./backend
+  #   # make sure db is up first
+  #   depends_on:
+  #     - db
+  #   # Map port 8000 host to 8000 container
+  #   ports:
+  #     - "8000:8000"
+  #   # env_file:
+  #   #   - ./backend/.env
+  #   # folder mapping for changes to code
+  #   volumes:
+  #     - ./backend:/app
+  #     - /app/node_modules
+
+
   db:
     image: postgres
     restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: minglemap-db
+      POSTGRES_DB: minglemap
     ports:
       - "5432:5432"
 
-      # create a dependency for the stored SQL data in the container
+    # create a dependency for the stored SQL data in the container
     volumes:
       - postgres-data:/var/lib/postgresql/data
 volumes:

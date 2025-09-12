@@ -1,7 +1,2 @@
-#dependencies
-node_modules/
-
-#prisma
-
-
 .env
+/src/generated/prisma
