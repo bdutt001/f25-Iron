@@ -21,15 +21,21 @@ gradle-app.setting
 .project
 .classpath
 
+# environment file
+.env
+
+# output file
+output.txt
+
 # ========================
 # React Native / Expo ignores
 # ========================
 
 # dependencies
-node_modules/
+**/node_modules/
 
 # Expo
-.expo/
+**/.expo/
 .expo-shared/
 dist/
 web-build/
