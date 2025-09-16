@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -16,8 +15,55 @@ datasource db {
 
 // User Table
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
+  id         Int        @id @default(autoincrement())
+  email      String     @unique
+  password   String // hashed with bcrypt, not plain text
+  name       String?
+  status     UserStatus @default(AVAILABLE)
+  visibility Boolean    @default(true)
+  trustScore Decimal    @default(0.0)
+  createdAt  DateTime   @default(now())
+
+  // Relations
+  messagesSent   Message[] @relation("SentMessages")
+  messagesRecv   Message[] @relation("ReceivedMessages")
+  wavesSent      Wave[]    @relation("WavesSent")
+  wavesRecv      Wave[]    @relation("WavesReceived")
+  reportsMade    Report[]  @relation("ReportsMade")
+  reportsAgainst Report[]  @relation("ReportsAgainst")
+}
+
+enum UserStatus {
+  AVAILABLE
+  BUSY
+  DND
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  content    String
+  createdAt  DateTime @default(now())
+  senderId   Int
+  receiverId Int
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+}
+
+model Wave {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  senderId   Int
+  receiverId Int
+  sender     User     @relation("WavesSent", fields: [senderId], references: [id])
+  receiver   User     @relation("WavesReceived", fields: [receiverId], references: [id])
+}
+
+model Report {
+  id         Int      @id @default(autoincrement())
+  reason     String
+  createdAt  DateTime @default(now())
+  reporterId Int
+  reportedId Int
+  reporter   User     @relation("ReportsMade", fields: [reporterId], references: [id])
+  reported   User     @relation("ReportsAgainst", fields: [reportedId], references: [id])
 }
