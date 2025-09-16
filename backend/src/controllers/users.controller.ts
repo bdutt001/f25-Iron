@@ -37,7 +37,7 @@ export const getUserById = async (req: Request, res: Response) => {
   const userId = Number(id);
 
   if (Number.isNaN(userId)) {
-    return res.status(404).json({ error: "User not found" });
+    return res.status(400).json({ error: "User not found" });
   }
 
   try {
@@ -80,7 +80,7 @@ export const deleteUser = async (req: Request, res: Response) => {
   const userId = Number(id);
 
   if (Number.isNaN(userId)) {
-    return res.status(404).json({ error: "User not found" });
+    return res.status(400).json({ error: "User not found" });
   }
 
   try {
