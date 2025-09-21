@@ -4,3 +4,6 @@ node_modules/
 .env
 
 output.txt
+.stack-pids.json
+frontend/android/
+frontend/ios/

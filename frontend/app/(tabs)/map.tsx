@@ -4,50 +4,86 @@ import { Button, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useUser } from "../context/UserContext";
 
-// Helper: create random nearby coordinates
-function generateNearbyUsers(baseLat: number, baseLng: number, count = 5) {
-  const users = [];
-  for (let i = 0; i < count; i++) {
-    // ~0.001 latitude/longitude ≈ 100m
-    const latOffset = (Math.random() - 1) * 0.01; // ±0.01 ≈ 1000m
-    const lngOffset = (Math.random() - 1) * 0.01;
-    users.push({
-      id: i + 1,
-      name: `User ${i + 1}`,
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+
+type ApiUser = {
+  id: number;
+  email: string;
+  name?: string | null;
+  interestTags?: string[] | null;
+};
+
+type NearbyUser = {
+  id: number;
+  name: string;
+  coords: { latitude: number; longitude: number };
+  interestTags: string[];
+};
+
+// Assign stable pseudo-random coordinates around the current user
+function scatterUsersAround(
+  users: ApiUser[],
+  baseLat: number,
+  baseLng: number
+): NearbyUser[] {
+  if (!users.length) return [];
+
+  return users.map((user, index) => {
+    const angle = (2 * Math.PI * index) / users.length;
+    const radius = 0.004 + Math.random() * 0.003; // ~300-700 meters
+    const latOffset = Math.sin(angle) * radius;
+    const lngOffset = Math.cos(angle) * radius;
+
+    return {
+      id: user.id,
+      name: user.name || user.email,
       coords: {
         latitude: baseLat + latOffset,
         longitude: baseLng + lngOffset,
       },
-    });
-  }
-  return users;
+      interestTags: Array.isArray(user.interestTags) ? user.interestTags : [],
+    };
+  });
 }
 
 export default function MapScreen() {
-  const [location, setLocation] = useState<any>(null);
+  const [location, setLocation] =
+    useState<Location.LocationObjectCoords | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
+  const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
 
   // use shared context instead of local state
   const { status, setStatus } = useUser();
 
+  const loadUsers = async (
+    coords: Location.LocationObjectCoords
+  ): Promise<void> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users`);
+      if (!response.ok) {
+        throw new Error(`Failed to load users (${response.status})`);
+      }
+
+      const data: ApiUser[] = await response.json();
+      setNearbyUsers(scatterUsersAround(data, coords.latitude, coords.longitude));
+      setErrorMsg(null);
+    } catch (err) {
+      console.error("Unable to load users", err);
+      setErrorMsg("Unable to load users from the server");
+    }
+  };
+
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setErrorMsg("Permission to access location was denied");
         return;
       }
-      let currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation.coords);
 
-      // Generate 5 random nearby users once we know location
-      const fakeUsers = generateNearbyUsers(
-        currentLocation.coords.latitude,
-        currentLocation.coords.longitude,
-        5
-      );
-      setNearbyUsers(fakeUsers);
+      const currentLocation = await Location.getCurrentPositionAsync({});
+      setLocation(currentLocation.coords);
+      await loadUsers(currentLocation.coords);
     })();
   }, []);
 
@@ -82,12 +118,15 @@ export default function MapScreen() {
           />
         )}
 
-        {/* Fake nearby users */}
+        {/* Nearby users fetched from the API (fake coordinates for now) */}
         {nearbyUsers.map((user) => (
           <Marker
             key={user.id}
             coordinate={user.coords}
             title={user.name}
+            description={
+              user.interestTags.length ? user.interestTags.join(", ") : undefined
+            }
             pinColor="red"
           />
         ))}
