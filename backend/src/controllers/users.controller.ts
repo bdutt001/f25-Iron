@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../prisma";
+import { getAllUsers, addTagToUser, findUsersByTag } from '../services/users.services';
 
 // Create a new user
 export const createUser = async (req: Request, res: Response) => {
@@ -92,5 +93,51 @@ export const deleteUser = async (req: Request, res: Response) => {
     }
     console.error(err);
     res.status(500).json({ error: "Failed to delete user" });
+  }
+};
+
+// GET /api/users
+export const listUsers = async (_req: Request, res: Response) => {
+  try {
+    const users = await getAllUsers();
+    res.json(users);
+  } catch (error) {
+    console.error('Error listing users:', error);
+    res.status(500).json({ error: 'Failed to list users' });
+  }
+};
+
+// POST /api/users/:id/tags
+export const addTag = async (req: Request, res: Response) => {
+  try {
+    const userId = Number(req.params.id);
+    const { tagName } = req.body;
+
+    if (!tagName) {
+      return res.status(400).json({ error: 'tagName is required' });
+    }
+
+    const user = await addTagToUser(userId, tagName);
+    res.json(user);
+  } catch (error) {
+    console.error('Error adding tag to user:', error);
+    res.status(500).json({ error: 'Failed to add tag to user' });
+  }
+};
+
+// GET /api/users/tags/:tagName
+export const getUsersByTag = async (req: Request, res: Response) => {
+  try {
+    const tagName = req.params.tagName;
+
+    if (!tagName) {
+      return res.status(400).json({ error: 'tagName parameter is required' });
+    }
+
+    const users = await findUsersByTag(tagName);
+    res.json(users);
+  } catch (error) {
+    console.error('Error finding users by tag:', error);
+    res.status(500).json({ error: 'Failed to find users by tag' });
   }
 };

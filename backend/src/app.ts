@@ -12,6 +12,6 @@ app.get("/", (_req, res) => {
 });
 
 // Mount user routes
-app.use(usersRouter);
+app.use("/api", usersRouter);
 
 export default app;
