@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const readline = require("readline");
+const net = require("net");
 
 const rootDir = path.resolve(__dirname, "..");
 const backendDir = path.join(rootDir, "backend");
@@ -152,6 +153,77 @@ async function runPreflight() {
   console.log("[stack] Preflight checks passed. Using", composeDisplay);
 }
 
+function getDbConnectionTarget() {
+  const fallback = { host: "localhost", port: 5432 };
+  const envUrl =
+    process.env.DATABASE_URL ||
+    (() => {
+      try {
+        const envPath = path.join(backendDir, ".env");
+        if (!fs.existsSync(envPath)) return null;
+        const line = fs
+          .readFileSync(envPath, "utf8")
+          .split(/\r?\n/)
+          .find((row) => row.startsWith("DATABASE_URL="));
+        return line ? line.slice("DATABASE_URL=".length) : null;
+      } catch {
+        return null;
+      }
+    })();
+
+  if (!envUrl) return fallback;
+
+  try {
+    const parsed = new URL(envUrl.trim());
+    return {
+      host: parsed.hostname || fallback.host,
+      port: Number(parsed.port) || fallback.port,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPostgres(target, retries = 30, delayMs = 1000) {
+  const { host, port } = target;
+  console.log(`[stack] Waiting for Postgres on ${host}:${port} ...`);
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const reachable = await new Promise((resolve) => {
+      const socket = net.createConnection({ host, port }, () => {
+        socket.end();
+        resolve(true);
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.setTimeout(delayMs / 2, () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+
+    if (reachable) {
+      console.log("[stack] Postgres is ready.");
+      return;
+    }
+
+    if (attempt < retries) {
+      console.log(
+        `[stack] Postgres not ready yet (${attempt}/${retries}). Retrying in ${delayMs}ms...`
+      );
+      await delay(delayMs);
+    }
+  }
+
+  throw new Error("Timed out waiting for Postgres to accept connections.");
+}
+
 function detectLanIp() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -213,6 +285,8 @@ process.on("uncaughtException", (err) => {
   try {
     await runPreflight();
     runCompose(["up", "-d", "db"], { cwd: rootDir });
+    const dbTarget = getDbConnectionTarget();
+    await waitForPostgres(dbTarget);
     runSync(npxCmd, ["prisma", "migrate", "deploy"], { cwd: backendDir });
     runSync(npmCmd, ["run", "seed"], { cwd: backendDir });
   } catch (err) {
