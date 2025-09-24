@@ -1,13 +1,37 @@
+// {
+//   "extends": "expo/tsconfig.json",
+//   "compilerOptions": {
+//     "strict": true,
+//     "baseUrl": ".",
+//     "paths": {
+//       "@/*": [
+//         "./*"
+//       ]
+//     }
+//   },
+//   "include": [
+//     "**/*.ts",
+//     "**/*.tsx",
+//     "../.expo/types/**/*.ts",
+//     "expo-env.d.ts",
+//     ".expo/types/**/*.ts"
+//   ]
+// }
+// "extends":"expo/tsconfig.json or /base" was throwing an error. Using Expo SDK 54, extending from tsconfig.base or tsconfig.json no longer exists.
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "@tsconfig/react-native/tsconfig.json",
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+      "@/*": ["./*"]
+    },
+    "jsx": "react-native",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true
   },
   "include": [
     "**/*.ts",
