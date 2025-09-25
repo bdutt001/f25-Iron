@@ -1,7 +1,24 @@
 import { router } from "expo-router";
+import { useEffect } from "react";
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
+
 export default function LoginScreen() {
+
+  // Inteface and test function for backend connectivity locally.
+  // interface Health {
+  //   status: string;
+  // }
+  // const test = async () =>{
+  //   try {
+  //   const api = process.env.EXPO_PUBLIC_API_URL;
+  //   const res = await fetch(`${api}/api`);
+  //   const data = (await res.json()) as Health;
+  //   console.log("Backend status:", data.status);
+  // } catch (err) {
+  //   console.error("Error fetching API:", err);
+  // }
+  // }
   return (
     <View style={styles.container}>
       {/* Logo */}
@@ -24,6 +41,11 @@ export default function LoginScreen() {
       <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push("/signup")}>
         <Text style={styles.secondaryText}>Go to Signup</Text>
       </TouchableOpacity>
+
+      {/* Test for backend conenction remove from code whenever */}
+      {/* <TouchableOpacity style={styles.secondaryBtn} onPress={test}>
+        <Text style={styles.secondaryText}>test backend</Text>
+      </TouchableOpacity> */}
     </View>
   );
 }
