@@ -1,0 +1,29 @@
+# Run in terminal to create local network for container
+# docker network create --subnet=172.20.0.0/16 minglenet
+# gives static ip for api queries
+
+# base image
+FROM node:24-alpine3.21
+# create working directory inside docker
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+# copy all contents from the backend folder to the app/dist/backend folder inside docker
+COPY . .
+
+# RUN npm run generate
+
+# expose port 8000 inside docker container for communications
+EXPOSE 8000
+
+RUN apk add --no-cache curl
+
+#  Below Generates prisma client inside docker and starts local dev node server
+#  sh = open shell -c flag = run this command string
+# commands are from package.json exported to docker.
+CMD ["sh", "-c", "npx prisma generate && npm run dev"]
+
+

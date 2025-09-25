@@ -9,7 +9,8 @@ import dotenv from "dotenv";
 const app = express();
 
 // Add Cors to express for use
-app.use(cors());
+// accepts request from anywhere , must change if deploying
+app.use(cors({ origin: "*" }));
 
 // Middleware
 app.use(express.json());

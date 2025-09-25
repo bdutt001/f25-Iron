@@ -7,7 +7,7 @@
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "test": "jest",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "npx ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },

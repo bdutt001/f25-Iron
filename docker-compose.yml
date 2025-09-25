@@ -2,36 +2,41 @@
 
 
 services:
-  # In progress
-  # api:
-  #   # Target Dockerfile in backend folder
-  #   build: ./backend
-  #   # make sure db is up first
-  #   depends_on:
-  #     - db
-  #   # Map port 8000 host to 8000 container
-  #   ports:
-  #     - "8000:8000"
-  #   # env_file:
-  #   #   - ./backend/.env
-  #   # folder mapping for changes to code
-  #   volumes:
-  #     - ./backend:/app
-  #     - /app/node_modules
-
-
-  db:
-    image: postgres
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: minglemap
+  
+  api:
+    # Target Dockerfile in backend folder
+    build: ./backend
+   
+    # Map port 8000 host to 8000 container
     ports:
-      - "5432:5432"
-
-    # create a dependency for the stored SQL data in the container
+      - "8000:8000"
+    
+    # folder mapping for changes to code
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-volumes:
-  postgres-data:
+      - ./backend:/app
+      - /app/node_modules
+
+    networks:
+      minglemap-net:
+        ipv4_address: 172.25.0.10
+
+networks:
+  minglemap-net:
+    external: true
+
+# Uncomment if you want to host a db locally for testing
+#   db:
+#     image: postgres
+#     restart: always
+#     environment:
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: postgres
+#       POSTGRES_DB: minglemap
+#     ports:
+#       - "5432:5432"
+
+#     # create a dependency for the stored SQL data in the container
+#     volumes:
+#       - postgres-data:/var/lib/postgresql/data
+# volumes:
+#   postgres-data:
