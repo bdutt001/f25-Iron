@@ -1,5 +1,6 @@
 import express from "express";
 import usersRouter from "./routes/users.routes";
+import tagsRouter from "./routes/tags.routes";
 
 const app = express();
 
@@ -13,5 +14,8 @@ app.get("/", (_req, res) => {
 
 // Mount user routes
 app.use("/api", usersRouter);
+
+// Mount tag routes
+app.use("/api", tagsRouter);
 
 export default app;
