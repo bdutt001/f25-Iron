@@ -1,5 +1,6 @@
 import express from "express";
 import usersRouter from "./routes/users.routes";
+import reportsRouter from "./routes/reports.routes";
 
 //import cors to enable cross-site origin requests outside of basic get post
 import cors from "cors";
@@ -21,5 +22,8 @@ app.get("/api", (_req, res) => {
 
 // Mount user routes
 app.use(usersRouter);
+
+// Mount reports routes
+app.use(reportsRouter);
 
 export default app;
