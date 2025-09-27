@@ -22,6 +22,8 @@ let composeDisplay = "docker compose";
 
 let shuttingDown = false;
 const children = [];
+let usingLocalDb = true;
+let lastDbTarget = null;
 
 function runSync(command, args, options = {}) {
   console.log(`[stack] ${command} ${args.join(" ")}`);
@@ -118,43 +120,55 @@ async function ensureBackendEnv() {
 async function runPreflight() {
   console.log("[stack] Running preflight checks...");
 
-  if (!commandExists(dockerCmd, ["--version"])) {
-    throw new Error(
-      "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on your PATH."
-    );
-  }
-
-  if (commandExists(dockerCmd, ["compose", "version"])) {
-    composeBin = dockerCmd;
-    composeArgsBase = ["compose"];
-    composeDisplay = "docker compose";
-  } else if (commandExists("docker-compose", ["--version"])) {
-    composeBin = "docker-compose";
-    composeArgsBase = [];
-    composeDisplay = "docker-compose";
-  } else {
-    throw new Error(
-      "Docker Compose not found. Install Docker Desktop 2.20+ or the standalone docker-compose.");
-  }
-
-  const psResult = spawnSync(dockerCmd, ["ps"], {
-    stdio: "ignore",
-  });
-  if (psResult.status !== 0) {
-    throw new Error(
-      "Docker daemon is not running. Start Docker Desktop and try again."
-    );
-  }
-
   await ensureNodeModules(backendDir, "backend");
   await ensureNodeModules(frontendDir, "frontend");
   await ensureBackendEnv();
 
-  console.log("[stack] Preflight checks passed. Using", composeDisplay);
+  const target = getDbConnectionTarget();
+  usingLocalDb = target.isLocal;
+
+  if (usingLocalDb) {
+    if (!commandExists(dockerCmd, ["--version"])) {
+      throw new Error(
+        "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on your PATH."
+      );
+    }
+
+    if (commandExists(dockerCmd, ["compose", "version"])) {
+      composeBin = dockerCmd;
+      composeArgsBase = ["compose"];
+      composeDisplay = "docker compose";
+    } else if (commandExists("docker-compose", ["--version"])) {
+      composeBin = "docker-compose";
+      composeArgsBase = [];
+      composeDisplay = "docker-compose";
+    } else {
+      throw new Error(
+        "Docker Compose not found. Install Docker Desktop 2.20+ or the standalone docker-compose."
+      );
+    }
+
+    const psResult = spawnSync(dockerCmd, ["ps"], {
+      stdio: "ignore",
+    });
+    if (psResult.status !== 0) {
+      throw new Error(
+        "Docker daemon is not running. Start Docker Desktop and try again."
+      );
+    }
+
+    console.log("[stack] Preflight checks passed. Using", composeDisplay);
+  } else {
+    console.log(
+      `[stack] Detected remote database host ${target.host}. Skipping Docker checks.`
+    );
+  }
+
+  return target;
 }
 
 function getDbConnectionTarget() {
-  const fallback = { host: "localhost", port: 5432 };
+  const fallback = { host: "localhost", port: 5432, isLocal: true, url: null };
   const envUrl =
     process.env.DATABASE_URL ||
     (() => {
@@ -171,17 +185,29 @@ function getDbConnectionTarget() {
       }
     })();
 
-  if (!envUrl) return fallback;
+  if (!envUrl) return { ...fallback };
 
   try {
-    const parsed = new URL(envUrl.trim());
+    const cleanedUrl = envUrl.trim().replace(/^['"]|['"]$/g, "");
+    const parsed = new URL(cleanedUrl);
+    const host = parsed.hostname || fallback.host;
+    const port = Number(parsed.port) || fallback.port;
+    const isLocal = isLocalHost(host);
     return {
-      host: parsed.hostname || fallback.host,
-      port: Number(parsed.port) || fallback.port,
+      host,
+      port,
+      isLocal,
+      url: cleanedUrl,
     };
   } catch {
-    return fallback;
+    return { ...fallback };
   }
+}
+
+function isLocalHost(host) {
+  if (!host) return true;
+  const normalized = host.trim().toLowerCase();
+  return ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(normalized);
 }
 
 function delay(ms) {
@@ -258,7 +284,9 @@ function handleShutdown(code = 0) {
   }
 
   try {
-    runCompose(["down", "db"], { cwd: rootDir });
+    if (usingLocalDb) {
+      runCompose(["down", "db"], { cwd: rootDir });
+    }
   } catch (err) {
     console.warn("[stack] docker compose down failed:", err.message);
   }
@@ -283,14 +311,48 @@ process.on("uncaughtException", (err) => {
 
 (async function main() {
   try {
-    await runPreflight();
-    runCompose(["up", "-d", "db"], { cwd: rootDir });
-    const dbTarget = getDbConnectionTarget();
+    const dbTarget = await runPreflight();
+    lastDbTarget = dbTarget;
+    if (usingLocalDb) {
+      runCompose(["up", "-d", "db"], { cwd: rootDir });
+    }
     await waitForPostgres(dbTarget);
     runSync(npxCmd, ["prisma", "migrate", "deploy"], { cwd: backendDir });
     runSync(npmCmd, ["run", "seed"], { cwd: backendDir });
+
+    const hostLabel = dbTarget ? `${dbTarget.host}:${dbTarget.port}` : "unknown";
+    if (usingLocalDb) {
+      console.log(`[stack] Local Postgres ready at ${hostLabel}.`);
+    } else {
+      console.log(`[stack] Connected to remote database at ${hostLabel} and seed completed.`);
+    }
   } catch (err) {
-    console.error("[stack] Failed to prepare environment:", err.message);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[stack] Failed to prepare environment:", message);
+    console.error("[stack] Next steps:");
+    console.error("  1. Confirm backend/.env points to the intended DATABASE_URL (Railway or local Postgres).");
+    if (usingLocalDb) {
+      console.error(
+        "  2. Start Docker Desktop (or your Docker engine) and ensure `docker ps` works before rerunning `npm run start-stack`."
+      );
+      console.error(
+        "  3. If the error persists, run `npm test db` from the backend folder to verify database connectivity."
+      );
+    } else {
+      console.error(
+        "  2. Verify the Railway Postgres instance is running and reachable from this network (try `npm test db`)."
+      );
+      if (lastDbTarget?.host) {
+        console.error(
+          `  3. Confirm any firewall/VPN allows outbound access to ${lastDbTarget.host}:${lastDbTarget.port}.`
+        );
+      } else {
+        console.error(
+          "  3. Double-check the DATABASE_URL syntax (postgresql://user:pass@host:port/db)."
+        );
+      }
+    }
+    console.error("  4. Review docs/local-setup.md for full setup instructions and retry.");
     process.exit(1);
   }
 
