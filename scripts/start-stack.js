@@ -1,253 +1,111 @@
 #!/usr/bin/env node
 const { spawnSync, spawn } = require("child_process");
 const fs = require("fs");
+const net = require("net");
 const os = require("os");
 const path = require("path");
-const readline = require("readline");
-const net = require("net");
 
 const rootDir = path.resolve(__dirname, "..");
 const backendDir = path.join(rootDir, "backend");
 const frontendDir = path.join(rootDir, "frontend");
 const pidFile = path.join(rootDir, ".stack-pids.json");
 
-const isWindows = process.platform === "win32";
-const npmCmd = isWindows ? "npm.cmd" : "npm";
-const npxCmd = isWindows ? "npx.cmd" : "npx";
-const dockerCmd = isWindows ? "docker" : "docker";
-
-let composeBin = dockerCmd;
-let composeArgsBase = ["compose"]; // default to docker compose plugin
-let composeDisplay = "docker compose";
-
 let shuttingDown = false;
 const children = [];
-let usingLocalDb = true;
-let lastDbTarget = null;
 
-function runSync(command, args, options = {}) {
-  console.log(`[stack] ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, {
+function log(message) {
+  console.log(`[stack] ${message}`);
+}
+
+function warn(message) {
+  console.warn(`[stack] ${message}`);
+}
+
+function fail(message) {
+  console.error(`[stack] ${message}`);
+  process.exit(1);
+}
+
+function runNpm(args, options = {}) {
+  log(`npm ${args.join(" ")}`);
+  const result = spawnSync("npm", args, {
     stdio: "inherit",
     ...options,
   });
 
   if (result.status !== 0) {
-    throw new Error(`Command failed: ${command} ${args.join(" ")}`);
+    throw new Error(`Command failed: npm ${args.join(" ")}`);
   }
 }
 
-function runCompose(args, options = {}) {
-  return runSync(composeBin, [...composeArgsBase, ...args], options);
-}
-
-function commandExists(command, args = ["--version"]) {
-  const result = spawnSync(command, args, {
-    stdio: "ignore",
-  });
-  return result.status === 0;
-}
-
-function askYesNo(question, defaultYes = true) {
-  if (!process.stdin.isTTY) {
-    return Promise.resolve(defaultYes);
-  }
-
-  const suffix = defaultYes ? " [Y/n] " : " [y/N] ";
-
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    rl.question(question + suffix, (answer) => {
-      rl.close();
-      const trimmed = (answer || "").trim().toLowerCase();
-      if (!trimmed) {
-        resolve(defaultYes);
-        return;
-      }
-      if (["y", "yes"].includes(trimmed)) {
-        resolve(true);
-      } else if (["n", "no"].includes(trimmed)) {
-        resolve(false);
-      } else {
-        resolve(defaultYes);
-      }
-    });
-  });
-}
-
-async function ensureNodeModules(dir, label) {
+function ensureNodeModules(dir, label) {
   if (fs.existsSync(path.join(dir, "node_modules"))) {
     return;
   }
 
-  const runInstall = await askYesNo(
-    `[stack] ${label} dependencies are missing. Run npm install now?`,
-    true
-  );
-
-  if (!runInstall) {
-    throw new Error(`${label} dependencies are required. Aborting.`);
-  }
-
-  runSync(npmCmd, ["install"], { cwd: dir });
+  log(`[stack] ${label} dependencies are missing. Running npm install...`);
+  runNpm(["install"], { cwd: dir });
 }
 
-async function ensureBackendEnv() {
+function readDatabaseUrl() {
+  const envUrl = process.env.DATABASE_URL;
+  if (envUrl) return envUrl;
+
   const envPath = path.join(backendDir, ".env");
-  if (fs.existsSync(envPath)) {
-    return;
+  if (!fs.existsSync(envPath)) {
+    return null;
   }
 
-  const createEnv = await askYesNo(
-    "[stack] backend/.env is missing. Create one with default DATABASE_URL?",
-    true
-  );
+  const line = fs
+    .readFileSync(envPath, "utf8")
+    .split(/\r?\n/)
+    .find((row) => row.startsWith("DATABASE_URL="));
 
-  if (!createEnv) {
-    throw new Error("backend/.env is required. Aborting.");
-  }
-
-  const defaultEnv =
-    "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/minglemap?schema=public\n";
-  fs.writeFileSync(envPath, defaultEnv, "utf8");
-  console.log("[stack] Created backend/.env with default configuration.");
+  if (!line) return null;
+  return line.slice("DATABASE_URL=".length).trim().replace(/^['"]|['"]$/g, "");
 }
 
-async function runPreflight() {
-  console.log("[stack] Running preflight checks...");
-
-  await ensureNodeModules(backendDir, "backend");
-  await ensureNodeModules(frontendDir, "frontend");
-  await ensureBackendEnv();
-
-  const target = getDbConnectionTarget();
-  usingLocalDb = target.isLocal;
-
-  if (usingLocalDb) {
-    if (!commandExists(dockerCmd, ["--version"])) {
-      throw new Error(
-        "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on your PATH."
-      );
-    }
-
-    if (commandExists(dockerCmd, ["compose", "version"])) {
-      composeBin = dockerCmd;
-      composeArgsBase = ["compose"];
-      composeDisplay = "docker compose";
-    } else if (commandExists("docker-compose", ["--version"])) {
-      composeBin = "docker-compose";
-      composeArgsBase = [];
-      composeDisplay = "docker-compose";
-    } else {
-      throw new Error(
-        "Docker Compose not found. Install Docker Desktop 2.20+ or the standalone docker-compose."
-      );
-    }
-
-    const psResult = spawnSync(dockerCmd, ["ps"], {
-      stdio: "ignore",
-    });
-    if (psResult.status !== 0) {
-      throw new Error(
-        "Docker daemon is not running. Start Docker Desktop and try again."
-      );
-    }
-
-    console.log("[stack] Preflight checks passed. Using", composeDisplay);
-  } else {
-    console.log(
-      `[stack] Detected remote database host ${target.host}. Skipping Docker checks.`
-    );
-  }
-
-  return target;
-}
-
-function getDbConnectionTarget() {
-  const fallback = { host: "localhost", port: 5432, isLocal: true, url: null };
-  const envUrl =
-    process.env.DATABASE_URL ||
-    (() => {
-      try {
-        const envPath = path.join(backendDir, ".env");
-        if (!fs.existsSync(envPath)) return null;
-        const line = fs
-          .readFileSync(envPath, "utf8")
-          .split(/\r?\n/)
-          .find((row) => row.startsWith("DATABASE_URL="));
-        return line ? line.slice("DATABASE_URL=".length) : null;
-      } catch {
-        return null;
-      }
-    })();
-
-  if (!envUrl) return { ...fallback };
+function parseDatabaseTarget(url) {
+  if (!url) return null;
 
   try {
-    const cleanedUrl = envUrl.trim().replace(/^['"]|['"]$/g, "");
-    const parsed = new URL(cleanedUrl);
-    const host = parsed.hostname || fallback.host;
-    const port = Number(parsed.port) || fallback.port;
-    const isLocal = isLocalHost(host);
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    const port = Number(parsed.port) || 5432;
     return {
+      url,
       host,
       port,
-      isLocal,
-      url: cleanedUrl,
+      label: `${host}:${port}`,
     };
-  } catch {
-    return { ...fallback };
+  } catch (error) {
+    warn(`Unable to parse DATABASE_URL (${error instanceof Error ? error.message : error}).`);
+    return null;
   }
 }
 
-function isLocalHost(host) {
-  if (!host) return true;
-  const normalized = host.trim().toLowerCase();
-  return ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(normalized);
-}
+function verifyDatabaseReachable(target) {
+  if (!target) return;
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+  log(`Checking database reachability at ${target.label} ...`);
+  const socket = net.createConnection({ host: target.host, port: target.port });
 
-async function waitForPostgres(target, retries = 30, delayMs = 1000) {
-  const { host, port } = target;
-  console.log(`[stack] Waiting for Postgres on ${host}:${port} ...`);
-
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    const reachable = await new Promise((resolve) => {
-      const socket = net.createConnection({ host, port }, () => {
-        socket.end();
-        resolve(true);
-      });
-      socket.on("error", () => {
-        socket.destroy();
-        resolve(false);
-      });
-      socket.setTimeout(delayMs / 2, () => {
-        socket.destroy();
-        resolve(false);
-      });
+  return new Promise((resolve, reject) => {
+    socket.setTimeout(5000);
+    socket.once("connect", () => {
+      socket.end();
+      log(`Database reachable at ${target.label}.`);
+      resolve();
     });
-
-    if (reachable) {
-      console.log("[stack] Postgres is ready.");
-      return;
-    }
-
-    if (attempt < retries) {
-      console.log(
-        `[stack] Postgres not ready yet (${attempt}/${retries}). Retrying in ${delayMs}ms...`
-      );
-      await delay(delayMs);
-    }
-  }
-
-  throw new Error("Timed out waiting for Postgres to accept connections.");
+    socket.once("error", (err) => {
+      socket.destroy();
+      reject(err);
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      reject(new Error(`Timed out connecting to ${target.label}`));
+    });
+  });
 }
 
 function detectLanIp() {
@@ -262,33 +120,40 @@ function detectLanIp() {
   return "localhost";
 }
 
-function terminateChild(child) {
-  if (!child || child.killed) return;
+function persistPids() {
+  const data = {};
+  for (const child of children) {
+    if (child.proc && child.proc.pid) {
+      data[child.name] = child.proc.pid;
+    }
+  }
 
-  if (isWindows) {
-    spawnSync("taskkill", ["/pid", child.pid, "/T", "/F"], {
-      stdio: "inherit",
-    });
-  } else {
-    child.kill("SIGTERM");
+  try {
+    fs.writeFileSync(pidFile, JSON.stringify(data, null, 2));
+  } catch (err) {
+    warn(`Failed to write pid file: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+function terminateChild(child) {
+  if (!child || !child.proc || child.proc.killed) return;
+
+  child.proc.once("exit", () => {});
+
+  try {
+    child.proc.kill("SIGTERM");
+  } catch (err) {
+    warn(`Failed to send SIGTERM to ${child.name}: ${err instanceof Error ? err.message : err}`);
   }
 }
 
 function handleShutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log("\n[stack] Shutting down...");
+  log("Shutting down...");
 
-  for (const { proc } of children) {
-    terminateChild(proc);
-  }
-
-  try {
-    if (usingLocalDb) {
-      runCompose(["down", "db"], { cwd: rootDir });
-    }
-  } catch (err) {
-    console.warn("[stack] docker compose down failed:", err.message);
+  for (const child of children) {
+    terminateChild(child);
   }
 
   try {
@@ -296,7 +161,7 @@ function handleShutdown(code = 0) {
       fs.unlinkSync(pidFile);
     }
   } catch (err) {
-    console.warn("[stack] Failed to remove pid file:", err.message);
+    warn(`Failed to remove pid file: ${err instanceof Error ? err.message : err}`);
   }
 
   process.exit(code);
@@ -311,59 +176,53 @@ process.on("uncaughtException", (err) => {
 
 (async function main() {
   try {
-    const dbTarget = await runPreflight();
-    lastDbTarget = dbTarget;
-    if (usingLocalDb) {
-      runCompose(["up", "-d", "db"], { cwd: rootDir });
-    }
-    await waitForPostgres(dbTarget);
-    runSync(npxCmd, ["prisma", "migrate", "deploy"], { cwd: backendDir });
-    runSync(npmCmd, ["run", "seed"], { cwd: backendDir });
+    ensureNodeModules(backendDir, "backend");
+    ensureNodeModules(frontendDir, "frontend");
 
-    const hostLabel = dbTarget ? `${dbTarget.host}:${dbTarget.port}` : "unknown";
-    if (usingLocalDb) {
-      console.log(`[stack] Local Postgres ready at ${hostLabel}.`);
-    } else {
-      console.log(`[stack] Connected to remote database at ${hostLabel} and seed completed.`);
+    if (!fs.existsSync(path.join(backendDir, ".env")) && !process.env.DATABASE_URL) {
+      fail(
+        "backend/.env is missing and DATABASE_URL is not set. Create backend/.env with the remote connection string before running the stack."
+      );
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[stack] Failed to prepare environment:", message);
-    console.error("[stack] Next steps:");
-    console.error("  1. Confirm backend/.env points to the intended DATABASE_URL (Railway or local Postgres).");
-    if (usingLocalDb) {
-      console.error(
-        "  2. Start Docker Desktop (or your Docker engine) and ensure `docker ps` works before rerunning `npm run start-stack`."
-      );
-      console.error(
-        "  3. If the error persists, run `npm test db` from the backend folder to verify database connectivity."
-      );
-    } else {
-      console.error(
-        "  2. Verify the Railway Postgres instance is running and reachable from this network (try `npm test db`)."
-      );
-      if (lastDbTarget?.host) {
-        console.error(
-          `  3. Confirm any firewall/VPN allows outbound access to ${lastDbTarget.host}:${lastDbTarget.port}.`
-        );
-      } else {
-        console.error(
-          "  3. Double-check the DATABASE_URL syntax (postgresql://user:pass@host:port/db)."
+
+    const dbUrl = readDatabaseUrl();
+    const dbTarget = parseDatabaseTarget(dbUrl);
+
+    if (dbTarget) {
+      try {
+        await verifyDatabaseReachable(dbTarget);
+      } catch (err) {
+        throw new Error(
+          `Failed to reach ${dbTarget.label}. Verify VPN/firewall settings before running the stack. ` +
+          `Raw error: ${err instanceof Error ? err.message : String(err)}`
         );
       }
+
+      log(
+        "Skipping migrations and seed. Run them manually if needed: `npm --prefix backend exec prisma migrate deploy` and `npm --prefix backend run seed`."
+      );
+    } else {
+      warn(
+        "DATABASE_URL could not be resolved. The backend will start but expect connection errors until it is set."
+      );
     }
-    console.error("  4. Review docs/local-setup.md for full setup instructions and retry.");
-    process.exit(1);
+
+    log("Building backend TypeScript (npm run build)...");
+    runNpm(["run", "build"], { cwd: backendDir });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(message);
   }
 
-  const backendProc = spawn(npmCmd, ["run", "dev"], {
+  const backendProc = spawn("node", [path.join(backendDir, "dist", "index.js")], {
     cwd: backendDir,
     stdio: "inherit",
+    shell: false,
   });
 
   backendProc.on("exit", (code) => {
     if (!shuttingDown) {
-      console.error(`[stack] Backend process exited with code ${code}`);
+      warn(`Backend process exited with code ${code}`);
       handleShutdown(code || 1);
     }
   });
@@ -372,14 +231,15 @@ process.on("uncaughtException", (err) => {
   persistPids();
 
   const lanIp = detectLanIp();
-  console.log(`[stack] Using EXPO_PUBLIC_API_URL=http://${lanIp}:8000`);
+  log(`Using EXPO_PUBLIC_API_URL=http://${lanIp}:8000`);
 
   const expoProc = spawn(
-    npxCmd,
-    ["expo", "start", "--lan"],
+    "npm",
+    ["run", "start", "--", "--lan"],
     {
       cwd: frontendDir,
       stdio: "inherit",
+      shell: true,
       env: {
         ...process.env,
         EXPO_PUBLIC_API_URL: `http://${lanIp}:8000`,
@@ -389,29 +249,13 @@ process.on("uncaughtException", (err) => {
 
   expoProc.on("exit", (code) => {
     if (!shuttingDown) {
-      console.error(`[stack] Expo process exited with code ${code}`);
+      warn(`Expo process exited with code ${code}`);
       handleShutdown(code || 1);
     }
   });
 
   children.push({ name: "expo", proc: expoProc });
-
   persistPids();
 
-  console.log("\n[stack] Stack running. Press Ctrl+C to stop.");
+  log("Stack running. Press Ctrl+C to stop.");
 })();
-
-function persistPids() {
-  const data = {};
-  for (const child of children) {
-    if (child.proc && child.proc.pid) {
-      data[child.name] = child.proc.pid;
-    }
-  }
-
-  try {
-    fs.writeFileSync(pidFile, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.warn("[stack] Failed to write pid file:", err.message);
-  }
-}

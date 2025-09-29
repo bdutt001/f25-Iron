@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 import prisma from "../prisma";
 
@@ -11,7 +12,11 @@ export const createUser = async (req: Request, res: Response) => {
   if (!password) return res.status(400).json({ error: "Password is required" });
 
   try {
-    const data: Record<string, unknown> = { email, name, password };
+    const data: Prisma.UserCreateInput = {
+      email,
+      password,
+    };
+    if (typeof name === "string") data.name = name;
     if (parsedInterestTags) data.interestTags = parsedInterestTags;
 
     const user = await prisma.user.create({
@@ -86,7 +91,9 @@ export const updateUser = async (req: Request, res: Response) => {
   if (!id) return res.status(400).json({ error: "User ID is required" });
 
   try {
-    const data: Record<string, unknown> = { email, name };
+    const data: Prisma.UserUpdateInput = {};
+    if (typeof email === "string") data.email = email;
+    if (typeof name === "string") data.name = name;
     if (parsedInterestTags) data.interestTags = parsedInterestTags;
 
     const user = await prisma.user.update({

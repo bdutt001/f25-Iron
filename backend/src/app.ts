@@ -14,9 +14,13 @@ app.use(cors());
 // Middleware
 app.use(express.json());
 
-// Health check
+// Health checks: JSON for clients, text for quick CLI curl
 app.get("/api", (_req, res) => {
-  res.json({ status: "ok"});
+  res.json({ status: "ok" });
+});
+
+app.get("/", (_req, res) => {
+  res.status(200).send("Hello from Express 🚀");
 });
 
 // Mount user routes

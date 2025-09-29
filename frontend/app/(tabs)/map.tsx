@@ -2,49 +2,10 @@ import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
 import { Button, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { useUser } from "../context/UserContext";
+import { useUser } from "../../context/UserContext";
+import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
-
-type ApiUser = {
-  id: number;
-  email: string;
-  name?: string | null;
-  interestTags?: string[] | null;
-};
-
-type NearbyUser = {
-  id: number;
-  name: string;
-  coords: { latitude: number; longitude: number };
-  interestTags: string[];
-};
-
-// Assign stable pseudo-random coordinates around the current user
-function scatterUsersAround(
-  users: ApiUser[],
-  baseLat: number,
-  baseLng: number
-): NearbyUser[] {
-  if (!users.length) return [];
-
-  return users.map((user, index) => {
-    const angle = (2 * Math.PI * index) / users.length;
-    const radius = 0.004 + Math.random() * 0.003; // ~300-700 meters
-    const latOffset = Math.sin(angle) * radius;
-    const lngOffset = Math.cos(angle) * radius;
-
-    return {
-      id: user.id,
-      name: user.name || user.email,
-      coords: {
-        latitude: baseLat + latOffset,
-        longitude: baseLng + lngOffset,
-      },
-      interestTags: Array.isArray(user.interestTags) ? user.interestTags : [],
-    };
-  });
-}
 
 export default function MapScreen() {
   const [location, setLocation] =
@@ -64,7 +25,7 @@ export default function MapScreen() {
         throw new Error(`Failed to load users (${response.status})`);
       }
 
-      const data: ApiUser[] = await response.json();
+      const data = (await response.json()) as ApiUser[];
       setNearbyUsers(scatterUsersAround(data, coords.latitude, coords.longitude));
       setErrorMsg(null);
     } catch (err) {

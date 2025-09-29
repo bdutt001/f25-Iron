@@ -7,25 +7,16 @@ const rootDir = path.resolve(__dirname, "..");
 const pidFile = path.join(rootDir, ".stack-pids.json");
 const isWindows = process.platform === "win32";
 
-function log(msg) {
-  console.log(`[stop-stack] ${msg}`);
+function log(message) {
+  console.log(`[stop-stack] ${message}`);
 }
 
-function warn(msg) {
-  console.warn(`[stop-stack] ${msg}`);
+function warn(message) {
+  console.warn(`[stop-stack] ${message}`);
 }
 
-function commandExists(command, args = ["--version"]) {
-  const result = spawnSync(command, args, { stdio: "ignore" });
-  return result.status === 0;
-}
-
-function run(command, args) {
-  log(`${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, { stdio: "inherit" });
-  if (result.status !== 0) {
-    warn(`Command failed (code ${result.status}): ${command} ${args.join(" ")}`);
-  }
+function runCommand(command, args) {
+  spawnSync(command, args, { stdio: "inherit", shell: true });
 }
 
 function killPid(pid, label) {
@@ -34,73 +25,53 @@ function killPid(pid, label) {
   log(`Stopping ${label} (pid ${pid})`);
 
   if (isWindows) {
-    run("taskkill", ["/PID", String(pid), "/T", "/F"]);
+    runCommand("taskkill", ["/PID", String(pid), "/T", "/F"]);
   } else {
     try {
       process.kill(pid, "SIGTERM");
     } catch (err) {
-      warn(`SIGTERM failed for pid ${pid}: ${err.message}`);
+      warn(`Failed to send SIGTERM to ${pid}: ${err instanceof Error ? err.message : err}`);
     }
 
-    const wait = spawnSync("sh", ["-c", `kill -0 ${pid}`], { stdio: "ignore" });
-    if (wait.status === 0) {
-      run("kill", ["-9", String(pid)]);
-    }
-  }
-}
-
-function killKnownProcesses() {
-  const patterns = [
-    "ts-node-dev --respawn --transpile-only src/index.ts",
-    "npx expo start",
-  ];
-
-  for (const pattern of patterns) {
-    log(`Searching for processes matching: ${pattern}`);
-    if (isWindows) {
-      run("wmic", ["process", "where", `CommandLine like '%${pattern.replace(/'/g, "''")}%'`, "call", "terminate"]);
-    } else {
-      run("pkill", ["-f", pattern]);
+    const check = spawnSync("kill", ["-0", String(pid)]);
+    if (check.status === 0) {
+      runCommand("kill", ["-9", String(pid)]);
     }
   }
 }
 
-function stopDocker() {
-  const dockerCmd = "docker";
-  if (!commandExists(dockerCmd, ["--version"])) {
-    warn("Docker CLI not found; skipping docker compose down");
-    return;
-  }
-
-  if (commandExists(dockerCmd, ["compose", "version"])) {
-    run(dockerCmd, ["compose", "down", "db"]);
-  } else if (commandExists("docker-compose", ["--version"])) {
-    run("docker-compose", ["down", "db"]);
+function killByPattern(pattern) {
+  log(`Searching for lingering processes: ${pattern}`);
+  if (isWindows) {
+    runCommand("wmic", ["process", "where", `CommandLine like '%${pattern}%'`, "call", "terminate"]);
   } else {
-    warn("Docker Compose is not available; skipping docker shutdown");
+    spawnSync("pkill", ["-f", pattern], { stdio: "ignore" });
   }
 }
 
-function main() {
-  let killedViaPidFile = false;
+function stopProcesses() {
+  let killedFromFile = false;
 
   if (fs.existsSync(pidFile)) {
     try {
       const data = JSON.parse(fs.readFileSync(pidFile, "utf8"));
       Object.entries(data).forEach(([label, pid]) => killPid(pid, label));
       fs.unlinkSync(pidFile);
-      killedViaPidFile = true;
+      killedFromFile = true;
     } catch (err) {
-      warn(`Failed to read pid file: ${err.message}`);
+      warn(`Failed to read pid file: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  if (!killedViaPidFile) {
-    warn("PID file missing or invalid; falling back to process name matching.");
-    killKnownProcesses();
+  if (!killedFromFile) {
+    warn("PID file missing or invalid; falling back to pattern match.");
+    killByPattern("npm run dev");
+    killByPattern("npm run start -- --lan");
   }
+}
 
-  stopDocker();
+function main() {
+  stopProcesses();
   log("Done.");
 }
 

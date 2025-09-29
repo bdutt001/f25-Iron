@@ -43,7 +43,7 @@ async function main() {
     select: { id: true, email: true, name: true, interestTags: true },
   });
 
-  users.forEach((user) => {
+  users.forEach((user: { id: number; email: string; name: string | null; interestTags: string[] | null }) => {
     const tags = user.interestTags?.length ? user.interestTags.join(", ") : "none";
     console.log(`- ${user.name ?? user.email} (${user.email}) :: ${tags}`);
   });
