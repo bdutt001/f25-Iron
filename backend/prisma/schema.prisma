@@ -23,6 +23,7 @@ model User {
   status     UserStatus @default(AVAILABLE)
   visibility Boolean    @default(true)
   trustScore Decimal    @default(0.0)
+  interestTags String[] @default([])
   createdAt  DateTime   @default(now())
 
   // Relations
