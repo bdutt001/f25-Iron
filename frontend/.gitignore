@@ -1,4 +1,5 @@
 # Ignore Expo's local cache so it never gets committed
+# Expo
 .expo/
 
 # @generated expo-cli sync-2b81b286409207a5da26e14c78851eb30d8ccbdb

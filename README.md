@@ -32,7 +32,9 @@ npm install
 
 These installs work the same in macOS Terminal, iTerm2, Windows Terminal, or PowerShell.
 
-## 3. Configure the Database Connection
+## 3. Configure Environment Files
+
+### Backend API (`backend/.env`)
 
 Create `backend/.env` and set the `DATABASE_URL` you plan to use. Example for the shared Railway instance:
 
@@ -40,7 +42,23 @@ Create `backend/.env` and set the `DATABASE_URL` you plan to use. Example for th
 DATABASE_URL="postgresql://postgres:BCYsAkrLYMqaViwdQLKWCbOaxjAfWpLV@interchange.proxy.rlwy.net:22481/railway?sslmode=require&sslaccept=accept_invalid_certs"
 ```
 
-The stack now runs against the shared Railway instance by default. If you stand up a personal Postgres locally, update the `DATABASE_URL` to point to that instance before starting the stack.
+The start script reads this file on boot. If you stand up a personal Postgres locally, update `DATABASE_URL` to that instance before starting the stack.
+
+### Expo app (`frontend/.env*`)
+
+`start-stack` injects `EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:8000` so physical devices and simulators can reach the backend on your machine. When you launch Expo outside of the stack script, create a `.env` inside `frontend/` and add the base URL you want embedded at build time:
+
+```env
+EXPO_PUBLIC_API_URL=http://192.168.1.50:8000
+```
+
+Simulator-specific values:
+
+- **iOS simulator** — can talk to the host via loopback, so use `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000` and run `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000 npm run ios` from `frontend/`.
+- **Android emulator** — Expo uses the Android emulator network stack; point to the host with `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000` and start with `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000 npm run android`.
+- **Physical devices** — keep the LAN IP from `start-stack` (or set it manually in `.env`) so phones on the same Wi-Fi can connect.
+
+Expo will also read `.env.development`, `.env.production`, or `.env.local` if you prefer to keep per-mode copies. Just ensure every file defines `EXPO_PUBLIC_API_URL` before launching the client.
 
 ## 4. Run the Whole Stack
 
@@ -50,12 +68,15 @@ From the repository root:
 npm run start-stack
 ```
 
-The script now targets Railway and runs these steps automatically:
+The script now targets Railway and runs the Windows-friendly flow we standardized on. Each time you execute it, it performs the commands below **in order**:
 
-1. Ensure `backend/node_modules` and `frontend/node_modules` exist (runs `npm install` if they do not).
-2. Load `DATABASE_URL` from `backend/.env` (or the shell) and check that the host:port is reachable.
-3. Start the backend API with `npm run dev` on port `8000`.
-4. Detect your LAN address and start Expo with `npm run start -- --lan`, setting `EXPO_PUBLIC_API_URL` to `http://<LAN-IP>:8000` so the mobile app talks to your machine.
+1. `npm install` inside `backend/`
+2. `npm install` inside `frontend/`
+3. Load `DATABASE_URL` from `backend/.env` (or the shell) and verify the host:port is reachable
+4. `npm run dev` inside `backend/` (API on port `8000`)
+5. Detect your LAN address and run `npm run start -- --lan` inside `frontend/`, exporting `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000`
+
+Because installs now run every time, expect the first minute of output to be dependency resolution—helpful on Windows where `npm run build` was failing, and harmless on macOS/Linux when everything is already cached.
 
 No migrations or seed scripts run automatically—your data stays untouched unless you run the commands below yourself. To shut everything down:
 
@@ -92,13 +113,14 @@ Successful output shows the host (e.g. `interchange.proxy.rlwy.net:22481`) and t
 
 ## 6. Troubleshooting `npm run start-stack`
 
-If the start script fails, it prints actionable guidance. Most issues fall into one of these buckets:
+If the start script fails, it prints actionable guidance. Use these checks to get unstuck fast:
 
-- **Wrong or missing `.env`** – ensure `backend/.env` has the correct `DATABASE_URL`.
-- **Railway unreachable** – check the service status, firewall/VPN rules, and run `npm test db` to confirm connectivity.
-- **Outdated installs** – rerun `npm install` inside `backend` and `frontend`.
+- **`npm install` errors** – the script now installs every run; if you see permission or network issues, run `npm install` manually inside `backend/` and `frontend/` to inspect the full error log, then re-run `npm run start-stack`.
+- **Wrong or missing `.env`** – confirm `backend/.env` contains the correct `DATABASE_URL` and your front-end `.env` (if used) points to a reachable host for your simulator or device.
+- **Railway unreachable** – verify VPN/firewall rules, run `npm test db` from `backend/`, and confirm the host/port printed by the script matches Railway’s latest assignment.
+- **Expo cannot reach the API** – double-check the `EXPO_PUBLIC_API_URL` you set for Android/iOS. Android emulators need `http://10.0.2.2:8000`; physical devices must be on the same Wi-Fi and use your LAN IP.
 
-For more context, see `docs/local-setup.md` or reach out in team chat with the exact error message.
+For more context, see `docs/local-setup.md` or drop the exact console output in team chat.
 
 ## Useful Commands
 

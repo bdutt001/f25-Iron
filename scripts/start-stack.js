@@ -38,15 +38,6 @@ function runNpm(args, options = {}) {
   }
 }
 
-function ensureNodeModules(dir, label) {
-  if (fs.existsSync(path.join(dir, "node_modules"))) {
-    return;
-  }
-
-  log(`[stack] ${label} dependencies are missing. Running npm install...`);
-  runNpm(["install"], { cwd: dir });
-}
-
 function readDatabaseUrl() {
   const envUrl = process.env.DATABASE_URL;
   if (envUrl) return envUrl;
@@ -176,8 +167,11 @@ process.on("uncaughtException", (err) => {
 
 (async function main() {
   try {
-    ensureNodeModules(backendDir, "backend");
-    ensureNodeModules(frontendDir, "frontend");
+    log("Installing backend dependencies (npm install)...");
+    runNpm(["install"], { cwd: backendDir });
+
+    log("Installing frontend dependencies (npm install)...");
+    runNpm(["install"], { cwd: frontendDir });
 
     if (!fs.existsSync(path.join(backendDir, ".env")) && !process.env.DATABASE_URL) {
       fail(
@@ -206,19 +200,20 @@ process.on("uncaughtException", (err) => {
         "DATABASE_URL could not be resolved. The backend will start but expect connection errors until it is set."
       );
     }
-
-    log("Building backend TypeScript (npm run build)...");
-    runNpm(["run", "build"], { cwd: backendDir });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     fail(message);
   }
 
-  const backendProc = spawn("node", [path.join(backendDir, "dist", "index.js")], {
-    cwd: backendDir,
-    stdio: "inherit",
-    shell: false,
-  });
+  const backendProc = spawn(
+    "npm",
+    ["run", "dev"],
+    {
+      cwd: backendDir,
+      stdio: "inherit",
+      shell: true,
+    }
+  );
 
   backendProc.on("exit", (code) => {
     if (!shuttingDown) {
