@@ -4,3 +4,4 @@ node_modules/
 .env
 
 output.txt
+frontend/.expo/types/router.d.ts
