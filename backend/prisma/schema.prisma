@@ -1,45 +1,30 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") //env("DATABASE_URL"). What is there now is to test locally
+  url      = env("DATABASE_URL")
 }
 
-// User Table
 model User {
-  id         Int        @id @default(autoincrement())
-  email      String     @unique
-  password   String // hashed with bcrypt, not plain text
-  name       String?
- 
-  status     UserStatus @default(AVAILABLE)
-  visibility Boolean    @default(true)
-  trustScore Decimal    @default(0.0)
-  interestTags String[] @default([])
-  createdAt  DateTime   @default(now())
-
-  // Relations
-  messagesSent   Message[] @relation("SentMessages")
-  messagesRecv   Message[] @relation("ReceivedMessages")
-  wavesSent      Wave[]    @relation("WavesSent")
-  wavesRecv      Wave[]    @relation("WavesReceived")
-  reportsMade    Report[]  @relation("ReportsMade")
-  reportsAgainst Report[]  @relation("ReportsAgainst") 
-  tags Tag[] @relation("UserTags") //User interests
-}
-
-enum UserStatus {
-  AVAILABLE
-  BUSY
-  DND
+  email          String     @unique
+  name           String?
+  createdAt      DateTime   @default(now())
+  password       String
+  status         UserStatus @default(AVAILABLE)
+  trustScore     Decimal    @default(0.0)
+  visibility     Boolean    @default(true)
+  id             Int        @id @default(autoincrement())
+  interestTags   String[]   @default([])
+  profilePicture String?
+  messagesRecv   Message[]  @relation("ReceivedMessages")
+  messagesSent   Message[]  @relation("SentMessages")
+  reportsAgainst Report[]   @relation("ReportsAgainst")
+  reportsMade    Report[]   @relation("ReportsMade")
+  wavesRecv      Wave[]     @relation("WavesReceived")
+  wavesSent      Wave[]     @relation("WavesSent")
+  tags           Tag[]      @relation("UserTags")
 }
 
 model Message {
@@ -48,8 +33,8 @@ model Message {
   createdAt  DateTime @default(now())
   senderId   Int
   receiverId Int
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
   receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
 }
 
 model Wave {
@@ -57,8 +42,8 @@ model Wave {
   createdAt  DateTime @default(now())
   senderId   Int
   receiverId Int
-  sender     User     @relation("WavesSent", fields: [senderId], references: [id])
   receiver   User     @relation("WavesReceived", fields: [receiverId], references: [id])
+  sender     User     @relation("WavesSent", fields: [senderId], references: [id])
 }
 
 model Report {
@@ -67,12 +52,18 @@ model Report {
   createdAt  DateTime @default(now())
   reporterId Int
   reportedId Int
-  reporter   User     @relation("ReportsMade", fields: [reporterId], references: [id])
   reported   User     @relation("ReportsAgainst", fields: [reportedId], references: [id])
+  reporter   User     @relation("ReportsMade", fields: [reporterId], references: [id])
 }
 
 model Tag {
-  id  Int @id @default(autoincrement())
-  name String @unique
-  users User[] @relation("UserTags") //allows for relation between users and tags via a join tab
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  users User[] @relation("UserTags")
+}
+
+enum UserStatus {
+  AVAILABLE
+  BUSY
+  DND
 }
