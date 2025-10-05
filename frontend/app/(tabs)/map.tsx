@@ -2,7 +2,7 @@ import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
 import { Button, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { useUser } from "../context/UserContext";
+import { useUser } from "../../context/UserContext";
 
 export default function MapScreen() {
   const [location, setLocation] = useState<any>(null);

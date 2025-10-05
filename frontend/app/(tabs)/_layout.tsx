@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import React from "react";
-import { UserProvider } from "../context/UserContext";
+import { UserProvider } from "../../context/UserContext";
 
 export default function TabLayout() {
   return (
