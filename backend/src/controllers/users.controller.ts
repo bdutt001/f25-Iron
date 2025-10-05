@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 import prisma from "../prisma";
 import { getAllUsers, addTagToUser, findUsersByTag } from "../services/users.services";
@@ -5,13 +6,29 @@ import { getAllUsers, addTagToUser, findUsersByTag } from "../services/users.ser
 // Create a new user
 export const createUser = async (req: Request, res: Response) => {
   const { email, name, password } = req.body;
+  const parsedInterestTags = Array.isArray(req.body.interestTags)
+    ? req.body.interestTags.map((tag: string) => tag.trim()).filter(Boolean)
+    : undefined;
   if (!email) return res.status(400).json({ error: "Email is required" });
   if (!password) return res.status(400).json({ error: "Password is required" });
 
   try {
+    const data: Prisma.UserCreateInput = {
+      email,
+      password,
+    };
+    if (typeof name === "string") data.name = name;
+    if (parsedInterestTags) data.interestTags = parsedInterestTags;
+
     const user = await prisma.user.create({
-      data: { email, name, password },
-      select: { id: true, email: true, name: true, createdAt: true },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        interestTags: true,
+        createdAt: true,
+      },
     });
     res.status(201).json(user);
   } catch (err) {
@@ -24,7 +41,13 @@ export const createUser = async (req: Request, res: Response) => {
 export const getUsers = async (_req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        interestTags: true,
+        createdAt: true,
+      },
     });
     res.json(users);
   } catch (err) {
@@ -44,7 +67,13 @@ export const getUserById = async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        interestTags: true,
+        createdAt: true,
+      },
     });
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
@@ -57,13 +86,27 @@ export const getUserById = async (req: Request, res: Response) => {
 export const updateUser = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { email, name } = req.body;
+  const parsedInterestTags = Array.isArray(req.body.interestTags)
+    ? req.body.interestTags.map((tag: string) => tag.trim()).filter(Boolean)
+    : undefined;
   if (!id) return res.status(400).json({ error: "User ID is required" });
 
   try {
+    const data: Prisma.UserUpdateInput = {};
+    if (typeof email === "string") data.email = email;
+    if (typeof name === "string") data.name = name;
+    if (parsedInterestTags) data.interestTags = parsedInterestTags;
+
     const user = await prisma.user.update({
       where: { id: Number(id) },
-      data: { email, name },
-      select: { id: true, email: true, name: true, createdAt: true },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        interestTags: true,
+        createdAt: true,
+      },
     });
     res.json(user);
   } catch (err: any) {

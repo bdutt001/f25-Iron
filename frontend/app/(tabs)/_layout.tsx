@@ -11,6 +11,12 @@ export default function TabLayout() {
         }}
       >
         <Tabs.Screen
+          name="nearby"
+          options={{
+            title: "Nearby",
+          }}
+        />
+        <Tabs.Screen
           name="map"
           options={{
             title: "Map",

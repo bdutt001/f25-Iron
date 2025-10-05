@@ -6,8 +6,10 @@
   "scripts": {
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
-    "test": "jest",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "seed": "ts-node --transpile-only src/scripts/seedFakeUsers.ts",
+    "test": "node scripts/run-tests.js",
+    "test:unit": "jest",
+    "dev": "ts-node --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
@@ -25,7 +27,7 @@
     "prisma": "^6.16.1",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.2",
-    "ts-node-dev": "^2.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
   "dependencies": {

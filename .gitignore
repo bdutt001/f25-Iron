@@ -1,7 +1,12 @@
 node_modules/
 
-#environment file
+# environment file
 .env
 
 output.txt
-frontend/.expo/types/router.d.ts
+.stack-pids.json
+frontend/android/
+frontend/ios/
+
+# macOS metadata
+.DS_Store
