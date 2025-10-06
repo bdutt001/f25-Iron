@@ -1,11 +1,9 @@
 import express from "express";
 import usersRouter from "./routes/users.routes";
 import tagsRouter from "./routes/tags.routes";
-
-//import cors to enable cross-site origin requests outside of basic get post
 import cors from "cors";
-
 import dotenv from "dotenv";
+import path from "path";
 
 const app = express();
 
@@ -15,9 +13,12 @@ app.use(cors());
 // Middleware
 app.use(express.json());
 
+// Serve uploads folder statically
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
+
 // Health check
 app.get("/api", (_req, res) => {
-  res.json({ status: "ok"});
+  res.json({ status: "ok" });
 });
 
 // Mount user routes

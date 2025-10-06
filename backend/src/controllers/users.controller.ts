@@ -38,20 +38,35 @@ export const getUserById = async (req: Request, res: Response) => {
   const userId = Number(id);
 
   if (Number.isNaN(userId)) {
-    return res.status(400).json({ error: "User not found" });
+    return res.status(400).json({ error: "Invalid user ID" });
   }
 
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,          // ✅ added
+        profilePicture: true,  // ✅ added
+        visibility: true,      // optional, in case frontend uses it
+        trustScore: true,      // optional, maybe useful later
+        createdAt: true,
+      },
     });
-    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
     res.json(user);
   } catch (err) {
+    console.error("Error fetching user by ID:", err);
     res.status(500).json({ error: "Failed to fetch user" });
   }
 };
+
 
 // Update a user
 export const updateUser = async (req: Request, res: Response) => {
@@ -141,6 +156,66 @@ export const getUsersByTag = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to find users by tag" });
   }
 };
+// Get one user by email
+export const getUserByEmail = async (req: Request, res: Response) => {
+  const { email } = req.params;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        profilePicture: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error("Error fetching user by email:", err);
+    res.status(500).json({ error: "Failed to fetch user by email" });
+  }
+};
+
+// Upload profile picture by email
+export const uploadProfilePictureByEmail = async (req: Request, res: Response) => {
+  const { email } = req.params;
+
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    const filePath = `/uploads/${req.file.filename}`;
+
+    const updatedUser = await prisma.user.update({
+      where: { email },
+      data: { profilePicture: filePath },
+      select: { profilePicture: true },
+    });
+
+    console.log("Uploaded file:", req.file);
+    res.json({ profilePicture: updatedUser.profilePicture });
+  } catch (err) {
+    console.error("Error uploading profile picture:", err);
+    res.status(500).json({ error: "Failed to upload profile picture" });
+  }
+};
+
 //Remove a tag from a user: DELETE /api/users/:id/tags/:tagName
 export const deleteTagFromUser = async (req: Request, res: Response) => {
   try {
@@ -172,4 +247,7 @@ export const deleteTagFromUser = async (req: Request, res: Response) => {
     }
     res.status(500).json({ error: "Failed to remove tag from user" });
   }
+
+  
+  
 }
