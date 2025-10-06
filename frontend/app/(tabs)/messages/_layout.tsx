@@ -5,7 +5,7 @@ export default function MessagesLayout() {
     <Stack>
       <Stack.Screen
         name="index"
-        options={{ title: "Messages", headerShown: true }}
+        options={{ title: "Messages", headerShown: false }}
       />
       <Stack.Screen
         name="[chatId]"

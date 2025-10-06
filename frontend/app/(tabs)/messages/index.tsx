@@ -56,6 +56,7 @@ import { View, Text, FlatList, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
 
 const conversations = [
+  //backend connection here
   { id: "1", name: "Alice" },
   { id: "2", name: "Bob" },
   { id: "3", name: "Charlie" },
