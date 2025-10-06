@@ -10,7 +10,7 @@ type HealthResponse = {
 export default function LoginScreen() {
   const handleTestConnection = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}`);
+      const response = await fetch(`${API_BASE_URL}/api`);
       if (!response.ok) {
         throw new Error(`Unexpected status ${response.status}`);
       }
