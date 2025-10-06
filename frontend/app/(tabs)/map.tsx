@@ -5,7 +5,7 @@ import MapView, { Marker } from "react-native-maps";
 import { useUser } from "../../context/UserContext";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL  ?? "http://localhost:8000";
 
 export default function MapScreen() {
   const [location, setLocation] =
