@@ -35,7 +35,7 @@ export default function NearbyScreen() {
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
-        const response = await fetch(`${API_BASE_URL}/users`);
+        const response = await fetch(`${API_BASE_URL}/api/users`);
         if (!response.ok) {
           throw new Error(`Failed to load users (${response.status})`);
         }
