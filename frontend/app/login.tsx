@@ -1,24 +1,28 @@
 import { router } from "expo-router";
-import { useEffect } from "react";
-import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+
+type HealthResponse = {
+  status?: string;
+};
 
 export default function LoginScreen() {
+  const handleTestConnection = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api`);
+      if (!response.ok) {
+        throw new Error(`Unexpected status ${response.status}`);
+      }
 
-  // Inteface and test function for backend connectivity locally.
-  // interface Health {
-  //   status: string;
-  // }
-  // const test = async () =>{
-  //   try {
-  //   const api = process.env.EXPO_PUBLIC_API_URL;
-  //   const res = await fetch(`${api}/api`);
-  //   const data = (await res.json()) as Health;
-  //   console.log("Backend status:", data.status);
-  // } catch (err) {
-  //   console.error("Error fetching API:", err);
-  // }
-  // }
+      const data = (await response.json()) as HealthResponse;
+      Alert.alert("Backend online", data.status ?? "ok");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert("Backend test failed", message);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Logo */}
@@ -42,10 +46,11 @@ export default function LoginScreen() {
         <Text style={styles.secondaryText}>Go to Signup</Text>
       </TouchableOpacity>
 
-      {/* Test for backend conenction remove from code whenever */}
-      {/* <TouchableOpacity style={styles.secondaryBtn} onPress={test}>
-        <Text style={styles.secondaryText}>test backend</Text>
-      </TouchableOpacity> */}
+      {__DEV__ && (
+        <TouchableOpacity style={styles.secondaryBtn} onPress={handleTestConnection}>
+          <Text style={styles.secondaryText}>Test Backend Connection</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

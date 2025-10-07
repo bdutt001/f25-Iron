@@ -1,0 +1,8 @@
+{
+  "name": "f25-iron",
+  "private": true,
+  "scripts": {
+    "start-stack": "node scripts/start-stack.js",
+    "stop-stack": "node scripts/stop-stack.js"
+  }
+}
