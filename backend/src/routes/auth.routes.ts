@@ -1,63 +1,58 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 
-const prisma = new PrismaClient();
 const router = Router();
 
-// REGISTER
-router.post('/register', async (req: Request, res: Response) => {
-  const { username, email, password } = req.body;
+// SIGNUP (email + password)
+router.post('/auth/signup', async (req: Request, res: Response) => {
+  const emailRaw = (req.body?.email ?? '') as string;
+  const passwordRaw = (req.body?.password ?? '') as string;
+  const name = typeof req.body?.name === 'string' ? req.body.name : undefined;
 
-  if (!username || !email || !password) {
-    return res
-      .status(400)
-      .json({ error: 'Username, email, and password are required' });
+  const email = emailRaw.trim().toLowerCase();
+  if (!email || !passwordRaw) {
+    return res.status(400).json({ error: 'Email and password are required' });
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return res.status(409).json({ error: 'Email already registered' });
 
+    const hashedPassword = await bcrypt.hash(passwordRaw, 10);
     const user = await prisma.user.create({
-      data: {
-        username,
-        email,
-        password: hashedPassword,
-      },
+      data: { email, name, password: hashedPassword },
+      select: { id: true, email: true, name: true, interestTags: true, createdAt: true },
     });
-
-    res.status(201).json({ message: 'User registered', userId: user.id });
+    return res.status(201).json(user);
   } catch (error) {
-    console.error('Register Error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    console.error('Signup Error:', error);
+    return res.status(500).json({ error: 'Registration failed' });
   }
 });
 
-// LOGIN
-router.post('/login', async (req: Request, res: Response) => {
-  const { username, password } = req.body;
+// LOGIN (email + password)
+router.post('/auth/login', async (req: Request, res: Response) => {
+  const emailRaw = (req.body?.email ?? '') as string;
+  const password = (req.body?.password ?? '') as string;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required' });
+  const email = emailRaw.trim().toLowerCase();
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { username } });
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, name: true, password: true, interestTags: true, createdAt: true } as any });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const valid = await bcrypt.compare(password, (user as any).password);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const valid = await bcrypt.compare(password, user.password);
-
-    if (!valid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    res.json({ message: 'Login successful', userId: user.id });
+    const { password: _p, ...safe } = user as any;
+    return res.json(safe);
   } catch (error) {
     console.error('Login Error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    return res.status(500).json({ error: 'Login failed' });
   }
 });
 

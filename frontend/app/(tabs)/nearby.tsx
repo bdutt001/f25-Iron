@@ -18,14 +18,27 @@ import {
   scatterUsersAround,
 } from "../../utils/geo";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+// Ensure fallback includes /api
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
+// Fixed center for demo: Old Dominion University
+const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
 type NearbyWithDistance = NearbyUser & {
   distanceMeters: number;
 };
 
 export default function NearbyScreen() {
-  const [location, setLocation] = useState<Location.LocationObjectCoords | null>(null);
+  // Treat ODU as the current location for demo
+  const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
+    latitude: ODU_CENTER.latitude,
+    longitude: ODU_CENTER.longitude,
+    altitude: undefined as any,
+    accuracy: undefined as any,
+    altitudeAccuracy: undefined as any,
+    heading: undefined as any,
+    speed: undefined as any,
+  });
   const [users, setUsers] = useState<NearbyWithDistance[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,16 +83,17 @@ export default function NearbyScreen() {
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") {
-        setError("Permission to access location was denied");
-        setLoading(false);
-        return;
-      }
-
-      const currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation.coords);
-      await loadUsers(currentLocation.coords);
+      const coords = {
+        latitude: ODU_CENTER.latitude,
+        longitude: ODU_CENTER.longitude,
+        altitude: undefined as any,
+        accuracy: undefined as any,
+        altitudeAccuracy: undefined as any,
+        heading: undefined as any,
+        speed: undefined as any,
+      };
+      setLocation(coords);
+      await loadUsers(coords);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);

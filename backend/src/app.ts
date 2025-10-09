@@ -15,7 +15,8 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
-app.use('/auth', authRoutes);
+// Mount auth routes under /api to align with frontend base URL
+app.use('/api', authRoutes);
 
 // Health checks: JSON for clients, text for quick CLI curl
 app.get("/api", (_req, res) => {
