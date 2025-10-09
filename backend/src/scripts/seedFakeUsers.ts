@@ -1,17 +1,43 @@
 import bcrypt from "bcrypt";
 import prisma from "../prisma";
 
-// Seed the database with the real team members from README.md
-// Passwords are left as the demo default for class use only
-const TEAM_USERS: { email: string; name: string; password: string }[] = [
-  { email: "bdutt001@odu.edu", name: "Ben Dutton", password: "Password123" },
-  { email: "ghayn004@odu.edu", name: "Geelani Haynes", password: "Password123" },
-  { email: "jneff001@odu.edu", name: "Jacob Neff", password: "Password123" },
-  { email: "ashaf007@odu.edu", name: "Ahmer Shafiq", password: "Password123" },
-  { email: "tmose008@odu.edu", name: "Taran Moses", password: "Password123" },
-  { email: "nbrew004@odu.edu", name: "Nicholas Brewster", password: "Password123" },
-  { email: "dpate024@odu.edu", name: "Daksh Patel", password: "Password123" },
-  { email: "dmelt002@odu.edu", name: "Dustin Dobson", password: "Password123" },
+// Seed dataset used for local/demo with username + interestTags (matches schema)
+const FAKE_USERS = [
+  {
+    username: "alice",
+    email: "alice@example.com",
+    password: "password123",
+    name: "Alice Johnson",
+    interestTags: ["Coffee", "Dogs", "Hiking"],
+  },
+  {
+    username: "ben",
+    email: "ben@example.com",
+    password: "password123",
+    name: "Ben Carter",
+    interestTags: ["Board Games", "Tech", "Running"],
+  },
+  {
+    username: "carla",
+    email: "carla@example.com",
+    password: "password123",
+    name: "Carla Singh",
+    interestTags: ["Yoga", "Live Music", "Art"],
+  },
+  {
+    username: "diego",
+    email: "diego@example.com",
+    password: "password123",
+    name: "Diego Martinez",
+    interestTags: ["Soccer", "Cooking", "Photography"],
+  },
+  {
+    username: "emily",
+    email: "emily@example.com",
+    password: "password123",
+    name: "Emily Chen",
+    interestTags: ["Coffee", "Books", "Travel"],
+  },
 ];
 
 async function main() {
@@ -25,15 +51,15 @@ async function main() {
   await prisma.tag.deleteMany();
   await prisma.chatSession.deleteMany();
 
-  console.log("Seeding team users from README.md...");
-  const usersWithHashedPasswords = await Promise.all(
-    TEAM_USERS.map(async (user) => ({
-      ...user,
-      password: await bcrypt.hash(user.password, 10),
+  console.log("Seeding fake users with bcrypt-hashed passwords...");
+  const usersWithHashed = await Promise.all(
+    FAKE_USERS.map(async (u) => ({
+      ...u,
+      password: await bcrypt.hash(u.password, 12),
     }))
   );
 
-  await prisma.user.createMany({ data: usersWithHashedPasswords });
+  await prisma.user.createMany({ data: usersWithHashed });
 
   const users = await prisma.user.findMany({
     select: { id: true, email: true, name: true, interestTags: true },
