@@ -40,9 +40,14 @@ Create `backend/.env` and set the `DATABASE_URL` you plan to use. Example for th
 
 ```env
 DATABASE_URL="postgresql://postgres:BCYsAkrLYMqaViwdQLKWCbOaxjAfWpLV@interchange.proxy.rlwy.net:22481/railway?sslmode=require&sslaccept=accept_invalid_certs"
+JWT_ACCESS_SECRET="replace-with-a-long-random-string"
+JWT_REFRESH_SECRET="replace-with-a-different-long-random-string"
+# Optional overrides; defaults are 15m and 7d
+JWT_ACCESS_TTL="15m"
+JWT_REFRESH_TTL="7d"
 ```
 
-The start script reads this file on boot. If you stand up a personal Postgres locally, update `DATABASE_URL` to that instance before starting the stack.
+The start script reads this file on boot. If you stand up a personal Postgres locally, update `DATABASE_URL` to that instance before starting the stack. Generate strong JWT secrets locally (e.g., `openssl rand -hex 32`) and never reuse production values across environments.
 
 ### Expo app (`frontend/.env*`)
 

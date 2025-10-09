@@ -1,4 +1,5 @@
 import express from "express";
+import { authenticate } from "../middleware/authenticate";
 import {
     createTag, 
     getTags, 
@@ -7,6 +8,8 @@ import {
     deleteTag } from "../controllers/tags.controller";
 
 const router = express.Router();
+
+router.use(authenticate);
 
 router.post("/tags", createTag);      // Create a tag
 router.get("/tags", getTags);         // Read all tags

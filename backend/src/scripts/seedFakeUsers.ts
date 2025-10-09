@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import prisma from "../prisma";
 
 const FAKE_USERS = [
@@ -37,7 +38,14 @@ async function main() {
   console.log("Seeding fake users...");
 
   await prisma.user.deleteMany();
-  await prisma.user.createMany({ data: FAKE_USERS });
+  const usersWithHashedPasswords = await Promise.all(
+    FAKE_USERS.map(async (user) => ({
+      ...user,
+      password: await bcrypt.hash(user.password, 10),
+    })),
+  );
+
+  await prisma.user.createMany({ data: usersWithHashedPasswords });
 
   const users = await prisma.user.findMany({
     select: { id: true, email: true, name: true, interestTags: true },

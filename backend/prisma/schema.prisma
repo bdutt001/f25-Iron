@@ -22,8 +22,10 @@ enum UserStatus {
 // User Table
 model User {
   id             Int        @id @default(autoincrement())
-  email          String     @unique
+  username       String    @unique
+  email          String?     @unique
   password       String // hashed with bcrypt, not plain text
+  tokenVersion   Int        @default(0)
   name           String?
   profilePicture String?
   status         UserStatus @default(AVAILABLE)

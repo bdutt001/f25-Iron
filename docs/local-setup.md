@@ -21,8 +21,13 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
 3. Create the backend environment file if it does not exist (`backend/.env`):
    ```env
    DATABASE_URL="postgresql://<username>:<password>@<host>:<port>/<database>?sslmode=require"
+   JWT_ACCESS_SECRET="replace-with-a-long-random-string"
+   JWT_REFRESH_SECRET="replace-with-a-different-long-random-string"
+   # Optional overrides; defaults are 15m and 7d respectively
+   JWT_ACCESS_TTL="15m"
+   JWT_REFRESH_TTL="7d"
    ```
-   Use the shared Railway connection string or substitute the URL for your own database.
+   Use the shared Railway connection string or substitute the URL for your own database. The JWT secrets power access and refresh tokens�?"generate strong values locally (e.g., `openssl rand -hex 32`) and never commit real secrets to version control.
 
 ## Each time you want to run the stack
 1. **One-command start (recommended)**
@@ -46,9 +51,9 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
 
 3. **Try the API** (optional sanity check):
    ```bash
-   curl http://localhost:8000/users
+   curl http://localhost:8000/api
    ```
-   You should see real records from the configured database.
+   You should receive `{ "status": "ok" }`. Protected routes (e.g., `/auth/me`, `/api/users`) now require a `Bearer` token obtained via `/auth/login` or `/auth/register`.
 
 ## Useful extras
 - Run backend tests: `cd backend && npm test` (ensure the database is reachable first).
