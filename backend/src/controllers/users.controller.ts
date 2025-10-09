@@ -6,20 +6,19 @@ import { getAllUsers, addTagToUser, findUsersByTag } from "../services/users.ser
 
 // Create a new user
 export const createUser = async (req: Request, res: Response) => {
-  const { email, name } = req.body;
-  const password: string | undefined = req.body?.password;
-  const defaultPassword = process.env.DEFAULT_PASSWORD || "Password123";
+  const { email, name, password, username } = req.body;
   const parsedInterestTags = Array.isArray(req.body.interestTags)
     ? req.body.interestTags.map((tag: string) => tag.trim()).filter(Boolean)
     : undefined;
   if (!email) return res.status(400).json({ error: "Email is required" });
-  // Temporarily allow default plaintext password if none provided
+  if (!password) return res.status(400).json({ error: "Password is required" });
+  if (!username) return res.status(400).json({ error: "Username is required" });
 
   try {
-    const passwordToHash = (password ?? defaultPassword) as string;
-    const hashedPassword = await bcrypt.hash(passwordToHash, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const data: Prisma.UserCreateInput = {
+      username,
       email,
       password: hashedPassword,
     };
@@ -30,6 +29,7 @@ export const createUser = async (req: Request, res: Response) => {
       data,
       select: {
         id: true,
+        username: true,
         email: true,
         name: true,
         interestTags: true,
@@ -49,6 +49,7 @@ export const getUsers = async (_req: Request, res: Response) => {
     const users = await prisma.user.findMany({
       select: {
         id: true,
+        username: true,
         email: true,
         name: true,
         interestTags: true,
@@ -75,6 +76,7 @@ export const getUserById = async (req: Request, res: Response) => {
       where: { id: userId },
       select: {
         id: true,
+        username: true,
         email: true,
         name: true,
         interestTags: true,
@@ -99,11 +101,19 @@ export const updateUser = async (req: Request, res: Response) => {
 
   try {
     const data: Prisma.UserUpdateInput = {};
+    let passwordUpdated = false;
     if (typeof email === "string") data.email = email;
+    if (typeof req.body.username === "string" && req.body.username.trim()) {
+      data.username = req.body.username.trim();
+    }
     if (typeof name === "string") data.name = name;
     if (parsedInterestTags) data.interestTags = parsedInterestTags;
     if (typeof req.body.password === "string" && req.body.password.trim()) {
       data.password = await bcrypt.hash(req.body.password, 10);
+      passwordUpdated = true;
+    }
+    if (passwordUpdated) {
+      data.tokenVersion = { increment: 1 };
     }
 
     const user = await prisma.user.update({
@@ -111,6 +121,7 @@ export const updateUser = async (req: Request, res: Response) => {
       data,
       select: {
         id: true,
+        username: true,
         email: true,
         name: true,
         interestTags: true,
