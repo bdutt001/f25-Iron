@@ -5,17 +5,19 @@ import { getAllUsers, addTagToUser, findUsersByTag } from "../services/users.ser
 
 // Create a new user
 export const createUser = async (req: Request, res: Response) => {
-  const { email, name, password } = req.body;
+  const { email, name } = req.body;
+  const password: string | undefined = req.body?.password;
+  const defaultPassword = process.env.DEFAULT_PASSWORD || "Password123";
   const parsedInterestTags = Array.isArray(req.body.interestTags)
     ? req.body.interestTags.map((tag: string) => tag.trim()).filter(Boolean)
     : undefined;
   if (!email) return res.status(400).json({ error: "Email is required" });
-  if (!password) return res.status(400).json({ error: "Password is required" });
+  // Temporarily allow default plaintext password if none provided
 
   try {
     const data: Prisma.UserCreateInput = {
       email,
-      password,
+      password: password ?? defaultPassword,
     };
     if (typeof name === "string") data.name = name;
     if (parsedInterestTags) data.interestTags = parsedInterestTags;

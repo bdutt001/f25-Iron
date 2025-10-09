@@ -4,10 +4,10 @@ import { useUser } from "../../context/UserContext";
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { status } = useUser(); // shared state
+  const { status, currentUser, setCurrentUser } = useUser(); // shared state
 
   const handleLogout = () => {
-    // Later → clear user session here
+    setCurrentUser(null);
     router.replace("/login");
   };
 
@@ -16,9 +16,9 @@ export default function ProfileScreen() {
       <View style={styles.card}>
         <Text style={styles.title}>User Profile</Text>
         <Text style={styles.label}>Name:</Text>
-        <Text style={styles.value}>Ahmer Shafiq</Text>
+        <Text style={styles.value}>{currentUser?.name || currentUser?.email || "Anonymous"}</Text>
         <Text style={styles.label}>Email:</Text>
-        <Text style={styles.value}>ashaf007@odu.edu</Text>
+        <Text style={styles.value}>{currentUser?.email || "-"}</Text>
         <Text style={styles.label}>Status:</Text>
         <Text style={styles.value}>{status}</Text>
       </View>

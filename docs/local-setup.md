@@ -33,7 +33,7 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
    - Ensures `backend` and `frontend` dependencies are installed.
    - Verifies the database host/port is reachable.
    - Starts the backend API with `npm run dev`.
-   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine (`npm run start -- --lan`).
+   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine's API prefix (`/api`) (`npm run start -- --lan`).
    No migrations or seeds run automatically—your data stays untouched unless you run them manually.
 
    Keep the terminal open while developing. Logs from both backend and Expo stream to the same session.
@@ -55,4 +55,13 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
 - Regenerate Prisma types after schema changes: `cd backend && npm run generate`.
 - Apply migrations: `npm --prefix backend exec prisma migrate deploy`.
 - Seed demo users (destructive): `npm --prefix backend run seed`.
+
+## Base URL convention
+
+- The Expo client expects `EXPO_PUBLIC_API_URL` to already include the API prefix. Examples:
+  - iOS simulator: `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000/api`
+  - Android emulator: `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api`
+  - Physical device on same Wi‑Fi: `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000/api`
+
+Frontend requests should use clean paths like `${API_BASE_URL}/users` (do not add `/api` again).
 - Inspect logs from running seeds or dev server: they are printed directly in the terminal sessions that launched them.

@@ -226,7 +226,7 @@ process.on("uncaughtException", (err) => {
   persistPids();
 
   const lanIp = detectLanIp();
-  log(`Using EXPO_PUBLIC_API_URL=http://${lanIp}:8000`);
+  log(`Using EXPO_PUBLIC_API_URL=http://${lanIp}:8000/api`);
 
   const expoProc = spawn(
     "npm",
@@ -237,7 +237,7 @@ process.on("uncaughtException", (err) => {
       shell: true,
       env: {
         ...process.env,
-        EXPO_PUBLIC_API_URL: `http://${lanIp}:8000`,
+        EXPO_PUBLIC_API_URL: `http://${lanIp}:8000/api`,
       },
     }
   );
