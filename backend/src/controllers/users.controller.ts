@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import prisma from "../prisma";
 import { getAllUsers, addTagToUser, findUsersByTag } from "../services/users.services";
@@ -15,9 +16,12 @@ export const createUser = async (req: Request, res: Response) => {
   // Temporarily allow default plaintext password if none provided
 
   try {
+    const passwordToHash = (password ?? defaultPassword) as string;
+    const hashedPassword = await bcrypt.hash(passwordToHash, 10);
+
     const data: Prisma.UserCreateInput = {
       email,
-      password: password ?? defaultPassword,
+      password: hashedPassword,
     };
     if (typeof name === "string") data.name = name;
     if (parsedInterestTags) data.interestTags = parsedInterestTags;
@@ -98,6 +102,9 @@ export const updateUser = async (req: Request, res: Response) => {
     if (typeof email === "string") data.email = email;
     if (typeof name === "string") data.name = name;
     if (parsedInterestTags) data.interestTags = parsedInterestTags;
+    if (typeof req.body.password === "string" && req.body.password.trim()) {
+      data.password = await bcrypt.hash(req.body.password, 10);
+    }
 
     const user = await prisma.user.update({
       where: { id: Number(id) },

@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import request from "supertest";
 import app from "../src/app";
 import prisma from "../src/prisma";
@@ -30,6 +31,15 @@ describe("User API", () => {
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty("id");
     userId = res.body.id;
+
+    const createdUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+    expect(createdUser).not.toBeNull();
+    expect(createdUser?.password).not.toBe("secret123");
+    const matches = await bcrypt.compare("secret123", createdUser!.password);
+    expect(matches).toBe(true);
   });
 
   it("should return 400 when creating a user without email", async () => {

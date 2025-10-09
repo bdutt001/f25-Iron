@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import prisma from "../prisma";
 
 // Seed the database with the real team members from README.md
@@ -25,7 +26,14 @@ async function main() {
   await prisma.chatSession.deleteMany();
 
   console.log("Seeding team users from README.md...");
-  await prisma.user.createMany({ data: TEAM_USERS });
+  const usersWithHashedPasswords = await Promise.all(
+    TEAM_USERS.map(async (user) => ({
+      ...user,
+      password: await bcrypt.hash(user.password, 10),
+    }))
+  );
+
+  await prisma.user.createMany({ data: usersWithHashedPasswords });
 
   const users = await prisma.user.findMany({
     select: { id: true, email: true, name: true, interestTags: true },
