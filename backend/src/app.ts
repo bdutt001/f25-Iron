@@ -15,6 +15,9 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
+app.use('/auth', authRouter);
+// Back-compat for older clients that expect /api/auth
+app.use('/api/auth', authRouter);
 
 // Health checks: JSON for clients, text for quick CLI curl
 app.get("/api", (_req, res) => {
@@ -27,9 +30,6 @@ app.get("/", (_req, res) => {
 
 // Mount user routes
 app.use("/api", usersRouter);
-
-// Mount auth routes
-app.use("/api", authRouter);
 
 // Mount tag routes
 app.use("/api", tagsRouter);
