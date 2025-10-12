@@ -1,9 +1,24 @@
 import React, { useState } from "react";
 import { router } from "expo-router";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useUser } from "../context/UserContext";
+import { useUser, type CurrentUser } from "../context/UserContext";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
+type AuthSuccess = {
+  tokenType?: string;
+  accessToken: string;
+  refreshToken?: string | null;
+  user: CurrentUser;
+};
+
+type ErrorResponse = { error: string };
+
+const isErrorResponse = (v: unknown): v is ErrorResponse =>
+  !!v && typeof (v as any).error === "string";
+
+const isAuthSuccess = (v: unknown): v is AuthSuccess =>
+  !!v && typeof (v as any).accessToken === "string" && typeof (v as any).user === "object";
 
 type HealthResponse = {
   status?: string;
@@ -42,17 +57,17 @@ export default function LoginScreen() {
         body: JSON.stringify({ email: emailTrimmed, password }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || `Login failed (${res.status})`);
+        const maybe = (await res.json().catch(() => null)) as unknown;
+        if (isErrorResponse(maybe)) throw new Error(maybe.error);
+        throw new Error(`Login failed (${res.status})`);
       }
-      const body = await res.json();
-      // Expecting { accessToken, refreshToken, user }
-      if (body?.user && body?.accessToken) {
-        setTokens({ accessToken: body.accessToken, refreshToken: body.refreshToken ?? null });
-        setCurrentUser(body.user);
+      const json = (await res.json()) as unknown;
+      if (isAuthSuccess(json)) {
+        setTokens({ accessToken: json.accessToken, refreshToken: json.refreshToken ?? null });
+        setCurrentUser(json.user);
       } else {
-        // Back-compat: if server returned just the user
-        setCurrentUser(body);
+        // Back-compat: if server returned just the user shape
+        setCurrentUser(json as CurrentUser);
       }
       router.replace("/(tabs)/profile");
     } catch (err) {
@@ -78,15 +93,16 @@ export default function LoginScreen() {
         body: JSON.stringify({ username, email: emailTrimmed, password }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || `Signup failed (${res.status})`);
+        const maybe = (await res.json().catch(() => null)) as unknown;
+        if (isErrorResponse(maybe)) throw new Error(maybe.error);
+        throw new Error(`Signup failed (${res.status})`);
       }
-      const body = await res.json();
-      if (body?.user && body?.accessToken) {
-        setTokens({ accessToken: body.accessToken, refreshToken: body.refreshToken ?? null });
-        setCurrentUser(body.user);
+      const json = (await res.json()) as unknown;
+      if (isAuthSuccess(json)) {
+        setTokens({ accessToken: json.accessToken, refreshToken: json.refreshToken ?? null });
+        setCurrentUser(json.user);
       } else {
-        setCurrentUser(body);
+        setCurrentUser(json as CurrentUser);
       }
       Alert.alert("Account created", "You are now logged in.");
       router.replace("/(tabs)/profile");
