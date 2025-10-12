@@ -12,7 +12,7 @@ type HealthResponse = {
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { setCurrentUser } = useUser();
+  const { setCurrentUser, setTokens } = useUser();
 
   const handleTestConnection = async () => {
     try {
@@ -45,8 +45,15 @@ export default function LoginScreen() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || `Login failed (${res.status})`);
       }
-      const user = await res.json();
-      setCurrentUser(user);
+      const body = await res.json();
+      // Expecting { accessToken, refreshToken, user }
+      if (body?.user && body?.accessToken) {
+        setTokens({ accessToken: body.accessToken, refreshToken: body.refreshToken ?? null });
+        setCurrentUser(body.user);
+      } else {
+        // Back-compat: if server returned just the user
+        setCurrentUser(body);
+      }
       router.replace("/(tabs)/profile");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -61,18 +68,26 @@ export default function LoginScreen() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/signup`, {
+      // Backend expects username, email, password at /auth/register
+      // Derive a simple username from email local-part if none provided.
+      const localPart = emailTrimmed.split("@")[0] || "user";
+      const username = `${localPart}`;
+      const res = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Name will be editable later on a dedicated account screen.
-        body: JSON.stringify({ email: emailTrimmed, password }),
+        body: JSON.stringify({ username, email: emailTrimmed, password }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || `Signup failed (${res.status})`);
       }
-      const user = await res.json();
-      setCurrentUser(user);
+      const body = await res.json();
+      if (body?.user && body?.accessToken) {
+        setTokens({ accessToken: body.accessToken, refreshToken: body.refreshToken ?? null });
+        setCurrentUser(body.user);
+      } else {
+        setCurrentUser(body);
+      }
       Alert.alert("Account created", "You are now logged in.");
       router.replace("/(tabs)/profile");
     } catch (err) {

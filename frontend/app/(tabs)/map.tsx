@@ -21,17 +21,24 @@ export default function MapScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
 
   // shared visibility status
-  const { status, setStatus } = useUser();
+  const { status, setStatus, accessToken, currentUser } = useUser();
 
   const loadUsers = async (): Promise<void> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/users`);
+      const response = await fetch(`${API_BASE_URL}/users`, {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
       if (!response.ok) {
         throw new Error(`Failed to load users (${response.status})`);
       }
 
       const data = (await response.json()) as ApiUser[];
-      setNearbyUsers(scatterUsersAround(data, center.latitude, center.longitude));
+      const filtered = Array.isArray(data)
+        ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
+        : [];
+      setNearbyUsers(
+        scatterUsersAround(filtered, center.latitude, center.longitude)
+      );
       setErrorMsg(null);
     } catch (err) {
       console.error("Unable to load users", err);

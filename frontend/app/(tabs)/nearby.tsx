@@ -42,18 +42,23 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, setStatus } = useUser();
+  const { status, setStatus, accessToken, currentUser } = useUser();
 
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
-        const response = await fetch(`${API_BASE_URL}/users`);
+        const response = await fetch(`${API_BASE_URL}/users`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        });
         if (!response.ok) {
           throw new Error(`Failed to load users (${response.status})`);
         }
 
         const data = (await response.json()) as ApiUser[];
-        const scattered = scatterUsersAround(data, coords.latitude, coords.longitude);
+        const filtered = Array.isArray(data)
+          ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
+          : [];
+        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
         const withDistance = scattered
           .map<NearbyWithDistance>((user) => ({
             ...user,
