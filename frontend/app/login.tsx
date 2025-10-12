@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useUser, type CurrentUser } from "../context/UserContext";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000/api";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type AuthSuccess = {
   tokenType?: string;
@@ -31,7 +31,7 @@ export default function LoginScreen() {
 
   const handleTestConnection = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}`);
+      const response = await fetch(`${API_BASE_URL}/api`);
       if (!response.ok) {
         throw new Error(`Unexpected status ${response.status}`);
       }

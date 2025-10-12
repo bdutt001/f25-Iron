@@ -51,16 +51,16 @@ The start script reads this file on boot. Use the shared Railway URL; do not poi
 
 ### Expo app (`frontend/.env*`)
 
-`start-stack` injects `EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:8000/api` so physical devices and simulators can reach the backend API prefix on your machine. When you launch Expo outside of the stack script, create a `.env` inside `frontend/` and add the base URL you want embedded at build time:
+`start-stack` injects `EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:8000` so physical devices and simulators can reach the backend on your machine. When you launch Expo outside of the stack script, create a `.env` inside `frontend/` and add the base URL you want embedded at build time:
 
 ```env
-EXPO_PUBLIC_API_URL=http://192.168.1.50:8000/api
+EXPO_PUBLIC_API_URL=http://192.168.1.50:8000
 ```
 
 Simulator-specific values:
 
-- **iOS simulator** — can talk to the host via loopback, so use `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000/api` and run `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000/api npm run ios` from `frontend/`.
-- **Android emulator** — Expo uses the Android emulator network stack; point to the host with `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api` and start with `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api npm run android`.
+- **iOS simulator** — can talk to the host via loopback, so use `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000` and run `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000 npm run ios` from `frontend/`.
+- **Android emulator** — Expo uses the Android emulator network stack; point to the host with `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000` and start with `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000 npm run android`.
 - **Physical devices** — keep the LAN IP from `start-stack` (or set it manually in `.env`) so phones on the same Wi-Fi can connect.
 
 Expo will also read `.env.development`, `.env.production`, or `.env.local` if you prefer to keep per-mode copies. Just ensure every file defines `EXPO_PUBLIC_API_URL` before launching the client.
@@ -79,7 +79,7 @@ The script now targets Railway and runs the Windows-friendly flow we standardize
 2. `npm install` inside `frontend/`
 3. Load `DATABASE_URL` from `backend/.env` (or the shell) and verify the host:port is reachable
 4. `npm run dev` inside `backend/` (API on port `8000`)
-5. Detect your LAN address and run `npm run start -- --lan` inside `frontend/`, exporting `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000/api`
+5. Detect your LAN address and run `npm run start -- --lan` inside `frontend/`, exporting `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000`
 
 Because installs now run every time, expect the first minute of output to be dependency resolution—helpful on Windows where `npm run build` was failing, and harmless on macOS/Linux when everything is already cached.
 

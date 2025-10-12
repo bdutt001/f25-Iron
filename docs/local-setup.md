@@ -38,7 +38,7 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
    - Ensures `backend` and `frontend` dependencies are installed.
    - Verifies the database host/port is reachable.
    - Starts the backend API with `npm run dev`.
-   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine's API prefix (`/api`) (`npm run start -- --lan`).
+   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine (no `/api` suffix) (`npm run start -- --lan`).
    No migrations run automatically—your data stays untouched unless you run them manually.
 
    Keep the terminal open while developing. Logs from both backend and Expo stream to the same session.
@@ -62,10 +62,10 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
 
 ## Base URL convention
 
-- The Expo client expects `EXPO_PUBLIC_API_URL` to already include the API prefix. Examples:
-  - iOS simulator: `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000/api`
-  - Android emulator: `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api`
-  - Physical device on same Wi‑Fi: `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000/api`
+- The Expo client now uses a base URL without `/api`. Examples:
+  - iOS simulator: `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000`
+  - Android emulator: `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000`
+  - Physical device on same Wi‑Fi: `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000`
 
-Frontend requests should use clean paths like `${API_BASE_URL}/users` (do not add `/api` again`).
+Frontend requests should use paths like `${API_BASE_URL}/users` and `${API_BASE_URL}/auth/login`. The backend also supports the older `/api/*` paths for compatibility.
 There is no seed command in this project to protect the shared Railway database from accidental resets.

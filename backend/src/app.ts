@@ -31,11 +31,13 @@ app.get("/", (_req, res) => {
 
 // Mount user routes
 app.use("/api", usersRouter);
+app.use("/", usersRouter); // allow clients without /api prefix
 
 // Mount auth routes
 app.use("/api", authRouter);
 
 // Mount tag routes
 app.use("/api", tagsRouter);
+app.use("/", tagsRouter); // allow clients without /api prefix
 
 export default app;
