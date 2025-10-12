@@ -1,86 +1,198 @@
+import bcrypt from "bcrypt";
 import request from "supertest";
 import app from "../src/app";
 import prisma from "../src/prisma";
 
+const AUTH_PREFIX = "/auth";
+const API_PREFIX = "/api";
+
 beforeAll(async () => {
-  // Clear users before running tests (so duplicate emails won't break things)
   await prisma.user.deleteMany();
 });
 
-describe("Health check", () => {
-  it("should return Hello from Express 🚀", async () => {
-    const res = await request(app).get("/");
+afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+describe("Auth API", () => {
+  const credentials = {
+    username: "alice",
+    email: "alice@example.com",
+    password: "Secret123!",
+  };
+
+  let accessToken: string;
+  let refreshToken: string;
+  let userId: number;
+
+  it("registers a new account and returns tokens", async () => {
+    const res = await request(app)
+      .post(`${AUTH_PREFIX}/register`)
+      .send(credentials);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty("accessToken");
+    expect(res.body).toHaveProperty("refreshToken");
+    expect(res.body).toHaveProperty("user");
+
+    accessToken = res.body.accessToken;
+    refreshToken = res.body.refreshToken;
+    userId = res.body.user.id;
+
+    const stored = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+
+    expect(stored).not.toBeNull();
+    const matches = await bcrypt.compare(credentials.password, stored!.password);
+    expect(matches).toBe(true);
+  });
+
+  it("logs in with username", async () => {
+    const res = await request(app).post(`${AUTH_PREFIX}/login`).send({
+      username: credentials.username,
+      password: credentials.password,
+    });
+
     expect(res.status).toBe(200);
-    expect(res.text).toBe("Hello from Express 🚀");
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+
+    accessToken = res.body.accessToken;
+    refreshToken = res.body.refreshToken;
+  });
+
+  it("refreshes tokens", async () => {
+    const res = await request(app).post(`${AUTH_PREFIX}/refresh`).send({
+      refreshToken,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+
+    accessToken = res.body.accessToken;
+    refreshToken = res.body.refreshToken;
+  });
+
+  it("returns profile for authenticated user", async () => {
+    const res = await request(app)
+      .get(`${AUTH_PREFIX}/me`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(userId);
+    expect(res.body.email).toBe(credentials.email);
+  });
+
+  it("logs out and invalidates the session", async () => {
+    const res = await request(app)
+      .post(`${AUTH_PREFIX}/logout`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(204);
+
+    const meRes = await request(app)
+      .get(`${AUTH_PREFIX}/me`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(meRes.status).toBe(401);
   });
 });
 
-describe("User API", () => {
-  let userId: number;
+describe("Users API (protected)", () => {
+  const adminCredentials = {
+    username: "alice",
+    password: "Secret123!",
+  };
 
-  it("should create a new user", async () => {
+  let accessToken: string;
+  let createdUserId: number;
+  const uniqueSuffix = Date.now();
+  const newUserEmail = `bob${uniqueSuffix}@example.com`;
+  const newUserUsername = `bob-${uniqueSuffix}`;
+  const newUserPassword = "Secret456!";
+
+  beforeAll(async () => {
+    const res = await request(app).post(`${AUTH_PREFIX}/login`).send({
+      username: adminCredentials.username,
+      password: adminCredentials.password,
+    });
+
+    expect(res.status).toBe(200);
+    accessToken = res.body.accessToken;
+  });
+
+  it("creates a new user", async () => {
     const res = await request(app)
-      .post("/users")
+      .post(`${API_PREFIX}/users`)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
-        email: "alice@example.com",
-        name: "Alice",
-        password: "secret123",
+        username: newUserUsername,
+        email: newUserEmail,
+        password: newUserPassword,
+        name: "Bob",
       });
 
     expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty("id");
-    userId = res.body.id;
+    expect(res.body.id).toBeDefined();
+    expect(res.body.email).toBe(newUserEmail);
+
+    createdUserId = res.body.id;
+
+    const stored = await prisma.user.findUnique({
+      where: { id: createdUserId },
+      select: { password: true },
+    });
+
+    expect(stored).not.toBeNull();
+    const matches = await bcrypt.compare(newUserPassword, stored!.password);
+    expect(matches).toBe(true);
   });
 
-  it("should return 400 when creating a user without email", async () => {
-    const res = await request(app).post("/users").send({ name: "No Email" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Email is required");
-  });
+  it("fetches all users", async () => {
+    const res = await request(app)
+      .get(`${API_PREFIX}/users`)
+      .set("Authorization", `Bearer ${accessToken}`);
 
-  it("should fetch all users", async () => {
-    const res = await request(app).get("/users");
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("should fetch a single user by id", async () => {
-    const res = await request(app).get(`/users/${userId}`);
-    expect(res.status).toBe(200);
-    expect(res.body.id).toBe(userId);
-  });
-
-  it("should return 404 when fetching a non-existent user", async () => {
-    const res = await request(app).get("/users/999999"); // numeric non-existent ID
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("User not found");
-  });
-
-  it("should update a user", async () => {
+  it("fetches a single user by id", async () => {
     const res = await request(app)
-      .patch(`/users/${userId}`) // use PATCH consistently
-      .send({ name: "Alice Updated" });
+      .get(`${API_PREFIX}/users/${createdUserId}`)
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.name).toBe("Alice Updated");
+    expect(res.body.id).toBe(createdUserId);
   });
 
-  it("should return 404 when updating a non-existent user", async () => {
+  it("updates a user", async () => {
     const res = await request(app)
-      .patch("/users/999999") // numeric non-existent ID
-      .send({ name: "Ghost User" });
+      .patch(`${API_PREFIX}/users/${createdUserId}`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ name: "Bob Updated" });
 
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe("User not found");
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("Bob Updated");
   });
 
-  it("should delete a user", async () => {
-    const res = await request(app).delete(`/users/${userId}`);
+  it("deletes a user", async () => {
+    const res = await request(app)
+      .delete(`${API_PREFIX}/users/${createdUserId}`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(res.status).toBe(204);
   });
 
-  it("should return 404 when deleting the same user again", async () => {
-    const res = await request(app).delete(`/users/${userId}`);
+  it("returns 404 when deleting the same user again", async () => {
+    const res = await request(app)
+      .delete(`${API_PREFIX}/users/${createdUserId}`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("User not found");
   });

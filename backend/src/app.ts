@@ -1,3 +1,4 @@
+import authRoutes from './routes/auth.routes';
 import express from "express";
 import usersRouter from "./routes/users.routes";
 import tagsRouter from "./routes/tags.routes";
@@ -14,6 +15,7 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
+app.use('/auth', authRoutes);
 
 // Health checks: JSON for clients, text for quick CLI curl
 app.get("/api", (_req, res) => {
