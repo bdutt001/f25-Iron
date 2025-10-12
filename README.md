@@ -47,7 +47,7 @@ JWT_ACCESS_TTL="15m"
 JWT_REFRESH_TTL="7d"
 ```
 
-The start script reads this file on boot. Use the shared Railway URL; do not point to a local database. Generate strong JWT secrets locally (e.g., `openssl rand -hex 32`) and never reuse production values across environments.
+The start script reads this file on boot. If you stand up a personal Postgres locally, update `DATABASE_URL` to that instance before starting the stack. Generate strong JWT secrets locally (e.g., `openssl rand -hex 32`) and never reuse production values across environments.
 
 ### Expo app (`frontend/.env*`)
 

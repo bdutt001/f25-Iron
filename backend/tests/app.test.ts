@@ -196,4 +196,3 @@ describe("Users API (protected)", () => {
     expect(res.body.error).toBe("User not found");
   });
 });
-

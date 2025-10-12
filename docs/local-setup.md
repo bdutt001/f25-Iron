@@ -27,7 +27,7 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
    JWT_ACCESS_TTL="15m"
    JWT_REFRESH_TTL="7d"
    ```
-   Use the shared Railway connection string. Do not point to a local database. The JWT secrets power access and refresh tokens—generate strong values locally (e.g., `openssl rand -hex 32`) and never commit real secrets to version control.
+   Use the shared Railway connection string or substitute the URL for your own database. The JWT secrets power access and refresh tokens—generate strong values locally (e.g., `openssl rand -hex 32`) and never commit real secrets to version control.
 
 ## Each time you want to run the stack
 1. **One-command start (recommended)**
