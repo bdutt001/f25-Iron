@@ -3,10 +3,9 @@ import React, { useEffect, useState } from "react";
 import { Button, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useUser } from "../../context/UserContext";
+import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 
-// Ensure the fallback includes the /api prefix
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -116,3 +115,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 });
+
+
+

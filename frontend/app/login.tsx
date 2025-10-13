@@ -2,17 +2,20 @@ import React, { useState } from "react";
 import { router } from "expo-router";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useUser, type CurrentUser } from "../context/UserContext";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 
 type AuthSuccess = {
   tokenType?: string;
   accessToken: string;
   refreshToken?: string | null;
-  user: CurrentUser;
+  user: Record<string, unknown>;
 };
 
 type ErrorResponse = { error: string };
+
+type HealthResponse = {
+  status?: string;
+};
 
 const isErrorResponse = (v: unknown): v is ErrorResponse =>
   !!v && typeof (v as any).error === "string";
@@ -20,14 +23,32 @@ const isErrorResponse = (v: unknown): v is ErrorResponse =>
 const isAuthSuccess = (v: unknown): v is AuthSuccess =>
   !!v && typeof (v as any).accessToken === "string" && typeof (v as any).user === "object";
 
-type HealthResponse = {
-  status?: string;
+const toUserOrFallback = (value: unknown): CurrentUser => {
+  try {
+    return toCurrentUser((value ?? {}) as Record<string, unknown>);
+  } catch (error) {
+    return {
+      id: 0,
+      email: "",
+      interestTags: [],
+    };
+  }
 };
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { setCurrentUser, setTokens } = useUser();
+
+  const loadProfile = async (accessToken: string, fallback: Record<string, unknown>) => {
+    try {
+      const profile = await fetchProfile(accessToken);
+      setCurrentUser(profile);
+    } catch (error) {
+      console.warn("Failed to load profile after login", error);
+      setCurrentUser(toCurrentUser(fallback));
+    }
+  };
 
   const handleTestConnection = async () => {
     try {
@@ -64,10 +85,9 @@ export default function LoginScreen() {
       const json = (await res.json()) as unknown;
       if (isAuthSuccess(json)) {
         setTokens({ accessToken: json.accessToken, refreshToken: json.refreshToken ?? null });
-        setCurrentUser(json.user);
+        await loadProfile(json.accessToken, json.user);
       } else {
-        // Back-compat: if server returned just the user shape
-        setCurrentUser(json as CurrentUser);
+        setCurrentUser(toUserOrFallback(json));
       }
       router.replace("/(tabs)/profile");
     } catch (err) {
@@ -100,9 +120,9 @@ export default function LoginScreen() {
       const json = (await res.json()) as unknown;
       if (isAuthSuccess(json)) {
         setTokens({ accessToken: json.accessToken, refreshToken: json.refreshToken ?? null });
-        setCurrentUser(json.user);
+        await loadProfile(json.accessToken, json.user);
       } else {
-        setCurrentUser(json as CurrentUser);
+        setCurrentUser(toUserOrFallback(json));
       }
       Alert.alert("Account created", "You are now logged in.");
       router.replace("/(tabs)/profile");
@@ -115,7 +135,7 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       {/* Logo */}
-      <Image 
+      <Image
         source={require("../assets/images/MingleMap-title.png")}
         style={styles.logo}
         resizeMode="contain"
@@ -162,27 +182,27 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center", 
-    padding: 20, 
-    backgroundColor: "#121212" 
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#121212",
   },
   logo: {
     width: 280,
     height: 100,
     marginBottom: 30,
   },
-  input: { 
-    borderWidth: 1, 
-    borderColor: "#ccc", 
-    marginBottom: 12, 
-    padding: 10, 
-    borderRadius: 6, 
-    backgroundColor: "#fff", 
-    width: "100%", 
-    color: "#000"
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 6,
+    backgroundColor: "#fff",
+    width: "100%",
+    color: "#000",
   },
   primaryBtn: {
     backgroundColor: "#007BFF", // blue
@@ -212,3 +232,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
