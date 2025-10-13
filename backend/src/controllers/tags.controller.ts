@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../prisma";
+import { DEFAULT_INTEREST_TAGS } from "../config/tagCatalog";
 
 // Create a tag
 export const createTag = async (req: Request, res: Response) => {
@@ -15,6 +16,11 @@ export const createTag = async (req: Request, res: Response) => {
     }
     res.status(500).json({ error: "Failed to create tag" });
   }
+};
+
+// Get the curated catalog of tags
+export const getTagCatalog = (_req: Request, res: Response) => {
+  res.json({ tags: DEFAULT_INTEREST_TAGS });
 };
 
 // Get all tags

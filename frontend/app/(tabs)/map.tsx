@@ -1,12 +1,10 @@
 import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
 import { Button, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Callout, Marker } from "react-native-maps";
 import { useUser } from "../../context/UserContext";
+import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
-
-// Ensure the fallback includes the /api prefix
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -68,8 +66,15 @@ export default function MapScreen() {
             coordinate={myCoords}
             title="You are here"
             pinColor="blue"
-          />)
-        }
+          >
+            <Callout tooltip>
+              <View style={styles.calloutContainer}>
+                <Text style={styles.calloutTitle}>You are here</Text>
+                <Text style={styles.calloutSubtitle}>Your current demo location</Text>
+              </View>
+            </Callout>
+          </Marker>
+        )}
 
         {/* Team users scattered around ODU */}
         {nearbyUsers.map((user) => (
@@ -77,11 +82,26 @@ export default function MapScreen() {
             key={user.id}
             coordinate={user.coords}
             title={user.name}
-            description={
-              user.interestTags.length ? user.interestTags.join(", ") : undefined
-            }
             pinColor="red"
-          />
+          >
+            <Callout tooltip>
+              <View style={styles.calloutContainer}>
+                <Text style={styles.calloutTitle}>{user.name}</Text>
+                <Text style={styles.calloutSubtitle}>{user.email}</Text>
+                {user.interestTags.length > 0 ? (
+                  <View style={styles.calloutTagsWrapper}>
+                    {user.interestTags.map((tag) => (
+                      <View key={tag} style={styles.calloutTagChip}>
+                        <Text style={styles.calloutTagText}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.calloutEmptyTags}>No tags selected</Text>
+                )}
+              </View>
+            </Callout>
+          </Marker>
         ))}
       </MapView>
 
@@ -92,7 +112,7 @@ export default function MapScreen() {
           title={status === "Visible" ? "Hide Me" : "Show Me"}
           onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}
         />
-        {!!errorMsg && <Text>{errorMsg}</Text>}
+        {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
       </View>
     </View>
   );
@@ -114,5 +134,54 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 8,
     fontWeight: "bold",
+  },
+  errorText: {
+    marginTop: 8,
+    color: "#c00",
+    fontSize: 13,
+  },
+  calloutContainer: {
+    backgroundColor: "white",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    maxWidth: 240,
+  },
+  calloutTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  calloutSubtitle: {
+    fontSize: 13,
+    color: "#666",
+    marginTop: 2,
+  },
+  calloutTagsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+  },
+  calloutTagChip: {
+    backgroundColor: "#e6f0ff",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  calloutTagText: {
+    fontSize: 12,
+    color: "#1f5fbf",
+    fontWeight: "500",
+  },
+  calloutEmptyTags: {
+    marginTop: 8,
+    fontSize: 12,
+    color: "#999",
   },
 });
