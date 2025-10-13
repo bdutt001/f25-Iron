@@ -13,43 +13,69 @@ datasource db {
   url      = env("DATABASE_URL") //env("DATABASE_URL"). What is there now is to test locally
 }
 
-// User Table
-model User {
-  id         Int        @id @default(autoincrement())
-  email      String     @unique
-  password   String // hashed with bcrypt, not plain text
-  name       String?
- 
-  status     UserStatus @default(AVAILABLE)
-  visibility Boolean    @default(true)
-  trustScore Decimal    @default(0.0)
-  interestTags String[] @default([])
-  createdAt  DateTime   @default(now())
-
-  // Relations
-  messagesSent   Message[] @relation("SentMessages")
-  messagesRecv   Message[] @relation("ReceivedMessages")
-  wavesSent      Wave[]    @relation("WavesSent")
-  wavesRecv      Wave[]    @relation("WavesReceived")
-  reportsMade    Report[]  @relation("ReportsMade")
-  reportsAgainst Report[]  @relation("ReportsAgainst") 
-  tags Tag[] @relation("UserTags") //User interests
-}
-
 enum UserStatus {
   AVAILABLE
   BUSY
   DND
 }
 
+// User Table
+model User {
+  id             Int        @id @default(autoincrement())
+  username       String    @unique
+  email          String?   @unique
+  password       String // hashed with bcrypt, not plain text
+  tokenVersion   Int        @default(0)
+  name           String?
+  profilePicture String?
+  status         UserStatus @default(AVAILABLE)
+  visibility     Boolean    @default(true)
+  trustScore     Decimal    @default(0.0)
+  createdAt      DateTime   @default(now())
+
+  // Relations
+  messagesSent     Message[]         @relation("SentMessages")
+  wavesSent        Wave[]            @relation("WavesSent")
+  wavesRecv        Wave[]            @relation("WavesReceived")
+  reportsMade      Report[]          @relation("ReportsMade")
+  reportsAgainst   Report[]          @relation("ReportsAgainst")
+  interestTags     Tag[]            @relation("UserInterestTags") // User interests
+  chatParticipants ChatParticipant[]
+}
+
+model ChatSession {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  messages     Message[]
+  participants ChatParticipant[]
+}
+
+model ChatParticipant {
+  id            Int      @id @default(autoincrement())
+  chatSessionId Int
+  userId        Int
+  joinedAt      DateTime @default(now())
+
+  chatSession ChatSession @relation(fields: [chatSessionId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@unique([chatSessionId, userId]) // prevent duplicate participants
+}
+
 model Message {
-  id         Int      @id @default(autoincrement())
-  content    String
-  createdAt  DateTime @default(now())
-  senderId   Int
-  receiverId Int
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  id            Int      @id @default(autoincrement())
+  content       String
+  createdAt     DateTime @default(now())
+  senderId      Int
+  chatSessionId Int
+
+  sender      User        @relation("SentMessages", fields: [senderId], references: [id])
+  chatSession ChatSession @relation(fields: [chatSessionId], references: [id])
+
+  @@index([chatSessionId])
 }
 
 model Wave {
@@ -72,7 +98,9 @@ model Report {
 }
 
 model Tag {
-  id  Int @id @default(autoincrement())
-  name String @unique
-  users User[] @relation("UserTags") //allows for relation between users and tags via a join tab
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  users User[] @relation("UserInterestTags") // allows for relation between users and tags via a join table
 }
+
+
