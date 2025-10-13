@@ -1,24 +1,34 @@
 import React, { createContext, useContext, useState } from "react";
 
+type User = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 type UserContextType = {
-  status: "Visible" | "Hidden";
-  setStatus: (s: "Visible" | "Hidden") => void;
+  user: User | null;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
+  status: string;
+  setStatus: (s: string) => void;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
-  const [status, setStatus] = useState<"Visible" | "Hidden">("Visible");
+  const [user, setUser] = useState<User | null>(null);
+  const [status, setStatus] = useState("Visible");
 
   return (
-    <UserContext.Provider value={{ status, setStatus }}>
+    <UserContext.Provider value={{ user, setUser, status, setStatus }}>
       {children}
     </UserContext.Provider>
   );
 };
 
 export const useUser = () => {
-  const context = useContext(UserContext);
-  if (!context) throw new Error("useUser must be used inside UserProvider");
-  return context;
+  const ctx = useContext(UserContext);
+  if (!ctx) throw new Error("useUser must be used within a UserProvider");
+  return ctx;
 };
+
