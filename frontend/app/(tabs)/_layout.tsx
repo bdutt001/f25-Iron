@@ -3,7 +3,6 @@ import React from "react";
 
 export default function TabLayout() {
   return (
-    <UserProvider>
       <Tabs
         screenOptions={{
           headerShown: true,
@@ -34,6 +33,5 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-    </UserProvider>
   );
 }
