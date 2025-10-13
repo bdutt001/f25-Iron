@@ -23,7 +23,7 @@ enum UserStatus {
 model User {
   id             Int        @id @default(autoincrement())
   username       String    @unique
-  email          String?     @unique
+  email          String?   @unique
   password       String // hashed with bcrypt, not plain text
   tokenVersion   Int        @default(0)
   name           String?
@@ -31,7 +31,6 @@ model User {
   status         UserStatus @default(AVAILABLE)
   visibility     Boolean    @default(true)
   trustScore     Decimal    @default(0.0)
-  interestTags   String[]   @default([])
   createdAt      DateTime   @default(now())
 
   // Relations
@@ -40,7 +39,7 @@ model User {
   wavesRecv        Wave[]            @relation("WavesReceived")
   reportsMade      Report[]          @relation("ReportsMade")
   reportsAgainst   Report[]          @relation("ReportsAgainst")
-  tags             Tag[]             @relation("UserTags") //User interests
+  interestTags     Tag[]            @relation("UserInterestTags") // User interests
   chatParticipants ChatParticipant[]
 }
 
@@ -101,5 +100,7 @@ model Report {
 model Tag {
   id    Int    @id @default(autoincrement())
   name  String @unique
-  users User[] @relation("UserTags") //allows for relation between users and tags via a join tab
+  users User[] @relation("UserInterestTags") // allows for relation between users and tags via a join table
 }
+
+

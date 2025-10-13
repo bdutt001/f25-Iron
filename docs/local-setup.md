@@ -5,7 +5,7 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
 ## Prerequisites
 - Node.js 18+ and npm installed.
 - Expo Go app on the physical device (or iOS/Android simulator installed locally).
-- Railway credentials (or an alternate Postgres URL) stored in `backend/.env`.
+- Railway credentials stored in `backend/.env`.
 
 ## One-time project setup
 1. Install backend packages:
@@ -27,7 +27,7 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
    JWT_ACCESS_TTL="15m"
    JWT_REFRESH_TTL="7d"
    ```
-   Use the shared Railway connection string or substitute the URL for your own database. The JWT secrets power access and refresh tokens�?"generate strong values locally (e.g., `openssl rand -hex 32`) and never commit real secrets to version control.
+   Use the shared Railway connection string or substitute the URL for your own database. The JWT secrets power access and refresh tokens—generate strong values locally (e.g., `openssl rand -hex 32`) and never commit real secrets to version control.
 
 ## Each time you want to run the stack
 1. **One-command start (recommended)**
@@ -38,8 +38,8 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
    - Ensures `backend` and `frontend` dependencies are installed.
    - Verifies the database host/port is reachable.
    - Starts the backend API with `npm run dev`.
-   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine (`npm run start -- --lan`).
-   No migrations or seeds run automatically—your data stays untouched unless you run them manually.
+   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine (no `/api` suffix) (`npm run start -- --lan`).
+   No migrations run automatically—your data stays untouched unless you run them manually.
 
    Keep the terminal open while developing. Logs from both backend and Expo stream to the same session.
 
@@ -59,5 +59,13 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
 - Run backend tests: `cd backend && npm test` (ensure the database is reachable first).
 - Regenerate Prisma types after schema changes: `cd backend && npm run generate`.
 - Apply migrations: `npm --prefix backend exec prisma migrate deploy`.
-- Seed demo users (destructive): `npm --prefix backend run seed`.
-- Inspect logs from running seeds or dev server: they are printed directly in the terminal sessions that launched them.
+
+## Base URL convention
+
+- The Expo client now uses a base URL without `/api`. Examples:
+  - iOS simulator: `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000`
+  - Android emulator: `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000`
+  - Physical device on same Wi‑Fi: `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000`
+
+Frontend requests should use paths like `${API_BASE_URL}/users` and `${API_BASE_URL}/auth/login`. The backend also supports the older `/api/*` paths for compatibility.
+There is no seed command in this project to protect the shared Railway database from accidental resets.

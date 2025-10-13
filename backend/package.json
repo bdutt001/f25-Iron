@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "generate": "prisma generate",
-    "migrate": "prisma migrate dev",
-    "seed": "ts-node --transpile-only src/scripts/seedFakeUsers.ts",
+    
     "test": "node scripts/run-tests.js",
     "test:unit": "jest",
     "dev": "ts-node --transpile-only src/index.ts",

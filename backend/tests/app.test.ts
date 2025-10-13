@@ -192,7 +192,6 @@ describe("Users API (protected)", () => {
     const res = await request(app)
       .delete(`${API_PREFIX}/users/${createdUserId}`)
       .set("Authorization", `Bearer ${accessToken}`);
-
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("User not found");
   });

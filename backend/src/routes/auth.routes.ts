@@ -222,7 +222,7 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
         email: true,
         name: true,
         status: true,
-        interestTags: true,
+        interestTags: { select: { name: true } },
         profilePicture: true,
         visibility: true,
         createdAt: true,
@@ -233,7 +233,10 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json(user);
+    return res.json({
+      ...user,
+      interestTags: user.interestTags.map((tag) => tag.name),
+    });
   } catch (error) {
     console.error("Profile Error:", error);
     return res.status(500).json({ error: "Failed to load profile" });
@@ -241,3 +244,7 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
 });
 
 export default router;
+
+
+
+

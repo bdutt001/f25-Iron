@@ -1,6 +1,6 @@
-import authRoutes from './routes/auth.routes';
 import express from "express";
 import usersRouter from "./routes/users.routes";
+import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
 
 //import cors to enable cross-site origin requests outside of basic get post
@@ -15,7 +15,9 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
-app.use('/auth', authRoutes);
+app.use('/auth', authRouter);
+// Back-compat for older clients that expect /api/auth
+app.use('/api/auth', authRouter);
 
 // Health checks: JSON for clients, text for quick CLI curl
 app.get("/api", (_req, res) => {
@@ -28,8 +30,12 @@ app.get("/", (_req, res) => {
 
 // Mount user routes
 app.use("/api", usersRouter);
+app.use("/", usersRouter); // allow clients without /api prefix
+
+// Mount auth routes are above at /auth and /api/auth for compatibility
 
 // Mount tag routes
 app.use("/api", tagsRouter);
+app.use("/", tagsRouter); // allow clients without /api prefix
 
 export default app;
