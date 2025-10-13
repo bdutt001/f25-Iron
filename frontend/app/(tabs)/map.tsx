@@ -1,7 +1,7 @@
 import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
-import { Button, StyleSheet, Text, View } from "react-native";
-import MapView, { Callout, Marker } from "react-native-maps";
+import { Button, StyleSheet, Text, View, TouchableOpacity } from "react-native";
+import MapView, { Marker } from "react-native-maps";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
@@ -17,6 +17,7 @@ export default function MapScreen() {
   const [myCoords] = useState<Coords>(ODU_CENTER);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<NearbyUser | null>(null);
 
   // shared visibility status
   const { status, setStatus, accessToken, currentUser } = useUser();
@@ -62,18 +63,7 @@ export default function MapScreen() {
       >
         {/* Current user marker (optional) */}
         {status === "Visible" && myCoords && (
-          <Marker
-            coordinate={myCoords}
-            title="You are here"
-            pinColor="blue"
-          >
-            <Callout tooltip>
-              <View style={styles.calloutContainer}>
-                <Text style={styles.calloutTitle}>You are here</Text>
-                <Text style={styles.calloutSubtitle}>Your current demo location</Text>
-              </View>
-            </Callout>
-          </Marker>
+          <Marker coordinate={myCoords} pinColor="blue" />
         )}
 
         {/* Team users scattered around ODU */}
@@ -81,32 +71,17 @@ export default function MapScreen() {
           <Marker
             key={user.id}
             coordinate={user.coords}
-            title={user.name}
             pinColor="red"
-          >
-            <Callout tooltip>
-              <View style={styles.calloutContainer}>
-                <Text style={styles.calloutTitle}>{user.name}</Text>
-                <Text style={styles.calloutSubtitle}>{user.email}</Text>
-                {user.interestTags.length > 0 ? (
-                  <View style={styles.calloutTagsWrapper}>
-                    {user.interestTags.map((tag) => (
-                      <View key={tag} style={styles.calloutTagChip}>
-                        <Text style={styles.calloutTagText}>{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  <Text style={styles.calloutEmptyTags}>No tags selected</Text>
-                )}
-              </View>
-            </Callout>
-          </Marker>
+            onPress={() => setSelectedUser(user)}
+          />
         ))}
       </MapView>
 
       {/* Controls */}
-      <View style={styles.controls}>
+      <View style={[
+        styles.controls,
+        selectedUser ? { bottom: 180 } : null,
+      ]}>
         <Text style={styles.statusText}>Status: {status}</Text>
         <Button
           title={status === "Visible" ? "Hide Me" : "Show Me"}
@@ -114,6 +89,40 @@ export default function MapScreen() {
         />
         {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
       </View>
+
+      {/* Simple bottom-sheet popup for selected user */}
+      {selectedUser && (
+        <>
+          <TouchableOpacity
+            style={styles.backdrop}
+            activeOpacity={1}
+            onPress={() => setSelectedUser(null)}
+          />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHandle} />
+              <TouchableOpacity onPress={() => setSelectedUser(null)}>
+                <Text style={styles.sheetClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.calloutTitle}>{selectedUser.name}</Text>
+            <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
+
+            {selectedUser.interestTags.length > 0 ? (
+              <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
+                {selectedUser.interestTags.map((tag) => (
+                  <View key={tag} style={styles.calloutTagChip}>
+                    <Text style={styles.calloutTagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.calloutEmptyTags}>No tags selected</Text>
+            )}
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -129,7 +138,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     padding: 10,
     borderRadius: 10,
-  },
+    },
   statusText: {
     fontSize: 16,
     marginBottom: 8,
@@ -150,7 +159,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
-    maxWidth: 240,
+    minWidth: 220,
+    maxWidth: 260,
   },
   calloutTitle: {
     fontSize: 16,
@@ -183,5 +193,43 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
     color: "#999",
+  },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  sheet: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 12,
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#ddd",
+  },
+  sheetClose: {
+    color: "#1f5fbf",
+    fontWeight: "600",
   },
 });
