@@ -30,7 +30,7 @@ model User {
   profilePicture String?
   status         UserStatus @default(AVAILABLE)
   visibility     Boolean    @default(true)
-  trustScore     Decimal    @default(0.0)
+  trustScore     Int    @default(0)
   createdAt      DateTime   @default(now())
 
   // Relations
