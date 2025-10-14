@@ -10,6 +10,5 @@ export default defineConfig({
   // Migrations and seed configuration
   migrations: {
     path: path.join("prisma", "migrations"),
-    seed: "ts-node --transpile-only src/scripts/seedFakeUsers.ts",
   },
 });

@@ -8,7 +8,7 @@ This repository contains the MingleMap Expo front end and the Express/Prisma bac
 |-------------|-------|---------|
 | **Node.js 18+ & npm** | `brew install node@18` or download from [nodejs.org](https://nodejs.org/) | Download the 18.x LTS installer from [nodejs.org](https://nodejs.org/) (includes npm) |
 | **Git** | `brew install git` or Xcode Command Line Tools | Install [Git for Windows](https://git-scm.com/download/win) |
-| **Docker Desktop** (optional, only if you are running your own local Postgres) | Install from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) | Install from the same link and ensure WSL2 & virtualization are enabled |
+| **Docker Desktop** | Not required |
 | **Expo Go mobile app** | Install from the App Store (optional but handy) | Install from Google Play (optional but handy) |
 | **Railway access** | Ensure you have the Railway Postgres URL and credentials | same |
 
@@ -40,9 +40,14 @@ Create `backend/.env` and set the `DATABASE_URL` you plan to use. Example for th
 
 ```env
 DATABASE_URL="postgresql://postgres:BCYsAkrLYMqaViwdQLKWCbOaxjAfWpLV@interchange.proxy.rlwy.net:22481/railway?sslmode=require&sslaccept=accept_invalid_certs"
+JWT_ACCESS_SECRET="replace-with-a-long-random-string"
+JWT_REFRESH_SECRET="replace-with-a-different-long-random-string"
+# Optional overrides; defaults are 15m and 7d
+JWT_ACCESS_TTL="15m"
+JWT_REFRESH_TTL="7d"
 ```
 
-The start script reads this file on boot. If you stand up a personal Postgres locally, update `DATABASE_URL` to that instance before starting the stack.
+The start script reads this file on boot. If you stand up a personal Postgres locally, update `DATABASE_URL` to that instance before starting the stack. Generate strong JWT secrets locally (e.g., `openssl rand -hex 32`) and never reuse production values across environments.
 
 ### Expo app (`frontend/.env*`)
 
@@ -88,17 +93,14 @@ The stop script reads `.stack-pids.json`, kills the backend and Expo processes i
 
 ### Updating the shared database
 
-Run these only when you intentionally need to change Railway:
+Run schema migrations when you intentionally need to change Railway:
 
 ```bash
 # Apply Prisma migrations (non-destructive)
 npm --prefix backend exec prisma migrate deploy
-
-# Re-seed demo users (destructive)
-npm --prefix backend run seed
 ```
 
-Always announce before running the seed because it deletes existing user rows.
+Seeding demo data has been removed to avoid accidental destructive changes to the shared Railway database.
 
 ## 5. Verify the Railway Connection Anytime
 

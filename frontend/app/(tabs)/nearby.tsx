@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useUser } from "../../context/UserContext";
+import { API_BASE_URL } from "@/utils/api";
 import {
   ApiUser,
   NearbyUser,
@@ -19,30 +20,45 @@ import {
 } from "../../utils/geo";
 import ReportButton from "../../components/ReportButton";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+
+// Fixed center: Old Dominion University (Norfolk, VA)
+const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
 type NearbyWithDistance = NearbyUser & {
   distanceMeters: number;
 };
 
 export default function NearbyScreen() {
-  const [location, setLocation] = useState<Location.LocationObjectCoords | null>(null);
+  const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
+    latitude: ODU_CENTER.latitude,
+    longitude: ODU_CENTER.longitude,
+    altitude: undefined as any,
+    accuracy: undefined as any,
+    altitudeAccuracy: undefined as any,
+    heading: undefined as any,
+    speed: undefined as any,
+  });
   const [users, setUsers] = useState<NearbyWithDistance[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, setStatus } = useUser();
+  const { status, setStatus, accessToken, currentUser } = useUser();
 
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/users`);
+        const response = await fetch(`${API_BASE_URL}/users`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        });
         if (!response.ok) {
           throw new Error(`Failed to load users (${response.status})`);
         }
 
         const data = (await response.json()) as ApiUser[];
-        const scattered = scatterUsersAround(data, coords.latitude, coords.longitude);
+        const filtered = Array.isArray(data)
+          ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
+          : [];
+        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
         const withDistance = scattered
           .map<NearbyWithDistance>((user) => ({
             ...user,
@@ -71,16 +87,18 @@ export default function NearbyScreen() {
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") {
-        setError("Permission to access location was denied");
-        setLoading(false);
-        return;
-      }
-
-      const currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation.coords);
-      await loadUsers(currentLocation.coords);
+      // Demo mode: center and compute distances from ODU
+      const coords = {
+        latitude: ODU_CENTER.latitude,
+        longitude: ODU_CENTER.longitude,
+        altitude: undefined as any,
+        accuracy: undefined as any,
+        altitudeAccuracy: undefined as any,
+        heading: undefined as any,
+        speed: undefined as any,
+      };
+      setLocation(coords);
+      await loadUsers(coords);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -268,3 +286,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 });
+
+
+
+

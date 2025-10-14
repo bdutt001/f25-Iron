@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "generate": "prisma generate",
-    "migrate": "prisma migrate dev",
-    "seed": "ts-node --transpile-only src/scripts/seedFakeUsers.ts",
+    
     "test": "node scripts/run-tests.js",
     "test:unit": "jest",
     "dev": "ts-node --transpile-only src/index.ts",
@@ -18,6 +17,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.16.1",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0"

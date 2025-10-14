@@ -1,13 +1,55 @@
+import React, { useState } from "react";
 import { router } from "expo-router";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useUser, type CurrentUser } from "../context/UserContext";
+import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+type AuthSuccess = {
+  tokenType?: string;
+  accessToken: string;
+  refreshToken?: string | null;
+  user: Record<string, unknown>;
+};
+
+type ErrorResponse = { error: string };
 
 type HealthResponse = {
   status?: string;
 };
 
+const isErrorResponse = (v: unknown): v is ErrorResponse =>
+  !!v && typeof (v as any).error === "string";
+
+const isAuthSuccess = (v: unknown): v is AuthSuccess =>
+  !!v && typeof (v as any).accessToken === "string" && typeof (v as any).user === "object";
+
+const toUserOrFallback = (value: unknown): CurrentUser => {
+  try {
+    return toCurrentUser((value ?? {}) as Record<string, unknown>);
+  } catch (error) {
+    return {
+      id: 0,
+      email: "",
+      interestTags: [],
+    };
+  }
+};
+
 export default function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const { setCurrentUser, setTokens } = useUser();
+
+  const loadProfile = async (accessToken: string, fallback: Record<string, unknown>) => {
+    try {
+      const profile = await fetchProfile(accessToken);
+      setCurrentUser(profile);
+    } catch (error) {
+      console.warn("Failed to load profile after login", error);
+      setCurrentUser(toCurrentUser(fallback));
+    }
+  };
+
   const handleTestConnection = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api`);
@@ -23,27 +65,111 @@ export default function LoginScreen() {
     }
   };
 
+  const handleLogin = async () => {
+    const emailTrimmed = email.trim().toLowerCase();
+    if (!emailTrimmed || !password) {
+      Alert.alert("Login", "Please enter email and password");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailTrimmed, password }),
+      });
+      if (!res.ok) {
+        const maybe = (await res.json().catch(() => null)) as unknown;
+        if (isErrorResponse(maybe)) throw new Error(maybe.error);
+        throw new Error(`Login failed (${res.status})`);
+      }
+      const json = (await res.json()) as unknown;
+      if (isAuthSuccess(json)) {
+        setTokens({ accessToken: json.accessToken, refreshToken: json.refreshToken ?? null });
+        await loadProfile(json.accessToken, json.user);
+      } else {
+        setCurrentUser(toUserOrFallback(json));
+      }
+      router.replace("/(tabs)/profile");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert("Login failed", message);
+    }
+  };
+
+  const handleSignup = async () => {
+    const emailTrimmed = email.trim().toLowerCase();
+    if (!emailTrimmed || !password) {
+      Alert.alert("Create Account", "Please enter email and password");
+      return;
+    }
+    try {
+      // Backend expects username, email, password at /auth/register
+      // Derive a simple username from email local-part if none provided.
+      const localPart = emailTrimmed.split("@")[0] || "user";
+      const username = `${localPart}`;
+      const res = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, email: emailTrimmed, password }),
+      });
+      if (!res.ok) {
+        const maybe = (await res.json().catch(() => null)) as unknown;
+        if (isErrorResponse(maybe)) throw new Error(maybe.error);
+        throw new Error(`Signup failed (${res.status})`);
+      }
+      const json = (await res.json()) as unknown;
+      if (isAuthSuccess(json)) {
+        setTokens({ accessToken: json.accessToken, refreshToken: json.refreshToken ?? null });
+        await loadProfile(json.accessToken, json.user);
+      } else {
+        setCurrentUser(toUserOrFallback(json));
+      }
+      Alert.alert("Account created", "You are now logged in.");
+      router.replace("/(tabs)/profile");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert("Signup failed", message);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Logo */}
-      <Image 
+      <Image
         source={require("../assets/images/MingleMap-title.png")}
         style={styles.logo}
         resizeMode="contain"
       />
 
       {/* Input fields */}
-      <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#888" />
-      <TextInput style={styles.input} placeholder="Password" secureTextEntry placeholderTextColor="#888" />
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+        placeholderTextColor="#888"
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        placeholderTextColor="#888"
+        secureTextEntry
+        textContentType="password"
+        autoComplete="password"
+      />
 
       {/* Primary button (Login) */}
-      <TouchableOpacity style={styles.primaryBtn} onPress={() => router.replace("/profile")}>
+      <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}>
         <Text style={styles.primaryText}>Login</Text>
       </TouchableOpacity>
 
       {/* Secondary button (Go to Signup) */}
-      <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push("/signup")}>
-        <Text style={styles.secondaryText}>Go to Signup</Text>
+      <TouchableOpacity style={styles.secondaryBtn} onPress={handleSignup}>
+        <Text style={styles.secondaryText}>Create Account</Text>
       </TouchableOpacity>
 
       {__DEV__ && (
@@ -56,27 +182,27 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center", 
-    padding: 20, 
-    backgroundColor: "#121212" 
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#121212",
   },
   logo: {
     width: 280,
     height: 100,
     marginBottom: 30,
   },
-  input: { 
-    borderWidth: 1, 
-    borderColor: "#ccc", 
-    marginBottom: 12, 
-    padding: 10, 
-    borderRadius: 6, 
-    backgroundColor: "#fff", 
-    width: "100%", 
-    color: "#000"
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 6,
+    backgroundColor: "#fff",
+    width: "100%",
+    color: "#000",
   },
   primaryBtn: {
     backgroundColor: "#007BFF", // blue
@@ -106,3 +232,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
