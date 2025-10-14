@@ -17,13 +17,23 @@ type UserContextType = {
   accessToken: string | null;
   refreshToken: string | null;
   setTokens: (t: { accessToken: string | null; refreshToken: string | null }) => void;
+  isLoggedIn: boolean;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [status, setStatus] = useState<"Visible" | "Hidden">("Visible");
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    // For demo purposes, auto-login as the first user (Alice)
+    // In a real app, this would check for stored auth tokens
+    return {
+      id: 21,
+      email: "alice@example.com", 
+      name: "Alice Johnson",
+      interestTags: ["Coffee", "Dogs", "Hiking"]
+    };
+  });
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
@@ -32,8 +42,19 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     setRefreshToken(t.refreshToken);
   };
 
+  const isLoggedIn = currentUser !== null;
+
   return (
-    <UserContext.Provider value={{ status, setStatus, currentUser, setCurrentUser, accessToken, refreshToken, setTokens }}>
+    <UserContext.Provider value={{ 
+      status, 
+      setStatus, 
+      currentUser, 
+      setCurrentUser, 
+      accessToken, 
+      refreshToken, 
+      setTokens,
+      isLoggedIn 
+    }}>
       {children}
     </UserContext.Provider>
   );

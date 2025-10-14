@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native";
+import { useUser } from "../context/UserContext";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type ReportButtonProps = {
   reportedUserId: number;
   reportedUserName: string;
-  reporterId: number; // For now, we'll pass this as a prop. Later, get from auth context
   onReportSuccess?: () => void;
   size?: "small" | "medium" | "large";
   style?: any;
@@ -15,14 +15,22 @@ type ReportButtonProps = {
 export default function ReportButton({
   reportedUserId,
   reportedUserName,
-  reporterId,
   onReportSuccess,
   size = "small",
   style,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
+  const { currentUser, isLoggedIn } = useUser();
 
   const handleReport = async () => {
+    // Check if user is logged in
+    if (!isLoggedIn || !currentUser) {
+      Alert.alert("Error", "You must be logged in to report users.");
+      return;
+    }
+
+    const reporterId = currentUser.id;
+
     // Prevent self-reporting
     if (reporterId === reportedUserId) {
       Alert.alert("Error", "You cannot report yourself.");
@@ -78,6 +86,8 @@ export default function ReportButton({
   };
 
   const submitReport = async (reason: string) => {
+    if (!currentUser) return;
+    
     setIsReporting(true);
 
     try {
@@ -88,14 +98,15 @@ export default function ReportButton({
         },
         body: JSON.stringify({
           reason,
-          reporterId,
+          reporterId: currentUser.id,
           reportedId: reportedUserId,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to submit report");
+        const message = (errorData as any)?.error || "Failed to submit report";
+        throw new Error(message);
       }
 
       Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");

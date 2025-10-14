@@ -67,6 +67,16 @@ export default function ProfileScreen() {
     router.replace("/login");
   };
 
+  // Demo function for testing reporting functionality
+  const switchUser = () => {
+    // Switch between Alice (ID: 21) and Ben (ID: 22) for testing
+    const newUser = currentUser?.id === 21 
+      ? { id: 22, email: "ben@example.com", name: "Ben Carter", interestTags: ["Board Games", "Tech", "Running"] }
+      : { id: 21, email: "alice@example.com", name: "Alice Johnson", interestTags: ["Coffee", "Dogs", "Hiking"] };
+    
+    setCurrentUser(newUser);
+  };
+
   const handleToggleTag = async (tag: string) => {
     if (!currentUser || !accessToken) return;
 
@@ -190,6 +200,10 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      <View style={styles.logout}>
+        <Button title="Switch User (Demo)" onPress={switchUser} color="#007BFF" />
+      </View>
+      
       <View style={styles.logout}>
         <Button title="Logout" onPress={handleLogout} color="#d9534f" />
       </View>
