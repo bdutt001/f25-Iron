@@ -179,6 +179,7 @@ export default function NearbyScreen() {
               <ReportButton
                 reportedUserId={item.id}
                 reportedUserName={item.name}
+                reporterId={1} // TODO: Replace with actual logged-in user ID from auth context
                 size="small"
                 onReportSuccess={() => {
                   // Optional: Could refresh the list or show a toast
