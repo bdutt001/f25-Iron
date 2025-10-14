@@ -15,6 +15,8 @@ app.use(cors());
 
 // Middleware
 app.use(express.json());
+
+// Mount Authorized routes? 
 app.use('/auth', authRoutes);
 
 // Health checks: JSON for clients, text for quick CLI curl
