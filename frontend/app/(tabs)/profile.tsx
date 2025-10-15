@@ -18,6 +18,7 @@ import {
 
 const sortTags = (tags: string[]): string[] => [...tags].sort((a, b) => a.localeCompare(b));
 
+const MAX_INTEREST_TAGS = 10;
 
 const normalizeQuery = (value: string): string => value.trim().toLowerCase();
 
@@ -134,7 +135,14 @@ export default function ProfileScreen() {
     if (!currentUser || !accessToken) return;
 
     const previous = [...selectedTags];
-    const next = previous.includes(tag)
+    const isRemoving = previous.includes(tag);
+
+    if (!isRemoving && previous.length >= MAX_INTEREST_TAGS) {
+      setTagError(`You can select up to ${MAX_INTEREST_TAGS} interest tags.`);
+      return;
+    }
+
+    const next = isRemoving
       ? previous.filter((t) => t !== tag)
       : [...previous, tag];
     const sortedNext = sortTags(next);
@@ -171,6 +179,7 @@ export default function ProfileScreen() {
   const hasSearch = searchTerm.length > 0;
   const noMatches = !loadingTags && hasSearch && filteredTagOptions.length === 0;
   const noCatalogTags = !loadingTags && !hasSearch && !tagOptions.length;
+  const limitReached = selectedTags.length >= MAX_INTEREST_TAGS;
 
   const collapsedMessage =
     selectedTags.length === 0
@@ -191,7 +200,12 @@ export default function ProfileScreen() {
         <View style={styles.divider} />
 
         <View style={styles.tagHeader}>
-          <Text style={styles.label}>Interest Tags</Text>
+          <Text style={styles.label}>
+            Interest Tags
+            {expanded && (
+              <Text style={styles.labelCount}>{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
+            )}
+          </Text>
           <View style={styles.tagHeaderActions}>
             {savingTags && <ActivityIndicator size="small" color="#007BFF" style={styles.savingIndicator} />}
             <TouchableOpacity onPress={() => setExpanded((prev) => !prev)}>
@@ -234,7 +248,7 @@ export default function ProfileScreen() {
             {loadingTags ? (
               <View style={styles.catalogLoading}>
                 <ActivityIndicator size="small" color="#007BFF" style={styles.savingIndicator} />
-                <Text style={[styles.helperText, styles.catalogLoadingText]}>Loading tag catalog…</Text>
+                <Text style={[styles.helperText, styles.catalogLoadingText]}>Loading tag catalogï¿½</Text>
               </View>
             ) : (
               filteredTagOptions.length > 0 && (
@@ -248,7 +262,7 @@ export default function ProfileScreen() {
                           style={[
                             styles.tagOption,
                             selected && styles.tagOptionSelected,
-                            savingTags && styles.tagOptionDisabled,
+                            (savingTags || (!selected && limitReached)) && styles.tagOptionDisabled,
                           ]}
                           onPress={() => handleToggleTag(tag)}
                           disabled={savingTags}
@@ -321,6 +335,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginTop: 10,
+  },
+  labelCount: {
+    fontSize: 13,
+    color: "#1f5fbf",
+    fontWeight: "500",
   },
   value: {
     fontSize: 16,
@@ -456,9 +475,4 @@ const styles = StyleSheet.create({
     width: "90%",
   },
 });
-
-
-
-
-
 
