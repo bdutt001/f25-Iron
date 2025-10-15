@@ -172,7 +172,13 @@ export default function NearbyScreen() {
             </View>
             <Text style={styles.cardSubtitle}>{item.email}</Text>
             {item.interestTags.length > 0 && (
-              <Text style={styles.cardTags}>{item.interestTags.join(", ")}</Text>
+              <View style={styles.cardTagsWrapper}>
+                {item.interestTags.map((tag) => (
+                  <View key={tag} style={styles.cardTagChip}>
+                    <Text style={styles.cardTagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
             )}
           </View>
         )}
@@ -258,10 +264,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
   },
-  cardTags: {
+  cardTagsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginTop: 8,
-    fontSize: 13,
-    color: "#007BFF",
+  },
+  cardTagChip: {
+    backgroundColor: "#e6f0ff",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  cardTagText: {
+    fontSize: 12,
+    color: "#1f5fbf",
+    fontWeight: "500",
   },
   flexGrow: {
     flexGrow: 1,
