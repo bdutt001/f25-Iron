@@ -20,7 +20,7 @@ export default function ReportButton({
   style,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn } = useUser();
+  const { currentUser, isLoggedIn, accessToken } = useUser(); // Add accessToken
 
   const handleReport = async () => {
     // Check if user is logged in
@@ -85,39 +85,40 @@ export default function ReportButton({
     );
   };
 
-  const submitReport = async (reason: string) => {
-    if (!currentUser) return;
-    
-    setIsReporting(true);
+const submitReport = async (reason: string) => {
+  if (!currentUser) return;
+  
+  setIsReporting(true);
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/reports`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          reason,
-          reporterId: currentUser.id,
-          reportedId: reportedUserId,
-        }),
-      });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/reports`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`, // ✅ Add this line
+      },
+      body: JSON.stringify({
+        reason,
+        reporterId: currentUser.id,
+        reportedId: reportedUserId,
+      }),
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        const message = (errorData as any)?.error || "Failed to submit report";
-        throw new Error(message);
-      }
-
-      Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
-      onReportSuccess?.();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to submit report";
-      Alert.alert("Error", message);
-    } finally {
-      setIsReporting(false);
+    if (!response.ok) {
+      const errorData = await response.json();
+      const message = (errorData as any)?.error || "Failed to submit report";
+      throw new Error(message);
     }
-  };
+
+    Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
+    onReportSuccess?.();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to submit report";
+    Alert.alert("Error", message);
+  } finally {
+    setIsReporting(false);
+  }
+};
 
   const buttonStyles = [
     styles.button,
