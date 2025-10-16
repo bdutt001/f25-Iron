@@ -376,7 +376,7 @@ export default function ProfileScreen() {
                             styles.tagOption,
                             selected && styles.tagOptionSelected,
                             (savingTags || (!selected && limitReached)) &&
-                              styles.tagOptionDisabled,
+                            styles.tagOptionDisabled,
                           ]}
                           onPress={() => handleToggleTag(tag)}
                           disabled={savingTags}

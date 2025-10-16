@@ -3,6 +3,7 @@ export type ApiUser = {
   email: string;
   name?: string | null;
   interestTags?: string[] | null;
+  profilePicture?: string | null; // added
 };
 
 export type NearbyUser = {
@@ -10,6 +11,7 @@ export type NearbyUser = {
   name: string;
   email: string;
   interestTags: string[];
+  profilePicture?: string | null; // added here too
   coords: {
     latitude: number;
     longitude: number;
@@ -53,6 +55,7 @@ export function scatterUsersAround(
       email: user.email,
       name: user.name ?? user.email,
       interestTags: toInterestTags(user.interestTags),
+      profilePicture: user.profilePicture ?? null, // ✅ propagate profile picture
       coords: {
         latitude: baseLat + latOffset,
         longitude: baseLng + lngOffset,

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Button,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -80,7 +81,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    []
+    [accessToken, currentUser]
   );
 
   const requestAndLoad = useCallback(async () => {
@@ -107,7 +108,7 @@ export default function NearbyScreen() {
 
   useEffect(() => {
     requestAndLoad();
-  }, [requestAndLoad]);
+  }, [requestAndLoad, currentUser?.profilePicture, status]);
 
   const onRefresh = useCallback(async () => {
     if (!location) {
@@ -147,6 +148,7 @@ export default function NearbyScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header section with visibility toggle */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Visibility: {status}</Text>
         <Button
@@ -155,6 +157,7 @@ export default function NearbyScreen() {
         />
       </View>
 
+      {/* User list */}
       <FlatList
         data={users}
         keyExtractor={(item) => item.id.toString()}
@@ -164,24 +167,48 @@ export default function NearbyScreen() {
             <Text style={styles.note}>No other users nearby right now.</Text>
           </View>
         }
-        renderItem={({ item, index }) => (
-          <View style={[styles.card, index === 0 && styles.closestCard]}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
-            </View>
-            <Text style={styles.cardSubtitle}>{item.email}</Text>
-            {item.interestTags.length > 0 && (
-              <View style={styles.cardTagsWrapper}>
-                {item.interestTags.map((tag) => (
-                  <View key={tag} style={styles.cardTagChip}>
-                    <Text style={styles.cardTagText}>{tag}</Text>
+        renderItem={({ item, index }) => {
+          // ✅ Build profile picture URL (handles both absolute and relative URLs)
+          const imageUri =
+            item.profilePicture && item.profilePicture.startsWith("http")
+              ? item.profilePicture
+              : item.profilePicture
+              ? `${API_BASE_URL}${item.profilePicture}`
+              : null;
+
+          return (
+            <View style={[styles.card, index === 0 && styles.closestCard]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.userInfo}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                      <Text style={styles.avatarInitial}>
+                        {item.name?.[0]?.toUpperCase() ?? "?"}
+                      </Text>
+                    </View>
+                  )}
+                  <View>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <Text style={styles.cardSubtitle}>{item.email}</Text>
                   </View>
-                ))}
+                </View>
+                <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
               </View>
-            )}
-          </View>
-        )}
+
+              {item.interestTags.length > 0 && (
+                <View style={styles.cardTagsWrapper}>
+                  {item.interestTags.map((tag) => (
+                    <View key={tag} style={styles.cardTagChip}>
+                      <Text style={styles.cardTagText}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        }}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
       />
     </View>
@@ -251,6 +278,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
+  userInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  avatarPlaceholder: {
+    backgroundColor: "#ddd",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarInitial: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#555",
+  },
   cardTitle: {
     fontSize: 18,
     fontWeight: "600",
@@ -286,7 +333,3 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 });
-
-
-
-
