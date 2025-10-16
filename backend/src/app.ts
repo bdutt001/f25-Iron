@@ -3,7 +3,14 @@ import usersRouter from "./routes/users.routes";
 import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
 import path from "path";
+import fs from "fs";
 
+// Ensure the uploads folder exists at startup
+const uploadsDir = path.join(__dirname, "../uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log("📁 Created missing uploads folder at:", uploadsDir);
+}
 
 //import cors to enable cross-site origin requests outside of basic get post
 import cors from "cors";
