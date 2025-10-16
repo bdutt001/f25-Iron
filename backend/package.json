@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "generate": "prisma generate",
-    
     "test": "node scripts/run-tests.js",
     "test:unit": "jest",
     "dev": "ts-node --transpile-only src/index.ts",
@@ -35,6 +34,7 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
   }
 }
