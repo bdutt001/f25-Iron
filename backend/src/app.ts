@@ -2,6 +2,8 @@ import express from "express";
 import usersRouter from "./routes/users.routes";
 import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
+import path from "path";
+
 
 //import cors to enable cross-site origin requests outside of basic get post
 import cors from "cors";
@@ -27,6 +29,9 @@ app.get("/api", (_req, res) => {
 app.get("/", (_req, res) => {
   res.status(200).send("Hello from Express 🚀");
 });
+
+// Makes uploaded images accessible from URLs like: http://localhost:8000/uploads/17234512345.jpg
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Mount user routes
 app.use("/api", usersRouter);

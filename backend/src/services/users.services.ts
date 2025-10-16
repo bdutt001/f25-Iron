@@ -7,6 +7,7 @@ export const userWithTagsSelect = {
   email: true,
   name: true,
   createdAt: true,
+  profilePicture: true,  // ✅ add this line
   interestTags: { select: { name: true } },
 } satisfies Prisma.UserSelect;
 
@@ -16,6 +17,7 @@ export type SerializedUser = Omit<PrismaUserWithTags, "interestTags"> & { intere
 export const serializeUser = (user: PrismaUserWithTags): SerializedUser => ({
   ...user,
   interestTags: user.interestTags.map((tag) => tag.name),
+  profilePicture: user.profilePicture ?? null,  // ✅ ensure it passes through
 });
 
 export const normalizeTagNames = (tags: string[]): string[] => {

@@ -2,6 +2,8 @@ import type { Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import prisma from "../prisma";
+import fs from "fs";
+import path from "path";
 import {
   addTagToUser,
   buildConnectOrCreate,
@@ -241,3 +243,53 @@ export const deleteTagFromUser = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to remove tag from user" });
   }
 };
+
+  export const uploadProfilePicture = async (req: Request, res: Response) => {
+    try {
+    const userId = Number(req.params.id);
+    if (!userId) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // ✅ Check if user exists
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // ✅ Delete old profile picture if it exists
+    if (user.profilePicture) {
+      const oldPath = path.join(__dirname, "../../", user.profilePicture);
+      fs.unlink(oldPath, (err) => {
+        if (err) {
+          console.warn("⚠️ Could not delete old profile picture:", err.message);
+        } else {
+          console.log("🗑️ Deleted old profile picture:", oldPath);
+        }
+      });
+    }
+
+    // ✅ Save new one
+    const relativePath = `/uploads/${req.file.filename}`;
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { profilePicture: relativePath },
+    });
+
+    console.log("✅ Profile picture updated for user:", userId);
+
+    return res.json({
+      success: true,
+      profilePicture: relativePath,
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("❌ Error uploading profile picture:", error);
+    return res.status(500).json({ error: "Failed to upload profile picture" });
+  }
+};
+

@@ -7,6 +7,7 @@ export type CurrentUser = {
   name?: string | null;
   createdAt?: string;
   interestTags?: string[];
+  profilePicture?: string | null;
 };
 
 type UserContextType = {

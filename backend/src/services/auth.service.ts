@@ -61,12 +61,16 @@ export const issueTokenPair = (user: {
 export const verifyRefreshToken = (token: string): AuthTokenPayload =>
   verifyJwt<AuthTokenPayload>(token, jwtConfig.refreshSecret);
 
-export const toAuthenticatedUser = (
-  user: Pick<AuthenticatedUser, "id" | "username" | "email">
-): AuthenticatedUser => ({
+export const toAuthenticatedUser = (user: {
+  id: number;
+  username?: string;
+  email?: string | null;
+  profilePicture?: string | null;
+}): AuthenticatedUser => ({
   id: user.id,
-  username: user.username,
-  email: user.email,
+  username: user.username ?? "",           // fallback so it's always a string
+  email: user.email ?? null,
+  profilePicture: user.profilePicture ?? null,
 });
 
 export const invalidateUserSessions = async (userId: number) => {

@@ -8,6 +8,7 @@ const safeSelect = {
   email: true,
   name: true,
   username: true,
+  profilePicture: true, // ✅ include this
   interestTags: { select: { name: true } },
   createdAt: true,
 } as const;
@@ -17,12 +18,14 @@ type SafeUserRecord = {
   email: string | null;
   name: string | null;
   username: string | null;
+  profilePicture: string | null; // ✅ add this
   interestTags?: { name: string }[];
   createdAt: Date;
 };
 
 const toSafeUser = (user: SafeUserRecord) => ({
   ...user,
+  profilePicture: user.profilePicture ?? null, // ✅ ensure it's passed through
   interestTags: (user.interestTags ?? []).map((tag) => tag.name),
 });
 

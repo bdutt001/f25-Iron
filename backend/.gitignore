@@ -7,3 +7,5 @@ dist/
 /tests/**/*.js
 /tests/**/*.d.ts
 /tests/**/*.map
+# Ignore uploaded files
+uploads/
