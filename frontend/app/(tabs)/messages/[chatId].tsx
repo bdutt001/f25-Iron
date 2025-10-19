@@ -1,115 +1,3 @@
-// import React, { useState, useLayoutEffect } from "react";
-// import {
-//   KeyboardAvoidingView,
-//   Platform,
-//   View,
-//   FlatList,
-//   Text,
-//   TextInput,
-//   Button,
-//   StyleSheet,
-// } from "react-native";
-// import { useLocalSearchParams, useNavigation } from "expo-router";
-
-// export default function ChatScreen() {
-//   const { chatId, name } = useLocalSearchParams<{ chatId: string; name: string }>();
-//   const navigation = useNavigation();
-
-//   useLayoutEffect(() => {
-//     if (name) navigation.setOptions({ title: name });
-//   }, [name]);
-
-//   const [messages, setMessages] = useState([
-//     { id: "1", sender: "You", text: "Hey!" },
-//     { id: "2", sender: name || "User", text: "Hi there!" },
-//   ]);
-
-//   const [newMessage, setNewMessage] = useState("");
-
-//   const handleSend = () => {
-//     if (!newMessage.trim()) return;
-//     setMessages((prev) => [
-//       ...prev,
-//       { id: Date.now().toString(), sender: "You", text: newMessage },
-//     ]);
-//     setNewMessage("");
-//   };
-
-//   return (
-//     <KeyboardAvoidingView
-//       style={styles.container}
-//       behavior={Platform.OS === "ios" ? "padding" : undefined}
-//     >
-//       <FlatList
-//         data={messages}
-//         keyExtractor={(item) => item.id}
-//         renderItem={({ item }) => (
-//           <View
-//             style={[
-//               styles.messageBubble,
-//               item.sender === "You" ? styles.myMessage : styles.theirMessage,
-//             ]}
-//           >
-//             <Text
-//               style={[
-//                 styles.messageText,
-//                 item.sender === "You" ? { color: "white" } : { color: "black" },
-//               ]}
-//             >
-//               {item.text}
-//             </Text>
-//           </View>
-//         )}
-//         contentContainerStyle={styles.messagesContainer}
-//       />
-
-//       <View style={styles.inputContainer}>
-//         <TextInput
-//           style={styles.input}
-//           placeholder="Type a message..."
-//           value={newMessage}
-//           onChangeText={setNewMessage}
-//           onSubmitEditing={handleSend}
-//         />
-//         <Button title="Send" onPress={handleSend} />
-//       </View>
-//     </KeyboardAvoidingView>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1 },
-//   messagesContainer: { padding: 10 },
-//   messageBubble: {
-//     padding: 10,
-//     borderRadius: 12,
-//     marginVertical: 5,
-//     maxWidth: "80%",
-//   },
-//   myMessage: {
-//     alignSelf: "flex-end",
-//     backgroundColor: "#007AFF",
-//   },
-//   theirMessage: {
-//     alignSelf: "flex-start",
-//     backgroundColor: "#E5E5EA",
-//   },
-//   messageText: { fontSize: 16 },
-//   inputContainer: {
-//     flexDirection: "row",
-//     padding: 10,
-//     borderTopWidth: 1,
-//     borderColor: "#ccc",
-//   },
-//   input: {
-//     flex: 1,
-//     borderWidth: 1,
-//     borderColor: "#ccc",
-//     borderRadius: 20,
-//     paddingHorizontal: 12,
-//     marginRight: 8,
-//   },
-// });
 import React, { useState, useLayoutEffect, useEffect, useCallback } from "react";
 import {
   KeyboardAvoidingView,
@@ -128,70 +16,69 @@ import { useUser } from "../../../context/UserContext";
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 type Message = {
-  id: string;
+  id: number;
   content: string;
-  sendentId: string;
-  recventId: string;
+  senderId: number;
+  chatSessionId: number;
   createdAt: string;
 };
 
 export default function ChatScreen() {
-  const { chatId, name } = useLocalSearchParams<{ chatId: string; name: string }>();
+  const { chatId, name } = useLocalSearchParams<{ chatId: string; name?: string }>();
   const navigation = useNavigation();
-  const { user } = useUser(); // assuming context provides current logged-in user
+  const { currentUser, accessToken } = useUser();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     if (name) navigation.setOptions({ title: name });
   }, [name]);
 
-  // ✅ Fetch messages from your backend
+  // Fetch messages from backend
   const fetchMessages = useCallback(async () => {
+    if (!accessToken) return; 
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messages/${chatId}`);
+      const response = await fetch(`${API_BASE_URL}/api/messages/${chatId}`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
       if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
+
       const data = (await response.json()) as Message[];
-      setMessages(data);
-      setError(null);
+
+      setMessages(data); // Will be empty array if no messages
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
+      console.error("Fetch messages error:", err);
+      //setMessages([]); // Just show empty messages, don't block typing
     } finally {
       setLoading(false);
     }
-  }, [chatId]);
+  }, [chatId, accessToken]);
 
   useEffect(() => {
     fetchMessages();
   }, [fetchMessages]);
 
-  // ✅ Send message to database
+  // Send a message
   const handleSend = async () => {
-    if (!newMessage.trim() || !user) return;
-
-    const tempMessage: Message = {
-      id: Date.now().toString(),
-      content: newMessage,
-      sendentId: user.id,
-      recventId: chatId,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, tempMessage]);
-    setNewMessage("");
+    if (!newMessage.trim() || !currentUser) return;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
           content: newMessage,
-          sendentId: user.id,
-          recventId: chatId,
+          chatSessionId: Number(chatId),
         }),
       });
 
@@ -199,11 +86,10 @@ export default function ChatScreen() {
         throw new Error(`Failed to send message (${response.status})`);
       }
 
-      // Optionally refresh from DB for consistent IDs/timestamps
-      await fetchMessages();
+      setNewMessage("");
+      await fetchMessages(); // Refresh messages from backend
     } catch (err) {
-      console.error(err);
-      setError("Failed to send message");
+      console.error("Send message error:", err);
     }
   };
 
@@ -216,34 +102,31 @@ export default function ChatScreen() {
     );
   }
 
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.error}>{error}</Text>
-        <Button title="Retry" onPress={fetchMessages} />
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      {messages.length === 0 && (
+        <View style={styles.centered}>
+          <Text style={styles.note}>No prior messages.</Text>
+        </View>
+      )}
+
       <FlatList
         data={messages}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <View
             style={[
               styles.messageBubble,
-              item.sendentId === user?.id ? styles.myMessage : styles.theirMessage,
+              item.senderId === currentUser?.id ? styles.myMessage : styles.theirMessage,
             ]}
           >
             <Text
               style={[
                 styles.messageText,
-                item.sendentId === user?.id ? { color: "white" } : { color: "black" },
+                item.senderId === currentUser?.id ? { color: "white" } : { color: "black" },
               ]}
             >
               {item.content}
@@ -269,7 +152,7 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  messagesContainer: { padding: 10 },
+  messagesContainer: { padding: 10, flexGrow: 1 },
   messageBubble: {
     padding: 10,
     borderRadius: 12,
@@ -304,9 +187,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  error: {
-    color: "#c00",
-    marginBottom: 12,
+  note: {
+    color: "#555",
+    fontSize: 16,
   },
 });
-

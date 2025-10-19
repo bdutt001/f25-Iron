@@ -1,68 +1,82 @@
-// import { useRouter } from "expo-router";
-// import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState, useCallback } from "react";
+import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { useUser } from "../../../context/UserContext";
 
-// const conversations = [
-//   { id: "1", name: "Alice", lastMessage: "Hey, how’s it going?" },
-//   { id: "2", name: "Bob", lastMessage: "Let’s catch up later" },
-// ];
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
-// export default function MessagesOverviewScreen() {
-//   const router = useRouter();
-
-//   return (
-//     <FlatList
-//       data={conversations}
-//       keyExtractor={(item) => item.id}
-//       renderItem={({ item }) => (
-//         <TouchableOpacity
-//           style={styles.row}
-//           onPress={() =>
-//             router.push({
-//               pathname: "/messages/[chatId]", // <-- use the dynamic route name
-//               params: { chatId: item.id, name: item.name }, // pass your params here
-//             })
-//           }
-//         >
-//           <View style={styles.avatar} />
-//           <View>
-//             <Text style={styles.name}>{item.name}</Text>
-//             <Text style={styles.lastMessage}>{item.lastMessage}</Text>
-//           </View>
-//         </TouchableOpacity>
-//       )}
-//     />
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   row: {
-//     flexDirection: "row",
-//     padding: 16,
-//     borderBottomWidth: 1,
-//     borderBottomColor: "#eee",
-//     alignItems: "center",
-//   },
-//   avatar: {
-//     width: 40,
-//     height: 40,
-//     borderRadius: 20,
-//     backgroundColor: "#ccc",
-//     marginRight: 12,
-//   },
-//   name: { fontSize: 16, fontWeight: "bold" },
-//   lastMessage: { fontSize: 14, color: "gray" },
-// });
-import { View, Text, FlatList, Pressable, StyleSheet } from "react-native";
-import { router } from "expo-router";
-
-const conversations = [
-  //backend connection here
-  { id: "1", name: "Alice" },
-  { id: "2", name: "Bob" },
-  { id: "3", name: "Charlie" },
-];
+type Conversation = {
+  id: string;
+  name: string;
+  lastMessage?: string;
+  lastTimestamp?: string;
+};
 
 export default function MessagesScreen() {
+  const { currentUser, accessToken } = useUser();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadConversations = useCallback(async () => {
+    if (!currentUser || !accessToken) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`, // ✅ send token
+        },
+      });
+
+      if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
+
+      const data = (await response.json()) as Conversation[];
+      setConversations(data);
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser, accessToken]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations])
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text>Loading your chats...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.error}>{error}</Text>
+        <Pressable onPress={loadConversations} style={styles.retryButton}>
+          <Text style={styles.retryText}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (conversations.length === 0) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.note}>You have no active chats yet.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -78,8 +92,20 @@ export default function MessagesScreen() {
               })
             }
           >
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.preview}>Tap to chat</Text>
+            <View style={styles.chatRow}>
+              <Text style={styles.name}>{item.name}</Text>
+              {item.lastTimestamp && (
+                <Text style={styles.time}>
+                  {new Date(item.lastTimestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.preview}>
+              {item.lastMessage ? item.lastMessage : "Tap to chat"}
+            </Text>
           </Pressable>
         )}
       />
@@ -89,11 +115,14 @@ export default function MessagesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  chatItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
-  },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  chatItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#ccc" },
+  chatRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   name: { fontWeight: "bold", fontSize: 16 },
-  preview: { color: "gray" },
+  preview: { color: "gray", marginTop: 4 },
+  time: { color: "#888", fontSize: 12 },
+  note: { color: "#777" },
+  error: { color: "#c00", marginBottom: 12 },
+  retryButton: { backgroundColor: "#007BFF", padding: 10, borderRadius: 8 },
+  retryText: { color: "white", fontWeight: "bold" },
 });
