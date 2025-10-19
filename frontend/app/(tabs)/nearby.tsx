@@ -18,12 +18,13 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
+import { rankNearbyUsers, type RankedUser } from "../../utils/rank";
 
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
-type NearbyWithDistance = NearbyUser & {
+type NearbyWithDistance = RankedUser & {
   distanceMeters: number;
 };
 
@@ -43,34 +44,37 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const { status, setStatus, accessToken, currentUser } = useUser();
 
-  const loadUsers = useCallback(
+const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
         const response = await fetch(`${API_BASE_URL}/users`, {
           headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
         });
-        if (!response.ok) {
-          throw new Error(`Failed to load users (${response.status})`);
-        }
+        if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
-        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
-        const withDistance = scattered
-          .map<NearbyWithDistance>((user) => ({
-            ...user,
-            distanceMeters: haversineDistanceMeters(
-              coords.latitude,
-              coords.longitude,
-              user.coords.latitude,
-              user.coords.longitude
-            ),
-          }))
-          .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
-        setUsers(withDistance);
+        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+
+        // 👇 NEW: rank by tag similarity + distance
+        const ranked = rankNearbyUsers(
+          {
+            id: currentUser?.id ?? -1,
+            interestTags: (currentUser?.interestTags as string[] | undefined) ?? [],
+            coords: { latitude: coords.latitude, longitude: coords.longitude },
+          },
+          scattered,
+          {
+            weights: { tagSim: 0.7, distance: 0.3 }, // weights
+            halfLifeMeters: 1200,                    // distance decays every ...
+            // maxMeters: 10000,                      // optional hard cutoff
+          }
+        );
+
+        setUsers(ranked);
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -80,7 +84,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    []
+    [accessToken, currentUser]
   );
 
   const requestAndLoad = useCallback(async () => {
@@ -168,12 +172,14 @@ export default function NearbyScreen() {
           <View style={[styles.card, index === 0 && styles.closestCard]}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+              <Text style={styles.cardDistance}>{item.distanceLabel}</Text>
             </View>
-            <Text style={styles.cardSubtitle}>{item.email}</Text>
-            {item.interestTags.length > 0 && (
+            <Text style={styles.cardSubtitle}>
+              {item.email} • {Math.round(item.score * 100)}% match
+            </Text>
+            {item.sharedTags.length > 0 && (
               <View style={styles.cardTagsWrapper}>
-                {item.interestTags.map((tag) => (
+                {item.sharedTags.map((tag) => (
                   <View key={tag} style={styles.cardTagChip}>
                     <Text style={styles.cardTagText}>{tag}</Text>
                   </View>
