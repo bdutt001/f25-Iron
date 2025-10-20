@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import prisma from "../prisma";
 import fs from "fs";
 import path from "path";
+import { v2 as cloudinary } from "cloudinary";
 import {
   addTagToUser,
   buildConnectOrCreate,
@@ -14,7 +15,15 @@ import {
   userWithTagsSelect,
 } from "../services/users.services";
 
-const UPLOADS_DIR = path.resolve(__dirname, "../../uploads");
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  throw new Error("❌ Missing Cloudinary environment variables.");
+}
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME as string,
+  api_key: process.env.CLOUDINARY_API_KEY as string,
+  api_secret: process.env.CLOUDINARY_API_SECRET as string,
+});
+
 
 const toNumberId = (value: string | undefined) => {
   const parsed = Number(value);
@@ -246,56 +255,43 @@ export const deleteTagFromUser = async (req: Request, res: Response) => {
   }
 };
 
-  export const uploadProfilePicture = async (req: Request, res: Response) => {
+export const uploadProfilePicture = async (req: Request, res: Response) => {
   try {
     const userId = Number(req.params.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
+    if (!userId) {
       return res.status(400).json({ error: "Invalid user ID" });
     }
 
-    // Multer placed the file on disk already
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
-    // (Optional) accept images only
-    if (!req.file.mimetype?.startsWith("image/")) {
-      return res.status(400).json({ error: "Only image files are allowed" });
-    }
 
-    // Make sure the account exists
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Delete the previous picture if present
-    if (user.profilePicture) {
-      // Use only the filename from the stored path to avoid absolute/odd joins
-      const oldFilename = path.basename(user.profilePicture);
-      const oldPath = path.join(UPLOADS_DIR, oldFilename);
-      fs.promises
-        .unlink(oldPath)
-        .then(() => console.log("🗑️ Deleted old profile picture:", oldPath))
-        .catch((err) =>
-          console.warn("⚠️ Could not delete old profile picture:", err.message)
-        );
-    }
-
-    // Save reference to the new file (Multer set the filename)
-    const filename = req.file.filename; // e.g. '1760657232686.jpg'
-    const relativePath = `/uploads/${filename}`;
-
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { profilePicture: relativePath },
-      // select only what you need if desired
+    // Upload image to Cloudinary
+    const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      folder: "minglemap_profiles", // optional folder name
+      transformation: [{ width: 512, height: 512, crop: "limit" }], // optional resize limit
     });
 
-    console.log("✅ Profile picture updated for user:", userId);
+    // Delete local temp file after upload
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.warn("⚠️ Could not delete local temp file:", err.message);
+    });
 
+    // Save Cloudinary URL to database
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { profilePicture: uploadResult.secure_url },
+    });
+
+    console.log("✅ Uploaded to Cloudinary for user:", userId);
     return res.json({
       success: true,
-      profilePicture: relativePath, // no leading colon
+      profilePicture: uploadResult.secure_url,
       user: updatedUser,
     });
   } catch (error) {
@@ -303,4 +299,5 @@ export const deleteTagFromUser = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Failed to upload profile picture" });
   }
 };
+
 
