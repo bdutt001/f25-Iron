@@ -19,7 +19,7 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
-
+import ReportButton from "../../components/ReportButton";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -328,6 +328,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#1f5fbf",
     fontWeight: "500",
+  },
+  cardActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
   flexGrow: {
     flexGrow: 1,
