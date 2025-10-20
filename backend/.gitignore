@@ -9,3 +9,4 @@ dist/
 /tests/**/*.map
 # Ignore uploaded files
 uploads/
+temp/

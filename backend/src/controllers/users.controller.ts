@@ -6,7 +6,6 @@ import fs from "fs";
 import path from "path";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
-dotenv.config();
 import {
   addTagToUser,
   buildConnectOrCreate,
@@ -17,6 +16,9 @@ import {
   userWithTagsSelect,
 } from "../services/users.services";
 
+
+// ensure env vars load before config
+dotenv.config();
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
   throw new Error("❌ Missing Cloudinary environment variables.");
 }
