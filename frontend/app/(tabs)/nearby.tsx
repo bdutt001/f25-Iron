@@ -81,7 +81,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    [accessToken, currentUser]
+    []
   );
 
   const requestAndLoad = useCallback(async () => {
