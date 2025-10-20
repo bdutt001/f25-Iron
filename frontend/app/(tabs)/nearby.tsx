@@ -18,6 +18,7 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
+import ReportButton from "../../components/ReportButton";
 
 
 // Fixed center: Old Dominion University (Norfolk, VA)
@@ -46,8 +47,35 @@ export default function NearbyScreen() {
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
+        // Skip loading users if no access token (not authenticated)
+        if (!accessToken) {
+          console.log("No access token available, using demo users");
+          // Create demo users for testing report feature
+          const demoUsers = [
+            {
+              id: 1,
+              name: "Alice Demo",
+              email: "alice@example.com",
+              interestTags: ["Coffee", "Reading"],
+              coords: { latitude: ODU_CENTER.latitude + 0.001, longitude: ODU_CENTER.longitude + 0.001 },
+              distanceMeters: 100
+            },
+            {
+              id: 2, 
+              name: "Bob Demo",
+              email: "bob@example.com",
+              interestTags: ["Gaming", "Movies"],
+              coords: { latitude: ODU_CENTER.latitude - 0.001, longitude: ODU_CENTER.longitude - 0.001 },
+              distanceMeters: 150
+            }
+          ];
+          setUsers(demoUsers);
+          setError(null);
+          return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/users`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!response.ok) {
           throw new Error(`Failed to load users (${response.status})`);
@@ -80,7 +108,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    []
+    [accessToken, currentUser]
   );
 
   const requestAndLoad = useCallback(async () => {
@@ -180,6 +208,18 @@ export default function NearbyScreen() {
                 ))}
               </View>
             )}
+            <View style={styles.cardActions}>
+              <ReportButton
+                reportedUserId={item.id}
+                reportedUserName={item.name}
+                reporterId={currentUser?.id || 99} // Use current user ID from context
+                size="small"
+                onReportSuccess={() => {
+                  // Optional: Could refresh the list or show a toast
+                  console.log(`Reported user ${item.name}`);
+                }}
+              />
+            </View>
           </View>
         )}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
@@ -281,6 +321,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#1f5fbf",
     fontWeight: "500",
+  },
+  cardActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
   flexGrow: {
     flexGrow: 1,
