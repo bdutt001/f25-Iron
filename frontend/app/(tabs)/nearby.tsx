@@ -21,7 +21,7 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
-import ReportButton from "../../components/ReportButton";
+// import ReportButton from "../../components/ReportButton";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -176,7 +176,7 @@ export default function NearbyScreen() {
 
       router.push({
         pathname: "/(tabs)/messages/[chatId]",
-        params: { chatId: String(chatId), name: receiverName },
+        params: { chatId: String(chatId), name: receiverName, receiverId: String(receiverId) },
       });
     } catch (err) {
       console.error(err);
@@ -257,7 +257,7 @@ export default function NearbyScreen() {
               <Ionicons name="chatbubble" size={10} color="white" />
               {/* <Text style={styles.chatButtonText}>Start Chat</Text> */}
             </Pressable>
-            <View style={styles.cardActions}>
+            {/* <View style={styles.cardActions}>
               <ReportButton
                 reportedUserId={item.id}
                 reportedUserName={item.name}
@@ -268,7 +268,7 @@ export default function NearbyScreen() {
                   console.log(`Reported user ${item.name}`);
                 }}
               />
-            </View>
+            </View> */}
           </View>
         )}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
@@ -370,12 +370,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#1f5fbf",
     fontWeight: "500",
-  },
-  cardActions: {
-    marginTop: 12,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
   },
   chatButton: {
     position: 'absolute',

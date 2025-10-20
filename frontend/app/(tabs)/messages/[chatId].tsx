@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useUser } from "../../../context/UserContext";
+import ReportButton from "../../../components/ReportButton";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -24,7 +25,11 @@ type Message = {
 };
 
 export default function ChatScreen() {
-  const { chatId, name } = useLocalSearchParams<{ chatId: string; name?: string }>();
+  const { chatId, name, receiverId } = useLocalSearchParams<{ 
+    chatId: string;
+    name?: string;
+    receiverId?: string;
+  }>();
   const navigation = useNavigation();
   const { currentUser, accessToken } = useUser();
 
@@ -33,8 +38,20 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
 
   useLayoutEffect(() => {
-    if (name) navigation.setOptions({ title: name });
-  }, [name]);
+    if (name) {
+      navigation.setOptions({
+        title: name,
+        headerRight: () => (
+          <ReportButton
+            reportedUserId={Number(chatId)}
+            reportedUserName={name ?? "Unknown"}
+            size="small"
+            onReportSuccess={() => console.log(`Reported user ${name}`)}
+          />
+        ),
+      });
+    }
+  }, [navigation, name, chatId, currentUser]);
 
   // Fetch messages from backend
   const fetchMessages = useCallback(async () => {
@@ -185,6 +202,12 @@ const styles = StyleSheet.create({
   centered: {
     flex: 1,
     justifyContent: "center",
+    alignItems: "center",
+  },
+  reportContainer: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
     alignItems: "center",
   },
   note: {
