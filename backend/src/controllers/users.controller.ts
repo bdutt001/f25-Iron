@@ -5,6 +5,8 @@ import prisma from "../prisma";
 import fs from "fs";
 import path from "path";
 import { v2 as cloudinary } from "cloudinary";
+import dotenv from "dotenv";
+dotenv.config();
 import {
   addTagToUser,
   buildConnectOrCreate,
