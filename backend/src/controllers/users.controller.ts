@@ -14,6 +14,8 @@ import {
   userWithTagsSelect,
 } from "../services/users.services";
 
+const UPLOADS_DIR = path.resolve(__dirname, "../../uploads");
+
 const toNumberId = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
@@ -245,46 +247,55 @@ export const deleteTagFromUser = async (req: Request, res: Response) => {
 };
 
   export const uploadProfilePicture = async (req: Request, res: Response) => {
-    try {
+  try {
     const userId = Number(req.params.id);
-    if (!userId) {
+    if (!Number.isFinite(userId) || userId <= 0) {
       return res.status(400).json({ error: "Invalid user ID" });
     }
 
+    // Multer placed the file on disk already
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
+    // (Optional) accept images only
+    if (!req.file.mimetype?.startsWith("image/")) {
+      return res.status(400).json({ error: "Only image files are allowed" });
+    }
 
-    // ✅ Check if user exists
+    // Make sure the account exists
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // ✅ Delete old profile picture if it exists
+    // Delete the previous picture if present
     if (user.profilePicture) {
-      const oldPath = path.join(__dirname, "../../", user.profilePicture);
-      fs.unlink(oldPath, (err) => {
-        if (err) {
-          console.warn("⚠️ Could not delete old profile picture:", err.message);
-        } else {
-          console.log("🗑️ Deleted old profile picture:", oldPath);
-        }
-      });
+      // Use only the filename from the stored path to avoid absolute/odd joins
+      const oldFilename = path.basename(user.profilePicture);
+      const oldPath = path.join(UPLOADS_DIR, oldFilename);
+      fs.promises
+        .unlink(oldPath)
+        .then(() => console.log("🗑️ Deleted old profile picture:", oldPath))
+        .catch((err) =>
+          console.warn("⚠️ Could not delete old profile picture:", err.message)
+        );
     }
 
-    // ✅ Save new one
-    const relativePath = `/uploads/${req.file.filename}`;
+    // Save reference to the new file (Multer set the filename)
+    const filename = req.file.filename; // e.g. '1760657232686.jpg'
+    const relativePath = `/uploads/${filename}`;
+
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { profilePicture: relativePath },
+      // select only what you need if desired
     });
 
     console.log("✅ Profile picture updated for user:", userId);
 
     return res.json({
       success: true,
-      profilePicture: relativePath,
+      profilePicture: relativePath, // no leading colon
       user: updatedUser,
     });
   } catch (error) {
