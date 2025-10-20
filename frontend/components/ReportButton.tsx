@@ -20,7 +20,7 @@ export default function ReportButton({
   style,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, accessToken } = useUser(); // Add accessToken
+  const { currentUser, isLoggedIn, accessToken } = useUser(); // ✅ Get user + token from context
 
   const handleReport = async () => {
     // Check if user is logged in
@@ -29,7 +29,7 @@ export default function ReportButton({
       return;
     }
 
-    const reporterId = currentUser.id;
+    const reporterId = currentUser.id; // ✅ Local variable only, not passed as prop
 
     // Prevent self-reporting
     if (reporterId === reportedUserId) {
@@ -85,40 +85,44 @@ export default function ReportButton({
     );
   };
 
-const submitReport = async (reason: string) => {
-  if (!currentUser) return;
-  
-  setIsReporting(true);
+  const submitReport = async (reason: string) => {
+    if (!currentUser) return;
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/reports`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`, // ✅ Add this line
-      },
-      body: JSON.stringify({
-        reason,
-        reporterId: currentUser.id,
-        reportedId: reportedUserId,
-      }),
-    });
+    setIsReporting(true);
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      const message = (errorData as any)?.error || "Failed to submit report";
-      throw new Error(message);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reports`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`, // ✅ Uses token from context
+        },
+        body: JSON.stringify({
+          reason,
+          reporterId: currentUser.id, // ✅ Obtained internally
+          reportedId: reportedUserId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const message = (errorData as any)?.error || "Failed to submit report";
+        throw new Error(message);
+      }
+
+      Alert.alert(
+        "Report Submitted",
+        "Thank you for your report. We will review it promptly."
+      );
+      onReportSuccess?.();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to submit report";
+      Alert.alert("Error", message);
+    } finally {
+      setIsReporting(false);
     }
-
-    Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
-    onReportSuccess?.();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to submit report";
-    Alert.alert("Error", message);
-  } finally {
-    setIsReporting(false);
-  }
-};
+  };
 
   const buttonStyles = [
     styles.button,
@@ -140,9 +144,7 @@ const submitReport = async (reason: string) => {
       disabled={isReporting}
       activeOpacity={0.7}
     >
-      <Text style={textStyles}>
-        {isReporting ? "..." : "Report"}
-      </Text>
+      <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
     </TouchableOpacity>
   );
 }
@@ -158,7 +160,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "500",
   },
-  
+
   // Size variants
   small: {
     paddingVertical: 4,
@@ -168,7 +170,7 @@ const styles = StyleSheet.create({
   smallText: {
     fontSize: 12,
   },
-  
+
   medium: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -177,7 +179,7 @@ const styles = StyleSheet.create({
   mediumText: {
     fontSize: 14,
   },
-  
+
   large: {
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -186,7 +188,7 @@ const styles = StyleSheet.create({
   largeText: {
     fontSize: 16,
   },
-  
+
   // Disabled state
   disabled: {
     backgroundColor: "#6c757d",

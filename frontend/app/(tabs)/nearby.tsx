@@ -47,8 +47,43 @@ export default function NearbyScreen() {
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
+        // ✅ If no access token, show demo users (for testing)
+        if (!accessToken) {
+          console.log("No access token available, using demo users");
+          const demoUsers: NearbyWithDistance[] = [
+            {
+              id: 1,
+              name: "Alice Demo",
+              email: "alice@example.com",
+              interestTags: ["Coffee", "Reading"],
+              profilePicture: null,
+              coords: {
+                latitude: ODU_CENTER.latitude + 0.001,
+                longitude: ODU_CENTER.longitude + 0.001,
+              },
+              distanceMeters: 100,
+            },
+            {
+              id: 2,
+              name: "Bob Demo",
+              email: "bob@example.com",
+              interestTags: ["Gaming", "Movies"],
+              profilePicture: null,
+              coords: {
+                latitude: ODU_CENTER.latitude - 0.001,
+                longitude: ODU_CENTER.longitude - 0.001,
+              },
+              distanceMeters: 150,
+            },
+          ];
+          setUsers(demoUsers);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/users`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!response.ok) {
           throw new Error(`Failed to load users (${response.status})`);
@@ -58,6 +93,7 @@ export default function NearbyScreen() {
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
+
         const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
         const withDistance = scattered
           .map<NearbyWithDistance>((user) => ({
@@ -81,13 +117,12 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    []
+    [accessToken, currentUser]
   );
 
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
-      // Demo mode: center and compute distances from ODU
       const coords = {
         latitude: ODU_CENTER.latitude,
         longitude: ODU_CENTER.longitude,
@@ -115,7 +150,6 @@ export default function NearbyScreen() {
       await requestAndLoad();
       return;
     }
-
     setRefreshing(true);
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
@@ -148,7 +182,7 @@ export default function NearbyScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header section with visibility toggle */}
+      {/* Header section */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Visibility: {status}</Text>
         <Button
@@ -168,7 +202,6 @@ export default function NearbyScreen() {
           </View>
         }
         renderItem={({ item, index }) => {
-          // ✅ Build profile picture URL (handles both absolute and relative URLs)
           const imageUri =
             item.profilePicture && item.profilePicture.startsWith("http")
               ? item.profilePicture
@@ -206,6 +239,16 @@ export default function NearbyScreen() {
                   ))}
                 </View>
               )}
+
+              {/* Report button */}
+              <View style={styles.cardActions}>
+                <ReportButton
+                  reportedUserId={item.id}
+                  reportedUserName={item.name}
+                  size="small"
+                  onReportSuccess={() => console.log(`Reported user ${item.name}`)}
+                />
+              </View>
             </View>
           );
         }}
@@ -216,29 +259,10 @@ export default function NearbyScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: "#f5f7fa",
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  note: {
-    marginTop: 12,
-    fontSize: 16,
-    textAlign: "center",
-    color: "#555",
-  },
-  error: {
-    marginBottom: 12,
-    fontSize: 16,
-    textAlign: "center",
-    color: "#c00",
-  },
+  container: { flex: 1, padding: 16, backgroundColor: "#f5f7fa" },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  note: { marginTop: 12, fontSize: 16, textAlign: "center", color: "#555" },
+  error: { marginBottom: 12, fontSize: 16, textAlign: "center", color: "#c00" },
   header: {
     marginBottom: 16,
     padding: 12,
@@ -253,10 +277,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
+  headerTitle: { fontSize: 18, fontWeight: "600" },
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -268,54 +289,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
   },
-  closestCard: {
-    borderWidth: 1,
-    borderColor: "#007BFF",
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  userInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
-  },
-  avatarPlaceholder: {
-    backgroundColor: "#ddd",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarInitial: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#555",
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  cardDistance: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#007BFF",
-  },
-  cardSubtitle: {
-    fontSize: 14,
-    color: "#666",
-  },
-  cardTagsWrapper: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 8,
-  },
+  closestCard: { borderWidth: 1, borderColor: "#007BFF" },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  userInfo: { flexDirection: "row", alignItems: "center" },
+  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  avatarPlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
+  avatarInitial: { fontSize: 18, fontWeight: "bold", color: "#555" },
+  cardTitle: { fontSize: 18, fontWeight: "600" },
+  cardSubtitle: { fontSize: 14, color: "#666" },
+  cardDistance: { fontSize: 16, fontWeight: "500", color: "#007BFF" },
+  cardTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   cardTagChip: {
     backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
@@ -324,18 +307,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
     marginBottom: 6,
   },
-  cardTagText: {
-    fontSize: 12,
-    color: "#1f5fbf",
-    fontWeight: "500",
-  },
-  cardActions: {
-    marginTop: 12,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  flexGrow: {
-    flexGrow: 1,
-  },
+  cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
+  cardActions: { marginTop: 12, flexDirection: "row", justifyContent: "flex-end" },
+  flexGrow: { flexGrow: 1 },
 });
