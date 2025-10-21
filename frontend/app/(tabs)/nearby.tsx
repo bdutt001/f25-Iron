@@ -14,7 +14,10 @@ import {
   StyleSheet,
   Text,
   View,
+  Pressable,
+  Alert,
 } from "react-native";
+import { router } from "expo-router";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import {
@@ -24,9 +27,10 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
-import ReportButton from "../../components/ReportButton";
+// import ReportButton from "../../components/ReportButton";
 
-// Constants
+import { Ionicons } from "@expo/vector-icons";
+
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
@@ -172,10 +176,43 @@ export default function NearbyScreen() {
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
 
-  // Load users on component mount or when requestAndLoad changes
+    // Load users on component mount or when requestAndLoad changes
   useEffect(() => {
     requestAndLoad();
   }, [requestAndLoad]);
+
+  // 🔹 Create or get chat session
+  const startChat = async (receiverId: number, receiverName: string) => {
+    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          participants: [currentUser.id, receiverId],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start chat (${response.status})`);
+      }
+
+      const data = (await response.json()) as { chatId: number };
+      const { chatId } = data;
+
+      router.push({
+        pathname: "/(tabs)/messages/[chatId]",
+        params: { chatId: String(chatId), name: receiverName, receiverId: String(receiverId) },
+      });
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to start chat. Please try again.");
+    }
+  };
 
   if (loading) {
     return (
@@ -240,7 +277,19 @@ export default function NearbyScreen() {
                 ))}
               </View>
             )}
-            <View style={styles.cardActions}>
+
+            {/* 🔹 Start Chat Button */}
+            <Pressable
+              onPress={() => startChat(item.id, item.name || item.email)}
+              style={({ pressed }) => [
+                styles.chatButton,
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <Ionicons name="chatbubble" size={10} color="white" />
+              {/* <Text style={styles.chatButtonText}>Start Chat</Text> */}
+            </Pressable>
+            {/* <View style={styles.cardActions}>
               <ReportButton
                 reportedUserId={item.id}
                 reportedUserName={item.name}
@@ -253,7 +302,7 @@ export default function NearbyScreen() {
                   );
                 }}
               />
-            </View>
+            </View> */}
           </View>
         )}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
@@ -356,11 +405,25 @@ const styles = StyleSheet.create({
     color: "#1f5fbf",
     fontWeight: "500",
   },
-  cardActions: {
-    marginTop: 12,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
+  chatButton: {
+    position: 'absolute',
+    bottom: 12,      // align bottom
+    right: 12,       // align right
+    width: 20,       // smaller square
+    height: 20,
+    backgroundColor: '#007BFF',
+    borderRadius: 18, // fully rounded
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',    // optional shadow for floating effect
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  chatButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
   },
   flexGrow: {
     flexGrow: 1,

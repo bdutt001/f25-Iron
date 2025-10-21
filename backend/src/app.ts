@@ -2,6 +2,7 @@ import express from "express";
 import usersRouter from "./routes/users.routes";
 import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
+import messagesRouter from "./routes/messages.routes";
 import reportsRouter from "./routes/reports.routes";
 import reportRouter from "./routes/report.routes";
 
@@ -43,5 +44,9 @@ app.use("/", tagsRouter); // allow clients without /api prefix
 // Mount reports routes
 app.use("/api", reportsRouter);
 app.use("/api", reportRouter);
+
+// Mount messaging routes
+app.use("/api/messages", messagesRouter); 
+app.use("/messages", messagesRouter);
 
 export default app;
