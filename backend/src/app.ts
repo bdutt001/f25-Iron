@@ -1,44 +1,38 @@
 import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 import usersRouter from "./routes/users.routes";
 import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
 import reportsRouter from "./routes/reports.routes";
 
-//import cors to enable cross-site origin requests outside of basic get post
-import cors from "cors";
-import dotenv from "dotenv";
-
-// Load .env variables
+// ✅ Load environment variables before anything else
 dotenv.config();
 
 const app = express();
 
-// ✅ Enable CORS for frontend access
+// ✅ Enable CORS for all requests (frontend → backend)
 app.use(cors());
 
-// ✅ Parse incoming JSON requests
+// ✅ Parse JSON bodies
 app.use(express.json());
 
-// ✅ Health check routes
-app.get("/api", (_req, res) => {
-  res.json({ status: "ok" });
-});
+// ✅ Health check endpoints
+app.get("/", (_req, res) => res.status(200).send("Hello from Express 🚀"));
+app.get("/api", (_req, res) => res.json({ status: "ok" }));
 
-app.get("/", (_req, res) => {
-  res.status(200).send("Hello from Express 🚀");
-});
-
-// ✅ Mount routes
+// ✅ Route mounts
 app.use("/auth", authRouter);
-app.use("/api/auth", authRouter); // back-compat
+app.use("/api/auth", authRouter); // backwards-compat
 
 app.use("/api", usersRouter);
-app.use("/", usersRouter); // allow /users and /api/users
+app.use("/", usersRouter); // allow legacy clients without /api prefix
 
 app.use("/api", tagsRouter);
-app.use("/", tagsRouter); // allow clients without /api prefix
+app.use("/", tagsRouter);
 
-// Mount reports routes
 app.use("/api", reportsRouter);
+
+// ✅ No /uploads folder served — Cloudinary handles media now
 
 export default app;
