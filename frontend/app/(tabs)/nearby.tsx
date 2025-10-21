@@ -430,6 +430,7 @@ const styles = StyleSheet.create({
   },
   trustScoreName:{
     textAlign: "right",
+    bottom: 25,
     fontSize: 15
   },
   trustScoreNumber:{
