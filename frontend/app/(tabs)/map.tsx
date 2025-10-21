@@ -108,7 +108,7 @@ export default function MapScreen() {
 
             <Text style={styles.calloutTitle}>{selectedUser.name}</Text>
             <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
-
+            <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{selectedUser.trustScore}</Text></Text>
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
@@ -231,5 +231,12 @@ const styles = StyleSheet.create({
   sheetClose: {
     color: "#1f5fbf",
     fontWeight: "600",
+  },
+  trustScoreName:{
+    textAlign: "right",
+    fontSize: 15
+  },
+  trustScoreNumber:{
+    color: "#007BFF"
   },
 });
