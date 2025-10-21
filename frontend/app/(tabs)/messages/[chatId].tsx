@@ -43,7 +43,7 @@ export default function ChatScreen() {
         title: name,
         headerRight: () => (
           <ReportButton
-            reportedUserId={Number(chatId)}
+            reportedUserId={Number(receiverId)} // Using receiverId instead of chatId — chatId represents the conversation, not the actual user being reported
             reportedUserName={name ?? "Unknown"}
             size="small"
             onReportSuccess={() => console.log(`Reported user ${name}`)}

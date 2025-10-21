@@ -249,6 +249,7 @@ router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res)
         name: otherParticipant?.name ?? otherParticipant?.username ?? "Unknown",
         lastMessage: lastMsg?.content,
         lastTimestamp: lastMsg?.createdAt.toISOString(),
+        receiverId: otherParticipant?.id, // ✅ Added so frontend knows the other participant's user ID (needed for reporting)
       };
     });
 

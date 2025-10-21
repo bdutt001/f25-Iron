@@ -8,6 +8,7 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 type Conversation = {
   id: string;
   name: string;
+  receiverId: number; // ✅ add this
   lastMessage?: string;
   lastTimestamp?: string;
 };
@@ -88,7 +89,7 @@ export default function MessagesScreen() {
             onPress={() =>
               router.push({
                 pathname: "/(tabs)/messages/[chatId]",
-                params: { chatId: item.id, name: item.name },
+                params: { chatId: item.id, name: item.name, receiverId: item.receiverId.toString(),}, // added receiverId so report button works (was missing before)
               })
             }
           >
