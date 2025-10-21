@@ -30,7 +30,7 @@ model User {
   profilePicture String?
   status         UserStatus @default(AVAILABLE)
   visibility     Boolean    @default(true)
-  trustScore     Int    @default(0)
+  trustScore     Int    @default(99)
   createdAt      DateTime   @default(now())
 
   // Relations
@@ -93,6 +93,7 @@ model Report {
   createdAt  DateTime @default(now())
   reporterId Int
   reportedId Int
+  severity   Int?     @default(1)
   reporter   User     @relation("ReportsMade", fields: [reporterId], references: [id])
   reported   User     @relation("ReportsAgainst", fields: [reportedId], references: [id])
 }
@@ -102,5 +103,4 @@ model Tag {
   name  String @unique
   users User[] @relation("UserInterestTags") // allows for relation between users and tags via a join table
 }
-
 

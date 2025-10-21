@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { useUser } from "../context/UserContext";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/utils/api";
 
 type ReportButtonProps = {
   reportedUserId: number;
   reportedUserName: string;
-  onReportSuccess?: () => void;
+  onReportSuccess?: (updatedTrustScore: number) => void;
   size?: "small" | "medium" | "large";
   style?: any;
+  defaultSeverity?: number;
 };
 
 export default function ReportButton({
@@ -18,13 +18,14 @@ export default function ReportButton({
   onReportSuccess,
   size = "small",
   style,
+  defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
   const { currentUser, isLoggedIn, accessToken } = useUser(); // Add accessToken
 
   const handleReport = async () => {
     // Check if user is logged in
-    if (!isLoggedIn || !currentUser) {
+    if (!isLoggedIn || !currentUser || !accessToken) {
       Alert.alert("Error", "You must be logged in to report users.");
       return;
     }
@@ -85,40 +86,66 @@ export default function ReportButton({
     );
   };
 
-const submitReport = async (reason: string) => {
-  if (!currentUser) return;
-  
-  setIsReporting(true);
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/reports`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`, // ✅ Add this line
-      },
-      body: JSON.stringify({
-        reason,
-        reporterId: currentUser.id,
-        reportedId: reportedUserId,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      const message = (errorData as any)?.error || "Failed to submit report";
-      throw new Error(message);
+  const submitReport = async (reason: string, severityOverride?: number) => {
+    if (!currentUser || !accessToken) {
+      return;
     }
 
-    Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
-    onReportSuccess?.();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to submit report";
-    Alert.alert("Error", message);
-  } finally {
-    setIsReporting(false);
-  }
-};
+    setIsReporting(true);
+
+    try {
+      const severity =
+        typeof severityOverride === "number" && Number.isFinite(severityOverride)
+          ? severityOverride
+          : defaultSeverity;
+
+      const response = await fetch(`${API_BASE_URL}/api/report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          reportedId: reportedUserId,
+          reason,
+          severity,
+        }),
+      });
+
+      const payload = (await response.json()) as { trustScore?: number; error?: string };
+
+      if (!response.ok || typeof payload.trustScore !== "number") {
+        const message = payload?.error ?? "Failed to submit report";
+        throw new Error(message);
+      }
+
+      let latestTrustScore = payload.trustScore;
+
+      try {
+        const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (trustResponse.ok) {
+          const trustData = (await trustResponse.json()) as { trustScore?: number };
+          if (typeof trustData.trustScore === "number") {
+            latestTrustScore = trustData.trustScore;
+          }
+        }
+      } catch (error) {
+        console.warn("Unable to refresh trust score after report:", error);
+      }
+
+      Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
+      onReportSuccess?.(latestTrustScore);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to submit report";
+      Alert.alert("Error", message);
+    } finally {
+      setIsReporting(false);
+    }
+  };
 
   const buttonStyles = [
     styles.button,

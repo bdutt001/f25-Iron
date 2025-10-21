@@ -31,6 +31,7 @@ export default function MapScreen() {
         email: currentUser.email,
         interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
         coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
+        trustScore: currentUser.trustScore ?? 99,
         isCurrentUser: true,
       }
     : null;

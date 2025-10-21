@@ -7,6 +7,7 @@ export type CurrentUser = {
   name?: string | null;
   createdAt?: string;
   interestTags?: string[];
+  trustScore?: number;
 };
 
 type UserContextType = {
@@ -30,7 +31,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       id: 99,
       email: "demo@example.com", 
       name: "Demo User",
-      interestTags: ["Testing", "Reports"]
+      interestTags: ["Testing", "Reports"],
+      trustScore: 99,
     };
   });
   const [accessToken, setAccessToken] = useState<string | null>(null);

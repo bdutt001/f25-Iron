@@ -72,7 +72,8 @@ export default function NearbyScreen() {
               email: "alice@example.com",
               interestTags: ["Coffee", "Reading"],
               coords: { latitude: ODU_CENTER.latitude + 0.001, longitude: ODU_CENTER.longitude + 0.001 },
-              distanceMeters: 100
+              distanceMeters: 100,
+              trustScore: 99,
             },
             {
               id: 2, 
@@ -80,8 +81,9 @@ export default function NearbyScreen() {
               email: "bob@example.com",
               interestTags: ["Gaming", "Movies"],
               coords: { latitude: ODU_CENTER.latitude - 0.001, longitude: ODU_CENTER.longitude - 0.001 },
-              distanceMeters: 150
-            }
+              distanceMeters: 150,
+              trustScore: 95,
+            },
           ];
           setUsers(demoUsers);
           setError(null);
@@ -242,11 +244,13 @@ export default function NearbyScreen() {
               <ReportButton
                 reportedUserId={item.id}
                 reportedUserName={item.name}
-                reporterId={currentUser?.id || 99} // Use current user ID from context
                 size="small"
-                onReportSuccess={() => {
-                  // Optional: Could refresh the list or show a toast
-                  console.log(`Reported user ${item.name}`);
+                onReportSuccess={(updatedTrustScore) => {
+                  setUsers((prev) =>
+                    prev.map((user) =>
+                      user.id === item.id ? { ...user, trustScore: updatedTrustScore } : user
+                    )
+                  );
                 }}
               />
             </View>
