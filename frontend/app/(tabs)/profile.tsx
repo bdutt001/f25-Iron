@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -17,12 +18,69 @@ import {
 
 const sortTags = (tags: string[]): string[] => [...tags].sort((a, b) => a.localeCompare(b));
 
+const MAX_INTEREST_TAGS = 10;
+
+const normalizeQuery = (value: string): string => value.trim().toLowerCase();
+
+const computeFuzzyScore = (normalizedQuery: string, candidate: string): number | null => {
+  const normalizedCandidate = candidate.toLowerCase();
+
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const directMatchIndex = normalizedCandidate.indexOf(normalizedQuery);
+  if (directMatchIndex !== -1) {
+    const penalty = directMatchIndex * 5 + (normalizedCandidate.length - normalizedQuery.length);
+    return 200 - penalty;
+  }
+
+  let score = 0;
+  let searchIndex = 0;
+
+  for (const char of normalizedQuery) {
+    const foundIndex = normalizedCandidate.indexOf(char, searchIndex);
+    if (foundIndex === -1) {
+      return null;
+    }
+
+    if (foundIndex === searchIndex) {
+      score += 5;
+    } else if (foundIndex - searchIndex === 1) {
+      score += 3;
+    } else {
+      score += Math.max(1, 3 - (foundIndex - searchIndex));
+    }
+
+    searchIndex = foundIndex + 1;
+  }
+
+  return score - (normalizedCandidate.length - normalizedQuery.length);
+};
+
+const fuzzyFilter = (items: string[], query: string): string[] => {
+  const normalizedQuery = normalizeQuery(query);
+  if (!normalizedQuery) {
+    return items;
+  }
+
+  return items
+    .map((item) => {
+      const score = computeFuzzyScore(normalizedQuery, item);
+      return score === null ? null : { item, score };
+    })
+    .filter((entry): entry is { item: string; score: number } => entry !== null)
+    .sort((a, b) => b.score - a.score || a.item.localeCompare(b.item))
+    .map((entry) => entry.item);
+};
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { status, currentUser, setCurrentUser, accessToken } = useUser();
 
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagSearch, setTagSearch] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
@@ -31,6 +89,12 @@ export default function ProfileScreen() {
   useEffect(() => {
     setSelectedTags(currentUser?.interestTags ?? []);
   }, [currentUser?.interestTags]);
+
+  useEffect(() => {
+    if (!expanded) {
+      setTagSearch("");
+    }
+  }, [expanded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +135,14 @@ export default function ProfileScreen() {
     if (!currentUser || !accessToken) return;
 
     const previous = [...selectedTags];
-    const next = previous.includes(tag)
+    const isRemoving = previous.includes(tag);
+
+    if (!isRemoving && previous.length >= MAX_INTEREST_TAGS) {
+      setTagError(`You can select up to ${MAX_INTEREST_TAGS} interest tags.`);
+      return;
+    }
+
+    const next = isRemoving
       ? previous.filter((t) => t !== tag)
       : [...previous, tag];
     const sortedNext = sortTags(next);
@@ -103,6 +174,13 @@ export default function ProfileScreen() {
     return sortTags(Array.from(new Set([...selectedTags])));
   }, [availableTags, selectedTags]);
 
+  const searchTerm = tagSearch.trim();
+  const filteredTagOptions = useMemo(() => fuzzyFilter(tagOptions, searchTerm), [tagOptions, searchTerm]);
+  const hasSearch = searchTerm.length > 0;
+  const noMatches = !loadingTags && hasSearch && filteredTagOptions.length === 0;
+  const noCatalogTags = !loadingTags && !hasSearch && !tagOptions.length;
+  const limitReached = selectedTags.length >= MAX_INTEREST_TAGS;
+
   const collapsedMessage =
     selectedTags.length === 0
       ? "No tags selected yet. Tap Edit to choose your interests."
@@ -122,7 +200,12 @@ export default function ProfileScreen() {
         <View style={styles.divider} />
 
         <View style={styles.tagHeader}>
-          <Text style={styles.label}>Interest Tags</Text>
+          <Text style={styles.label}>
+            Interest Tags
+            {expanded && (
+              <Text style={styles.labelCount}>{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
+            )}
+          </Text>
           <View style={styles.tagHeaderActions}>
             {savingTags && <ActivityIndicator size="small" color="#007BFF" style={styles.savingIndicator} />}
             <TouchableOpacity onPress={() => setExpanded((prev) => !prev)}>
@@ -145,49 +228,74 @@ export default function ProfileScreen() {
 
         {expanded && (
           <View style={styles.catalogSection}>
+            <View style={styles.tagSearchWrapper}>
+              <TextInput
+                value={tagSearch}
+                onChangeText={setTagSearch}
+                placeholder="Search tags"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                style={styles.tagSearchInput}
+                accessibilityLabel="Search interest tags"
+              />
+              {hasSearch && (
+                <TouchableOpacity onPress={() => setTagSearch("")} style={styles.tagSearchClear} accessibilityRole="button">
+                  <Text style={styles.tagSearchClearText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             {loadingTags ? (
               <View style={styles.catalogLoading}>
                 <ActivityIndicator size="small" color="#007BFF" style={styles.savingIndicator} />
-                <Text style={[styles.helperText, styles.catalogLoadingText]}>Loading tag catalog…</Text>
+                <Text style={[styles.helperText, styles.catalogLoadingText]}>Loading tag catalog�</Text>
               </View>
             ) : (
-              <ScrollView style={styles.catalogScroll}>
-                <View style={styles.catalogGrid}>
-                  {tagOptions.map((tag) => {
-                    const selected = selectedTags.includes(tag);
-                    return (
-                      <TouchableOpacity
-                        key={tag}
-                        style={[
-                          styles.tagOption,
-                          selected && styles.tagOptionSelected,
-                          savingTags && styles.tagOptionDisabled,
-                        ]}
-                        onPress={() => handleToggleTag(tag)}
-                        disabled={savingTags}
-                      >
-                        <Text
+              filteredTagOptions.length > 0 && (
+                <ScrollView style={styles.catalogScroll}>
+                  <View style={styles.catalogGrid}>
+                    {filteredTagOptions.map((tag) => {
+                      const selected = selectedTags.includes(tag);
+                      return (
+                        <TouchableOpacity
+                          key={tag}
                           style={[
-                            styles.tagOptionText,
-                            selected && styles.tagOptionTextSelected,
+                            styles.tagOption,
+                            selected && styles.tagOptionSelected,
+                            (savingTags || (!selected && limitReached)) && styles.tagOptionDisabled,
                           ]}
+                          onPress={() => handleToggleTag(tag)}
+                          disabled={savingTags}
                         >
-                          {tag}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+                          <Text
+                            style={[
+                              styles.tagOptionText,
+                              selected && styles.tagOptionTextSelected,
+                            ]}
+                          >
+                            {tag}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              )
             )}
             {tagError && <Text style={styles.errorText}>{tagError}</Text>}
-            {!loadingTags && !tagOptions.length && (
+            {noMatches && (
+              <Text style={styles.helperText}>
+                {`No matches found for ${searchTerm}. Try a different keyword.`}
+              </Text>
+            )}
+            {noCatalogTags && (
               <Text style={styles.helperText}>
                 No tags available yet. Ask an admin to populate the catalog.
               </Text>
             )}
           </View>
         )}
+
       </View>
 
       <View style={styles.logout}>
@@ -227,6 +335,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginTop: 10,
+  },
+  labelCount: {
+    fontSize: 13,
+    color: "#1f5fbf",
+    fontWeight: "500",
   },
   value: {
     fontSize: 16,
@@ -285,6 +398,30 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
     maxHeight: 260,
   },
+  tagSearchWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+  },
+  tagSearchInput: {
+    flex: 1,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: "#333",
+  },
+  tagSearchClear: {
+    marginLeft: 8,
+  },
+  tagSearchClearText: {
+    color: "#007BFF",
+    fontSize: 13,
+    fontWeight: "600",
+  },
   catalogScroll: {
     maxHeight: 200,
   },
@@ -338,9 +475,4 @@ const styles = StyleSheet.create({
     width: "90%",
   },
 });
-
-
-
-
-
 

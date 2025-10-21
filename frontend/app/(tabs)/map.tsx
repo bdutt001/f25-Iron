@@ -11,16 +11,29 @@ const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
 type Coords = { latitude: number; longitude: number };
 
+type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
+
 export default function MapScreen() {
   // Center the map and "you are here" at ODU for the demo
   const [center] = useState<Coords>(ODU_CENTER);
   const [myCoords] = useState<Coords>(ODU_CENTER);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
-  const [selectedUser, setSelectedUser] = useState<NearbyUser | null>(null);
+  const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
 
   // shared visibility status
   const { status, setStatus, accessToken, currentUser } = useUser();
+
+  const selfUser: SelectedUser | null = currentUser
+    ? {
+        id: currentUser.id,
+        name: currentUser.name?.trim() || currentUser.email,
+        email: currentUser.email,
+        interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
+        coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
+        isCurrentUser: true,
+      }
+    : null;
 
   const loadUsers = async (): Promise<void> => {
     try {
@@ -62,8 +75,14 @@ export default function MapScreen() {
         }}
       >
         {/* Current user marker (optional) */}
-        {status === "Visible" && myCoords && (
-          <Marker coordinate={myCoords} pinColor="blue" />
+        {status === "Visible" && selfUser && (
+          <Marker
+            coordinate={myCoords}
+            pinColor="blue"
+            title="You are here"
+            description={selfUser.email}
+            onPress={() => setSelectedUser(selfUser)}
+          />
         )}
 
         {/* Team users scattered around ODU */}
@@ -106,7 +125,10 @@ export default function MapScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.calloutTitle}>{selectedUser.name}</Text>
+            <View style={styles.calloutHeaderRow}>
+              <Text style={styles.calloutTitle}>{selectedUser.name || selectedUser.email}</Text>
+              {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
+            </View>
             <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
             <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{selectedUser.trustScore}</Text></Text>
             {selectedUser.interestTags.length > 0 ? (
@@ -118,7 +140,9 @@ export default function MapScreen() {
                 ))}
               </View>
             ) : (
-              <Text style={styles.calloutEmptyTags}>No tags selected</Text>
+              <Text style={styles.calloutEmptyTags}>
+                {selectedUser.isCurrentUser ? "You haven't added any interest tags yet." : "No tags selected"}
+              </Text>
             )}
           </View>
         </>
@@ -170,6 +194,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#666",
     marginTop: 2,
+  },
+  calloutHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  calloutBadge: {
+    backgroundColor: "#1f5fbf",
+    color: "#fff",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 8,
   },
   calloutTagsWrapper: {
     flexDirection: "row",
