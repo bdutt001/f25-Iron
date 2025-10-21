@@ -1,3 +1,9 @@
+/**
+ * NearbyScreen component displays a list of users nearby relative to the current user's location.
+ * For demo purposes, it simulates user proximity centered around Old Dominion University (Norfolk, VA).
+ * It fetches user data from the API, calculates distances, and allows toggling visibility status.
+ */
+
 import * as Location from "expo-location";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -28,11 +34,13 @@ import { Ionicons } from "@expo/vector-icons";
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
+// Types
 type NearbyWithDistance = NearbyUser & {
   distanceMeters: number;
 };
 
 export default function NearbyScreen() {
+  // State variables
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -48,6 +56,12 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const { status, setStatus, accessToken, currentUser } = useUser();
 
+  /**
+   * Fetches users from the API, filters out the current user,
+   * scatters them around the given coordinates, calculates distances,
+   * sorts by proximity, and updates the users state.
+   * Handles loading and error states accordingly.
+   */
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
@@ -62,7 +76,8 @@ export default function NearbyScreen() {
               email: "alice@example.com",
               interestTags: ["Coffee", "Reading"],
               coords: { latitude: ODU_CENTER.latitude + 0.001, longitude: ODU_CENTER.longitude + 0.001 },
-              distanceMeters: 100
+              distanceMeters: 100,
+              trustScore: 99,
             },
             {
               id: 2, 
@@ -70,8 +85,9 @@ export default function NearbyScreen() {
               email: "bob@example.com",
               interestTags: ["Gaming", "Movies"],
               coords: { latitude: ODU_CENTER.latitude - 0.001, longitude: ODU_CENTER.longitude - 0.001 },
-              distanceMeters: 150
-            }
+              distanceMeters: 150,
+              trustScore: 95,
+            },
           ];
           setUsers(demoUsers);
           setError(null);
@@ -86,10 +102,13 @@ export default function NearbyScreen() {
         }
 
         const data = (await response.json()) as ApiUser[];
+        // Filter out the current user from the fetched list
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
+        // Scatter users around the given coordinates for demo purposes
         const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+        // Calculate distance for each user and sort by closest first
         const withDistance = scattered
           .map<NearbyWithDistance>((user) => ({
             ...user,
@@ -102,11 +121,11 @@ export default function NearbyScreen() {
           }))
           .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
-        setUsers(withDistance);
-        setError(null);
+        setUsers(withDistance); // Update users state with sorted nearby users
+        setError(null); // Clear any previous errors
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        setError(message);
+        setError(message); // Set error message on failure
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -115,6 +134,11 @@ export default function NearbyScreen() {
     [accessToken, currentUser]
   );
 
+  /**
+   * Requests location (simulated as ODU center for demo),
+   * sets the location state, and loads users near that location.
+   * Handles loading and error states.
+   */
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
@@ -128,8 +152,8 @@ export default function NearbyScreen() {
         heading: undefined as any,
         speed: undefined as any,
       };
-      setLocation(coords);
-      await loadUsers(coords);
+      setLocation(coords); // Set location to ODU center
+      await loadUsers(coords); // Load users near ODU center
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -137,10 +161,11 @@ export default function NearbyScreen() {
     }
   }, [loadUsers]);
 
-  useEffect(() => {
-    requestAndLoad();
-  }, [requestAndLoad]);
-
+  /**
+   * Handles pull-to-refresh action.
+   * If location is unavailable, triggers a full request and load.
+   * Otherwise, reloads users based on current location.
+   */
   const onRefresh = useCallback(async () => {
     if (!location) {
       await requestAndLoad();
@@ -150,6 +175,11 @@ export default function NearbyScreen() {
     setRefreshing(true);
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
+
+    // Load users on component mount or when requestAndLoad changes
+  useEffect(() => {
+    requestAndLoad();
+  }, [requestAndLoad]);
 
   // 🔹 Create or get chat session
   const startChat = async (receiverId: number, receiverName: string) => {
@@ -234,8 +264,10 @@ export default function NearbyScreen() {
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>{item.name}</Text>
               <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+              
             </View>
             <Text style={styles.cardSubtitle}>{item.email}</Text>
+            <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{item.trustScore}</Text></Text>
             {item.interestTags.length > 0 && (
               <View style={styles.cardTagsWrapper}>
                 {item.interestTags.map((tag) => (
@@ -261,11 +293,13 @@ export default function NearbyScreen() {
               <ReportButton
                 reportedUserId={item.id}
                 reportedUserName={item.name}
-                reporterId={currentUser?.id || 99} // Use current user ID from context
                 size="small"
-                onReportSuccess={() => {
-                  // Optional: Could refresh the list or show a toast
-                  console.log(`Reported user ${item.name}`);
+                onReportSuccess={(updatedTrustScore) => {
+                  setUsers((prev) =>
+                    prev.map((user) =>
+                      user.id === item.id ? { ...user, trustScore: updatedTrustScore } : user
+                    )
+                  );
                 }}
               />
             </View> */}
@@ -394,8 +428,12 @@ const styles = StyleSheet.create({
   flexGrow: {
     flexGrow: 1,
   },
+  trustScoreName:{
+    textAlign: "right",
+    bottom: 25,
+    fontSize: 15
+  },
+  trustScoreNumber:{
+    color: "#007BFF"
+  }
 });
-
-
-
-

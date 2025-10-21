@@ -47,6 +47,7 @@
     "@babel/core": "^7.25.2",
     "@tsconfig/react-native": "^3.0.7",
     "@types/react": "~19.1.10",
+    "@types/react-native": "^0.72.8",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
