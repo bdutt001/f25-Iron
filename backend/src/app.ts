@@ -2,6 +2,7 @@ import express from "express";
 import usersRouter from "./routes/users.routes";
 import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
+import messagesRouter from "./routes/messages.routes";
 import reportsRouter from "./routes/reports.routes";
 
 //import cors to enable cross-site origin requests outside of basic get post
@@ -41,5 +42,9 @@ app.use("/", tagsRouter); // allow clients without /api prefix
 
 // Mount reports routes
 app.use("/api", reportsRouter);
+
+// Mount messaging routes
+app.use("/api/messages", messagesRouter); 
+app.use("/messages", messagesRouter);
 
 export default app;
