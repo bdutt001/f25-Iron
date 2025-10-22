@@ -188,10 +188,14 @@ export default function ProfileScreen() {
       };
 
       if (data.profilePicture) {
-        // Add cache-buster to bypass old image cache
-        const newUrl = `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
+        // ✅ Use the full Cloudinary URL directly, with a cache-buster
+        const newUrl = data.profilePicture.startsWith("http")
+        ? `${data.profilePicture}?t=${Date.now()}`
+        : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
+
+        // Update local and global state so the UI refreshes instantly
         setProfilePicture(newUrl);
-        setCurrentUser({ ...currentUser, profilePicture: data.profilePicture });
+        setCurrentUser({ ...currentUser, profilePicture: newUrl });
       }
 
       Alert.alert("Success", "Profile picture updated!");
