@@ -55,6 +55,9 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const { status, setStatus, accessToken, currentUser } = useUser();
 
+  /**
+   * Fetches users from the API and updates their distance relative to the current location.
+   */
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
@@ -143,6 +146,36 @@ export default function NearbyScreen() {
     [accessToken, currentUser]
   );
 
+  /**
+   * Refreshes the trust score for a specific user after they have been reported.
+   */
+  const refreshTrustScore = useCallback(
+    async (userId: number) => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!response.ok) throw new Error(`Failed to fetch user ${userId} (${response.status})`);
+        const updatedUser = (await response.json()) as ApiUser;
+
+        setUsers((prevUsers) =>
+          prevUsers.map((u) =>
+            u.id === userId
+              ? { ...u, trustScore: updatedUser.trustScore ?? u.trustScore }
+              : u
+          )
+        );
+        console.log(`✅ Trust score refreshed for user ID ${userId}`);
+      } catch (err) {
+        console.error("Failed to refresh trust score:", err);
+      }
+    },
+    [accessToken]
+  );
+
+  /**
+   * Requests location (simulated as ODU center for demo) and loads users nearby.
+   */
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
@@ -164,10 +197,12 @@ export default function NearbyScreen() {
     }
   }, [loadUsers]);
 
+  // Load users initially and when profile picture or visibility changes
   useEffect(() => {
     requestAndLoad();
   }, [requestAndLoad, currentUser?.profilePicture, status]);
 
+  // Pull-to-refresh functionality
   const onRefresh = useCallback(async () => {
     if (!location) {
       await requestAndLoad();
@@ -177,6 +212,7 @@ export default function NearbyScreen() {
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
 
+  // Start a new chat session with another user
   const startChat = async (receiverId: number, receiverName: string) => {
     if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
 
@@ -207,6 +243,7 @@ export default function NearbyScreen() {
     }
   };
 
+  // Loading and error handling UI
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -316,7 +353,10 @@ export default function NearbyScreen() {
                     reportedUserId={item.id}
                     reportedUserName={item.name}
                     size="small"
-                    onReportSuccess={() => console.log(`Reported user ${item.name}`)}
+                    onReportSuccess={() => {
+                      console.log(`⚠️ Reported user ${item.name}`);
+                      refreshTrustScore(item.id);
+                    }}
                   />
                   <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
                     Trust Score {score}
@@ -402,14 +442,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  reportContainer: {
-    alignItems: "center",
-  },
-  trustScoreLabel: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
+  reportContainer: { alignItems: "center" },
+  trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
   flexGrow: { flexGrow: 1 },
 });

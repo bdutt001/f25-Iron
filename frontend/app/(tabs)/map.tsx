@@ -20,9 +20,7 @@ type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
 
 const normalizeInterestTags = (tags: ApiUser["interestTags"]): string[] | null => {
-  if (!Array.isArray(tags)) {
-    return null;
-  }
+  if (!Array.isArray(tags)) return null;
   return tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0);
 };
 
@@ -33,11 +31,8 @@ export default function MapScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
-
-  // 🧭 Track current zoom level for marker scaling
   const [zoomLevel, setZoomLevel] = useState(14);
 
-  // Convert longitudeDelta → approximate zoom level
   const getZoomLevel = (region: { longitudeDelta: number }) => {
     const angle = region.longitudeDelta;
     return Math.round(Math.log(360 / angle) / Math.LN2);
@@ -66,7 +61,6 @@ export default function MapScreen() {
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
-
       const data = (await response.json()) as ApiUser[];
       const filtered = Array.isArray(data)
         ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
@@ -85,11 +79,7 @@ export default function MapScreen() {
         const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
           headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
         });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch user ${userId} (${response.status})`);
-        }
-
+        if (!response.ok) throw new Error(`Failed to fetch user ${userId} (${response.status})`);
         return (await response.json()) as ApiUser;
       } catch (error) {
         console.error(`Unable to refresh user ${userId}`, error);
@@ -102,32 +92,24 @@ export default function MapScreen() {
   const refreshSelection = useCallback(
     async (userId: number) => {
       const details = await fetchUserDetails(userId);
-      if (!details) {
-        return;
-      }
-
+      if (!details) return;
       const normalizedTags = normalizeInterestTags(details.interestTags);
       const updatedScore = typeof details.trustScore === "number" ? details.trustScore : null;
-
-      setSelectedUser((prev) => {
-        if (!prev || prev.id !== userId) return prev;
-        return {
-          ...prev,
-          name: details.name ?? details.email ?? prev.name,
-          email: details.email ?? prev.email,
-          interestTags: normalizedTags ?? prev.interestTags,
-          trustScore: updatedScore ?? prev.trustScore,
-        };
-      });
-
+      setSelectedUser((prev) =>
+        prev && prev.id === userId
+          ? {
+              ...prev,
+              name: details.name ?? details.email ?? prev.name,
+              email: details.email ?? prev.email,
+              interestTags: normalizedTags ?? prev.interestTags,
+              trustScore: updatedScore ?? prev.trustScore,
+            }
+          : prev
+      );
       setNearbyUsers((prev) =>
         prev.map((user) =>
           user.id === userId
-            ? {
-                ...user,
-                trustScore: updatedScore ?? user.trustScore,
-                interestTags: normalizedTags ?? user.interestTags,
-              }
+            ? { ...user, trustScore: updatedScore ?? user.trustScore, interestTags: normalizedTags ?? user.interestTags }
             : user
         )
       );
@@ -148,12 +130,10 @@ export default function MapScreen() {
     [refreshSelection]
   );
 
-  // 🔁 Load users initially and when profile picture changes
   useEffect(() => {
     void loadUsers();
   }, [loadUsers, currentUser?.profilePicture]);
 
-  // 🔁 Periodically refresh users and selected details every 12s
   const selectedId = selectedUser?.id ?? null;
   useEffect(() => {
     const interval = setInterval(() => {
@@ -163,17 +143,14 @@ export default function MapScreen() {
     return () => clearInterval(interval);
   }, [loadUsers, refreshSelection, selectedId]);
 
-  // 🎚️ Scale markers so they grow when zooming in (zoom 10 → 0.6×, zoom 18 → 2×)
   const scale = Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 2.0), 0.6);
-
-  // ✨ Smooth animation for marker resizing — use transform (safe for Fabric)
   const animatedScale = useRef(new Animated.Value(scale)).current;
 
   useEffect(() => {
     Animated.timing(animatedScale, {
       toValue: scale,
       duration: 150,
-      useNativeDriver: true, // ✅ now safe with transform
+      useNativeDriver: true,
     }).start();
   }, [scale]);
 
@@ -192,7 +169,7 @@ export default function MapScreen() {
           setZoomLevel(getZoomLevel(region));
         }}
       >
-        {/* Current user marker (animated) */}
+        {/* Current user marker */}
         {status === "Visible" && selfUser && (
           <Marker
             coordinate={myCoords}
@@ -212,10 +189,7 @@ export default function MapScreen() {
                   }}
                   style={[
                     styles.markerImage,
-                    {
-                      borderColor: "#1f5fbf",
-                      transform: [{ scale: animatedScale }], // ✅ smooth scaling
-                    },
+                    { borderColor: "#1f5fbf", transform: [{ scale: animatedScale }] },
                   ]}
                 />
               ) : (
@@ -229,7 +203,7 @@ export default function MapScreen() {
           </Marker>
         )}
 
-        {/* Other users (static, same style) */}
+        {/* Other users */}
         {nearbyUsers.map((user) => (
           <Marker
             key={user.id}
@@ -263,7 +237,7 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      {/* Floating enlarged image overlay */}
+      {/* Floating enlarged preview */}
       {selectedUser && (
         <View
           pointerEvents="none"
@@ -319,10 +293,32 @@ export default function MapScreen() {
               <Text style={styles.calloutTitle}>{selectedUser.name || selectedUser.email}</Text>
               {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
             </View>
+
             <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
+
+            {/* ✅ Color-coded trust score */}
             <Text style={styles.trustScoreName}>
-              Trust Score: <Text style={styles.trustScoreNumber}>{selectedUser.trustScore}</Text>
+              Trust Score{" "}
+              <Text
+                style={[
+                  styles.trustScoreNumber,
+                  {
+                    color:
+                      (selectedUser.trustScore ?? 0) >= 90
+                        ? "#28a745"
+                        : (selectedUser.trustScore ?? 0) >= 70
+                        ? "#7ED957"
+                        : (selectedUser.trustScore ?? 0) >= 51
+                        ? "#FFC107"
+                        : "#DC3545",
+                    fontWeight: (selectedUser.trustScore ?? 0) >= 90 ? "700" : "600",
+                  },
+                ]}
+              >
+                {selectedUser.trustScore ?? "—"}
+              </Text>
             </Text>
+
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
@@ -405,14 +401,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   floatingInitials: { fontSize: 50, fontWeight: "700", color: "#555" },
-  backdrop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.15)",
-  },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.15)" },
   sheet: {
     position: "absolute",
     left: 12,
@@ -459,6 +448,6 @@ const styles = StyleSheet.create({
   },
   calloutTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
   calloutEmptyTags: { marginTop: 8, fontSize: 12, color: "#999" },
-  trustScoreName: { textAlign: "right", fontSize: 15 },
-  trustScoreNumber: { color: "#007BFF" },
+  trustScoreName: { textAlign: "right", fontSize: 15, marginTop: 6 },
+  trustScoreNumber: { fontSize: 15, fontWeight: "600" },
 });
