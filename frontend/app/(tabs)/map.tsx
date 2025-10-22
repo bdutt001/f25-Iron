@@ -61,7 +61,10 @@ export default function MapScreen() {
     }
   };
 
-  useEffect(() => void loadUsers(), []);
+    // 🔁 Load users once at startup and again whenever your profile picture changes
+    useEffect(() => {
+      void loadUsers();
+    }, [currentUser?.profilePicture]);
 
   const handleSelectUser = useCallback((user: SelectedUser) => {
     setSelectedUser(user);

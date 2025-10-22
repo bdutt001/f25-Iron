@@ -204,9 +204,9 @@ export default function NearbyScreen() {
         renderItem={({ item, index }) => {
           const imageUri =
             item.profilePicture && item.profilePicture.startsWith("http")
-              ? item.profilePicture
+              ? `${item.profilePicture}?t=${Date.now()}`
               : item.profilePicture
-              ? `${API_BASE_URL}${item.profilePicture}`
+              ? `${API_BASE_URL}${item.profilePicture}?t=${Date.now()}`
               : null;
 
           return (
