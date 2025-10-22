@@ -1,6 +1,7 @@
 import * as Location from "expo-location";
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
+  Animated,
   Button,
   StyleSheet,
   Text,
@@ -32,6 +33,15 @@ export default function MapScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
+
+  // 🧭 Track current zoom level for marker scaling
+  const [zoomLevel, setZoomLevel] = useState(14);
+
+  // Convert longitudeDelta → approximate zoom level
+  const getZoomLevel = (region: { longitudeDelta: number }) => {
+    const angle = region.longitudeDelta;
+    return Math.round(Math.log(360 / angle) / Math.LN2);
+  };
 
   const { status, setStatus, accessToken, currentUser } = useUser();
 
@@ -153,6 +163,20 @@ export default function MapScreen() {
     return () => clearInterval(interval);
   }, [loadUsers, refreshSelection, selectedId]);
 
+  // 🎚️ Scale markers so they grow when zooming in (zoom 10 → 0.6×, zoom 18 → 2×)
+  const scale = Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 2.0), 0.6);
+
+  // ✨ Smooth animation for marker resizing — use transform (safe for Fabric)
+  const animatedScale = useRef(new Animated.Value(scale)).current;
+
+  useEffect(() => {
+    Animated.timing(animatedScale, {
+      toValue: scale,
+      duration: 150,
+      useNativeDriver: true, // ✅ now safe with transform
+    }).start();
+  }, [scale]);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -164,8 +188,11 @@ export default function MapScreen() {
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
+        onRegionChangeComplete={(region) => {
+          setZoomLevel(getZoomLevel(region));
+        }}
       >
-        {/* Current user marker */}
+        {/* Current user marker (animated) */}
         {status === "Visible" && selfUser && (
           <Marker
             coordinate={myCoords}
@@ -177,13 +204,19 @@ export default function MapScreen() {
           >
             <View style={styles.markerContainer}>
               {selfUser.profilePicture ? (
-                <Image
+                <Animated.Image
                   source={{
                     uri: selfUser.profilePicture.startsWith("http")
                       ? selfUser.profilePicture
                       : `${API_BASE_URL}${selfUser.profilePicture}`,
                   }}
-                  style={[styles.markerImage, { borderColor: "#1f5fbf" }]}
+                  style={[
+                    styles.markerImage,
+                    {
+                      borderColor: "#1f5fbf",
+                      transform: [{ scale: animatedScale }], // ✅ smooth scaling
+                    },
+                  ]}
                 />
               ) : (
                 <View style={[styles.markerPlaceholder, { borderColor: "#1f5fbf" }]}>
@@ -196,7 +229,7 @@ export default function MapScreen() {
           </Marker>
         )}
 
-        {/* Other users */}
+        {/* Other users (static, same style) */}
         {nearbyUsers.map((user) => (
           <Marker
             key={user.id}
@@ -213,7 +246,10 @@ export default function MapScreen() {
                       ? user.profilePicture
                       : `${API_BASE_URL}${user.profilePicture}`,
                   }}
-                  style={[styles.markerImage, { borderColor: "#e63946" }]}
+                  style={[
+                    styles.markerImage,
+                    { borderColor: "#e63946", width: 40, height: 40, borderRadius: 20 },
+                  ]}
                 />
               ) : (
                 <View style={[styles.markerPlaceholder, { borderColor: "#e63946" }]}>

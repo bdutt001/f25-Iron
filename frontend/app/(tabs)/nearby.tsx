@@ -285,7 +285,6 @@ export default function NearbyScreen() {
                   )}
                   <View>
                     <Text style={styles.cardTitle}>{item.name}</Text>
-                    <Text style={styles.cardSubtitle}>{item.email}</Text>
                   </View>
                 </View>
                 <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
