@@ -24,17 +24,21 @@ export default function ReportButton({
   const { currentUser, isLoggedIn, accessToken } = useUser();
 
   const handleReport = async () => {
+    // ✅ Check if user is logged in
     if (!isLoggedIn || !currentUser || !accessToken) {
       Alert.alert("Error", "You must be logged in to report users.");
       return;
     }
 
     const reporterId = currentUser.id;
+
+    // ✅ Prevent self-reporting
     if (reporterId === reportedUserId) {
       Alert.alert("Error", "You cannot report yourself.");
       return;
     }
 
+    // ✅ Confirm before reporting
     Alert.alert(
       "Report User",
       `Are you sure you want to report ${reportedUserName}?`,
@@ -46,6 +50,7 @@ export default function ReportButton({
   };
 
   const showReasonDialog = () => {
+    // ✅ Display predefined report reasons
     Alert.alert("Reason for Report", "Why are you reporting this user?", [
       { text: "Cancel", style: "cancel" },
       { text: "Inappropriate Behavior", onPress: () => submitReport("Inappropriate Behavior") },
@@ -66,6 +71,7 @@ export default function ReportButton({
           ? severityOverride
           : defaultSeverity;
 
+      // ✅ Send the report to the backend
       const response = await fetch(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
@@ -88,7 +94,7 @@ export default function ReportButton({
 
       let latestTrustScore = payload.trustScore;
 
-      // Refresh the trust score from the server
+      // ✅ Refresh trust score from backend after report
       try {
         const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -106,7 +112,8 @@ export default function ReportButton({
       Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to submit report";
+      const message =
+        error instanceof Error ? error.message : "Failed to submit report";
       Alert.alert("Error", message);
     } finally {
       setIsReporting(false);

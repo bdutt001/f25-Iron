@@ -7,7 +7,8 @@ export type CurrentUser = {
   name?: string | null;
   createdAt?: string;
   interestTags?: string[];
-  profilePicture?: string | null;
+  profilePicture?: string | null; // ✅ from your branch
+  trustScore?: number;            // ✅ from main
 };
 
 type UserContextType = {
@@ -26,14 +27,17 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [status, setStatus] = useState<"Visible" | "Hidden">("Visible");
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
-    // Demo user for testing report feature
+    // Demo user for testing both trustScore and profilePicture
     return {
       id: 99,
-      email: "demo@example.com", 
+      email: "demo@example.com",
       name: "Demo User",
-      interestTags: ["Testing", "Reports"]
+      interestTags: ["Testing", "Reports"],
+      profilePicture: null,
+      trustScore: 99,
     };
   });
+
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
@@ -45,14 +49,25 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const isLoggedIn = currentUser !== null;
 
   return (
-    <UserContext.Provider value={{ status, setStatus, currentUser, setCurrentUser, accessToken, refreshToken, setTokens, isLoggedIn }}>
+    <UserContext.Provider
+      value={{
+        status,
+        setStatus,
+        currentUser,
+        setCurrentUser,
+        accessToken,
+        refreshToken,
+        setTokens,
+        isLoggedIn,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );
 };
 
 export const useUser = () => {
-  const context = useContext(UserContext);
-  if (!context) throw new Error("useUser must be used inside UserProvider");
-  return context;
+  const ctx = useContext(UserContext);
+  if (!ctx) throw new Error("useUser must be used within a UserProvider");
+  return ctx;
 };

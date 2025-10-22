@@ -9,6 +9,7 @@ export const userWithTagsSelect = {
   createdAt: true,
   profilePicture: true,  // ✅ add this line
   interestTags: { select: { name: true } },
+  trustScore: true,
 } satisfies Prisma.UserSelect;
 
 export type PrismaUserWithTags = Prisma.UserGetPayload<{ select: typeof userWithTagsSelect }>;

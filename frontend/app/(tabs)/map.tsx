@@ -1,5 +1,5 @@
 import * as Location from "expo-location";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   Button,
   StyleSheet,
@@ -17,6 +17,13 @@ const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
+
+const normalizeInterestTags = (tags: ApiUser["interestTags"]): string[] | null => {
+  if (!Array.isArray(tags)) {
+    return null;
+  }
+  return tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0);
+};
 
 export default function MapScreen() {
   const [center] = useState<Coords>(ODU_CENTER);
@@ -38,11 +45,12 @@ export default function MapScreen() {
           : [],
         profilePicture: currentUser.profilePicture ?? null,
         coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
+        trustScore: currentUser.trustScore ?? 99,
         isCurrentUser: true,
       }
     : null;
 
-  const loadUsers = async (): Promise<void> => {
+  const loadUsers = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(`${API_BASE_URL}/users`, {
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
@@ -59,16 +67,91 @@ export default function MapScreen() {
       console.error("Unable to load users", err);
       setErrorMsg("Unable to load users from the server");
     }
-  };
+  }, [accessToken, center.latitude, center.longitude, currentUser?.id]);
 
-    // 🔁 Load users once at startup and again whenever your profile picture changes
-    useEffect(() => {
+  const fetchUserDetails = useCallback(
+    async (userId: number): Promise<ApiUser | null> => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch user ${userId} (${response.status})`);
+        }
+
+        return (await response.json()) as ApiUser;
+      } catch (error) {
+        console.error(`Unable to refresh user ${userId}`, error);
+        return null;
+      }
+    },
+    [accessToken]
+  );
+
+  const refreshSelection = useCallback(
+    async (userId: number) => {
+      const details = await fetchUserDetails(userId);
+      if (!details) {
+        return;
+      }
+
+      const normalizedTags = normalizeInterestTags(details.interestTags);
+      const updatedScore = typeof details.trustScore === "number" ? details.trustScore : null;
+
+      setSelectedUser((prev) => {
+        if (!prev || prev.id !== userId) return prev;
+        return {
+          ...prev,
+          name: details.name ?? details.email ?? prev.name,
+          email: details.email ?? prev.email,
+          interestTags: normalizedTags ?? prev.interestTags,
+          trustScore: updatedScore ?? prev.trustScore,
+        };
+      });
+
+      setNearbyUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId
+            ? {
+                ...user,
+                trustScore: updatedScore ?? user.trustScore,
+                interestTags: normalizedTags ?? user.interestTags,
+              }
+            : user
+        )
+      );
+    },
+    [fetchUserDetails]
+  );
+
+  const handleSelectUser = useCallback(
+    (user: NearbyUser | SelectedUser, overrides?: { isCurrentUser?: boolean }) => {
+      const selection: SelectedUser = {
+        ...user,
+        coords: { ...user.coords },
+        isCurrentUser: overrides?.isCurrentUser ?? (user as SelectedUser).isCurrentUser ?? false,
+      };
+      setSelectedUser(selection);
+      void refreshSelection(selection.id);
+    },
+    [refreshSelection]
+  );
+
+  // 🔁 Load users initially and when profile picture changes
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers, currentUser?.profilePicture]);
+
+  // 🔁 Periodically refresh users and selected details every 12s
+  const selectedId = selectedUser?.id ?? null;
+  useEffect(() => {
+    const interval = setInterval(() => {
       void loadUsers();
-    }, [currentUser?.profilePicture]);
-
-  const handleSelectUser = useCallback((user: SelectedUser) => {
-    setSelectedUser(user);
-  }, []);
+      if (selectedId !== null) void refreshSelection(selectedId);
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [loadUsers, refreshSelection, selectedId]);
 
   return (
     <View style={styles.container}>
@@ -88,7 +171,7 @@ export default function MapScreen() {
             coordinate={myCoords}
             title="You are here"
             description={selfUser.email}
-            onPress={() => handleSelectUser(selfUser)}
+            onPress={() => handleSelectUser(selfUser, { isCurrentUser: true })}
             anchor={{ x: 0.5, y: 0.5 }}
             centerOffset={{ x: 0, y: 0 }}
           >
@@ -118,7 +201,7 @@ export default function MapScreen() {
           <Marker
             key={user.id}
             coordinate={user.coords}
-            onPress={() => handleSelectUser({ ...user, isCurrentUser: false })}
+            onPress={() => handleSelectUser(user, { isCurrentUser: false })}
             anchor={{ x: 0.5, y: 0.5 }}
             centerOffset={{ x: 0, y: 0 }}
           >
@@ -144,17 +227,13 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      {/* ✅ Floating enlarged image overlay */}
+      {/* Floating enlarged image overlay */}
       {selectedUser && (
         <View
           pointerEvents="none"
           style={[
             styles.floatingMarker,
-            {
-              top: "42%",
-              left: "50%",
-              transform: [{ translateX: -75 }, { translateY: -75 }],
-            },
+            { top: "42%", left: "50%", transform: [{ translateX: -75 }, { translateY: -75 }] },
           ]}
         >
           {selectedUser.profilePicture ? (
@@ -166,18 +245,14 @@ export default function MapScreen() {
               }}
               style={[
                 styles.floatingImage,
-                {
-                  borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946",
-                },
+                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
               ]}
             />
           ) : (
             <View
               style={[
                 styles.floatingPlaceholder,
-                {
-                  borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946",
-                },
+                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
               ]}
             >
               <Text style={styles.floatingInitials}>
@@ -188,7 +263,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Bottom-sheet popup for selected user */}
+      {/* Bottom-sheet popup */}
       {selectedUser && (
         <>
           <TouchableOpacity
@@ -209,7 +284,9 @@ export default function MapScreen() {
               {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
             </View>
             <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
-
+            <Text style={styles.trustScoreName}>
+              Trust Score: <Text style={styles.trustScoreNumber}>{selectedUser.trustScore}</Text>
+            </Text>
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
@@ -256,20 +333,8 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 16, marginBottom: 8, fontWeight: "bold" },
   errorText: { marginTop: 8, color: "#c00", fontSize: 13 },
-
-  markerContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: 40,
-    height: 40,
-  },
-  markerImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 3,
-    backgroundColor: "#fff",
-  },
+  markerContainer: { alignItems: "center", justifyContent: "center", width: 40, height: 40 },
+  markerImage: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, backgroundColor: "#fff" },
   markerPlaceholder: {
     width: 40,
     height: 40,
@@ -280,7 +345,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   markerInitials: { fontSize: 16, fontWeight: "600", color: "#555" },
-
   floatingMarker: {
     position: "absolute",
     alignItems: "center",
@@ -305,7 +369,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   floatingInitials: { fontSize: 50, fontWeight: "700", color: "#555" },
-
   backdrop: {
     position: "absolute",
     top: 0,
@@ -314,7 +377,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: "rgba(0,0,0,0.15)",
   },
-
   sheet: {
     position: "absolute",
     left: 12,
@@ -337,12 +399,7 @@ const styles = StyleSheet.create({
   },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd" },
   sheetClose: { color: "#1f5fbf", fontWeight: "600" },
-
-  calloutHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  calloutHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   calloutTitle: { fontSize: 16, fontWeight: "600" },
   calloutSubtitle: { fontSize: 13, color: "#666", marginTop: 2 },
   calloutBadge: {
@@ -355,11 +412,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  calloutTagsWrapper: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 8,
-  },
+  calloutTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   calloutTagChip: {
     backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
@@ -370,4 +423,6 @@ const styles = StyleSheet.create({
   },
   calloutTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
   calloutEmptyTags: { marginTop: 8, fontSize: 12, color: "#999" },
+  trustScoreName: { textAlign: "right", fontSize: 15 },
+  trustScoreNumber: { color: "#007BFF" },
 });

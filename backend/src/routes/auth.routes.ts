@@ -1,3 +1,10 @@
+/**
+ * This file defines Express routes for authentication, including user registration,
+ * login, token refresh, logout, and fetching the authenticated user's profile.
+ * It handles user credential validation, password hashing, token issuance,
+ * and session invalidation using Prisma ORM and JWT-based authentication.
+ */
+
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { Router, Request, Response } from "express";
@@ -6,6 +13,7 @@ import prisma from "../prisma";
 import {
   invalidateUserSessions,
   issueTokenPair,
+  toAuthenticatedUser,
   verifyRefreshToken,
 } from "../services/auth.service";
 
@@ -13,9 +21,56 @@ const router = Router();
 
 const SALT_ROUNDS = 12;
 
-// ---------- Shared Helpers ----------
+/**
+ * Normalize a value to a trimmed string.
+ * @param value - The input value of unknown type.
+ * @returns The trimmed string if input is a string; otherwise, an empty string.
+ */
+const normalizePlain = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+};
 
-// Unified select for consistent user responses
+/**
+ * Normalize an email address by trimming and converting to lowercase.
+ * @param value - The input email value of unknown type.
+ * @returns The normalized email string.
+ */
+const normalizeEmail = (value: unknown): string => {
+  const plain = normalizePlain(value);
+  return plain.toLowerCase();
+};
+
+/**
+ * Validate the format of an email address.
+ * @param email - The email string to validate.
+ * @returns True if the email matches the regex pattern; otherwise false.
+ */
+const validateEmail = (email: string): boolean =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+/**
+ * Check if an error is a Prisma unique constraint violation.
+ * @param error - The error object to check.
+ * @returns True if the error is a Prisma unique constraint error; otherwise false.
+ */
+const handlePrismaUniqueError = (error: unknown): boolean =>
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  error.code === "P2002";
+
+/**
+ * Serialize Prisma user → safe flattened JSON
+ */
+const serializeUser = (user: any) => ({
+  ...user,
+  interestTags: (user.interestTags ?? []).map((t: any) => t.name),
+});
+
+/**
+ * Unified select for consistent user responses.
+ */
 const baseUserSelect = {
   id: true,
   username: true,
@@ -26,25 +81,13 @@ const baseUserSelect = {
   profilePicture: true,
   interestTags: { select: { name: true } },
   createdAt: true,
+  tokenVersion: true,
+  password: true,
 };
 
-// Serialize Prisma result -> flattened JSON
-const serializeUser = (user: any) => ({
-  ...user,
-  interestTags: (user.interestTags ?? []).map((t: any) => t.name),
-});
-
-// Basic normalization helpers
-const normalizePlain = (value: unknown): string =>
-  typeof value === "string" ? value.trim() : "";
-
-const normalizeEmail = (value: unknown): string =>
-  normalizePlain(value).toLowerCase();
-
-const validateEmail = (email: string): boolean =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-// Build token pair response
+/**
+ * Build the authentication response containing tokens and user info.
+ */
 const buildAuthResponse = (user: any) => {
   const tokens = issueTokenPair(user);
   return {
@@ -56,37 +99,43 @@ const buildAuthResponse = (user: any) => {
   };
 };
 
-// ---------- Register ----------
+/**
+ * POST /register
+ * Register a new user with username, email, and password.
+ */
 router.post("/register", async (req: Request, res: Response) => {
   const username = normalizePlain(req.body.username);
   const email = normalizeEmail(req.body.email);
   const password = typeof req.body.password === "string" ? req.body.password : "";
 
   if (!username || username.length < 3) {
-    return res.status(400).json({ error: "Username must be at least 3 characters long" });
+    return res
+      .status(400)
+      .json({ error: "Username must be at least 3 characters long" });
   }
   if (!email || !validateEmail(email)) {
     return res.status(400).json({ error: "A valid email address is required" });
   }
   if (!password || password.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters long" });
+    return res
+      .status(400)
+      .json({ error: "Password must be at least 8 characters long" });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-
-    const newUser = await prisma.user.create({
+    const user = await prisma.user.create({
       data: { username, email, password: hashedPassword },
       select: baseUserSelect,
     });
 
-    const tokens = buildAuthResponse(newUser);
+    const tokens = buildAuthResponse(user);
     return res.status(201).json({
       ...tokens,
-      user: serializeUser(newUser),
+      user: serializeUser(toAuthenticatedUser(user)),
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (handlePrismaUniqueError(error)) {
       return res.status(409).json({ error: "Username or email already exists" });
     }
     console.error("Register Error:", error);
@@ -94,14 +143,19 @@ router.post("/register", async (req: Request, res: Response) => {
   }
 });
 
-// ---------- Login ----------
+/**
+ * POST /login
+ * Authenticate a user with username/email and password.
+ */
 router.post("/login", async (req: Request, res: Response) => {
   const password = typeof req.body.password === "string" ? req.body.password : "";
   const identifierRaw = req.body.identifier ?? req.body.username ?? req.body.email;
   const identifier = normalizePlain(identifierRaw);
 
   if (!identifier) {
-    return res.status(400).json({ error: "Username or email is required to log in" });
+    return res
+      .status(400)
+      .json({ error: "Username or email is required to log in" });
   }
   if (!password) {
     return res.status(400).json({ error: "Password is required" });
@@ -115,7 +169,7 @@ router.post("/login", async (req: Request, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: whereClause,
-      select: { ...baseUserSelect, password: true, tokenVersion: true },
+      select: baseUserSelect,
     });
 
     if (!user) {
@@ -127,12 +181,12 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const { password: _pw, ...safeUser } = user;
     const tokens = buildAuthResponse(user);
+    const { password: _pw, ...safeUser } = user;
 
     return res.json({
       ...tokens,
-      user: serializeUser(safeUser),
+      user: serializeUser(toAuthenticatedUser(safeUser)),
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -140,7 +194,10 @@ router.post("/login", async (req: Request, res: Response) => {
   }
 });
 
-// ---------- Refresh ----------
+/**
+ * POST /refresh
+ * Refresh access tokens using a valid refresh token.
+ */
 router.post("/refresh", async (req: Request, res: Response) => {
   const refreshToken =
     typeof req.body.refreshToken === "string" ? req.body.refreshToken.trim() : "";
@@ -159,7 +216,7 @@ router.post("/refresh", async (req: Request, res: Response) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { ...baseUserSelect, tokenVersion: true },
+      select: baseUserSelect,
     });
 
     if (!user) {
@@ -173,7 +230,7 @@ router.post("/refresh", async (req: Request, res: Response) => {
     const tokens = buildAuthResponse(user);
     return res.json({
       ...tokens,
-      user: serializeUser(user),
+      user: serializeUser(toAuthenticatedUser(user)),
     });
   } catch (error) {
     console.error("Refresh Error:", error);
@@ -181,10 +238,12 @@ router.post("/refresh", async (req: Request, res: Response) => {
   }
 });
 
-// ---------- Logout ----------
+/**
+ * POST /logout
+ * Log out the authenticated user by invalidating their sessions.
+ */
 router.post("/logout", authenticate, async (req: Request, res: Response) => {
   const userId = req.user?.id;
-
   if (!userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -198,10 +257,15 @@ router.post("/logout", authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// ---------- Me ----------
+/**
+ * GET /me
+ * Retrieve the authenticated user's profile information.
+ */
 router.get("/me", authenticate, async (req: Request, res: Response) => {
   const userId = req.user?.id;
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   try {
     const user = await prisma.user.findUnique({
@@ -209,9 +273,11 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
       select: baseUserSelect,
     });
 
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
-    return res.json(serializeUser(user));
+    return res.json(serializeUser(toAuthenticatedUser(user)));
   } catch (error) {
     console.error("Profile Error:", error);
     return res.status(500).json({ error: "Failed to load profile" });

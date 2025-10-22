@@ -7,7 +7,6 @@ export const API_BASE_URL =
     ? "http://10.0.2.2:8000" // Android emulator
     : "http://localhost:8000"); // iOS simulator or web
 
-
 type JsonRecord = Record<string, unknown>;
 
 const normalizeString = (value: unknown, fallback = ""): string =>
@@ -15,6 +14,11 @@ const normalizeString = (value: unknown, fallback = ""): string =>
 
 const normalizeOptionalString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
+
+const normalizeOptionalNumber = (value: unknown): number | undefined => {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+};
 
 const normalizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -50,7 +54,7 @@ const resolveProfilePictureUrl = (path: unknown): string | null => {
   return `${API_BASE_URL}${path}`;
 };
 
-// ✅ Updated user parser (includes profilePicture)
+// ✅ Updated user parser (includes trustScore + profilePicture)
 export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   id: parseUserId(payload.id),
   username:
@@ -60,7 +64,8 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   name: normalizeOptionalString(payload.name),
   createdAt: normalizeOptionalString(payload.createdAt),
   interestTags: normalizeStringArray(payload.interestTags),
-  profilePicture: resolveProfilePictureUrl(payload.profilePicture), // ✅ new line
+  trustScore: normalizeOptionalNumber(payload.trustScore),
+  profilePicture: resolveProfilePictureUrl(payload.profilePicture),
 });
 
 const buildAuthHeaders = (token: string): Record<string, string> => ({

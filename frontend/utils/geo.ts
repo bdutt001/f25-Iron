@@ -3,7 +3,8 @@ export type ApiUser = {
   email: string;
   name?: string | null;
   interestTags?: string[] | null;
-  profilePicture?: string | null; // added
+  profilePicture?: string | null;
+  trustScore?: number;
 };
 
 export type NearbyUser = {
@@ -11,11 +12,12 @@ export type NearbyUser = {
   name: string;
   email: string;
   interestTags: string[];
-  profilePicture?: string | null; // added here too
+  profilePicture?: string | null;
   coords: {
     latitude: number;
     longitude: number;
   };
+  trustScore: number;
 };
 
 function seededRandom(seed: number): number {
@@ -26,7 +28,7 @@ function seededRandom(seed: number): number {
 function stableOffsets(seed: number) {
   const base = seed || 1;
   const angle = seededRandom(base * 1.37) * 2 * Math.PI;
-  const radius = 0.003 + seededRandom(base * 3.11) * 0.002; // roughly 300-500m
+  const radius = 0.003 + seededRandom(base * 3.11) * 0.002; // roughly 300–500m
   const latOffset = Math.sin(angle) * radius;
   const lngOffset = Math.cos(angle) * radius;
   return { latOffset, lngOffset };
@@ -47,7 +49,10 @@ export function scatterUsersAround(
   if (!users.length) return [];
 
   return users.map((user) => {
-    const seed = typeof user.id === "number" ? user.id : seededRandom(user.email?.length ?? 1) * 1000;
+    const seed =
+      typeof user.id === "number"
+        ? user.id
+        : seededRandom(user.email?.length ?? 1) * 1000;
     const { latOffset, lngOffset } = stableOffsets(seed);
 
     return {
@@ -55,11 +60,12 @@ export function scatterUsersAround(
       email: user.email,
       name: user.name ?? user.email,
       interestTags: toInterestTags(user.interestTags),
-      profilePicture: user.profilePicture ?? null, // ✅ propagate profile picture
+      profilePicture: user.profilePicture ?? null,
       coords: {
         latitude: baseLat + latOffset,
         longitude: baseLng + lngOffset,
       },
+      trustScore: user.trustScore ?? 0,
     };
   });
 }
@@ -77,8 +83,10 @@ export function haversineDistanceMeters(
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return EARTH_RADIUS_METERS * c;
 }

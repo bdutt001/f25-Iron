@@ -1,3 +1,9 @@
+/**
+ * NearbyScreen component displays a list of users nearby relative to the current user's location.
+ * For demo purposes, it simulates user proximity centered around Old Dominion University (Norfolk, VA).
+ * It fetches user data from the API, calculates distances, and allows toggling visibility status.
+ */
+
 import * as Location from "expo-location";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -9,7 +15,11 @@ import {
   StyleSheet,
   Text,
   View,
+  Pressable,
+  Alert,
 } from "react-native";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import {
@@ -24,11 +34,13 @@ import ReportButton from "../../components/ReportButton";
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
+// Types
 type NearbyWithDistance = NearbyUser & {
   distanceMeters: number;
 };
 
 export default function NearbyScreen() {
+  // State variables
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -44,10 +56,16 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const { status, setStatus, accessToken, currentUser } = useUser();
 
+  /**
+   * Fetches users from the API, filters out the current user,
+   * scatters them around the given coordinates, calculates distances,
+   * sorts by proximity, and updates the users state.
+   * Handles loading and error states accordingly.
+   */
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
-        // ✅ If no access token, show demo users (for testing)
+        // ✅ If no access token, show demo users
         if (!accessToken) {
           console.log("No access token available, using demo users");
           const demoUsers: NearbyWithDistance[] = [
@@ -62,6 +80,7 @@ export default function NearbyScreen() {
                 longitude: ODU_CENTER.longitude + 0.001,
               },
               distanceMeters: 100,
+              trustScore: 99,
             },
             {
               id: 2,
@@ -74,6 +93,7 @@ export default function NearbyScreen() {
                 longitude: ODU_CENTER.longitude - 0.001,
               },
               distanceMeters: 150,
+              trustScore: 95,
             },
           ];
           setUsers(demoUsers);
@@ -90,6 +110,7 @@ export default function NearbyScreen() {
         }
 
         const data = (await response.json()) as ApiUser[];
+        // Filter out current user
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
@@ -120,6 +141,10 @@ export default function NearbyScreen() {
     [accessToken, currentUser]
   );
 
+  /**
+   * Requests location (simulated as ODU center for demo),
+   * sets location state, and loads users near that location.
+   */
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
@@ -141,10 +166,12 @@ export default function NearbyScreen() {
     }
   }, [loadUsers]);
 
+  // Load users on mount and when profile picture or visibility changes
   useEffect(() => {
     requestAndLoad();
   }, [requestAndLoad, currentUser?.profilePicture, status]);
 
+  // Pull-to-refresh
   const onRefresh = useCallback(async () => {
     if (!location) {
       await requestAndLoad();
@@ -154,6 +181,40 @@ export default function NearbyScreen() {
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
 
+  // Start chat session
+  const startChat = async (receiverId: number, receiverName: string) => {
+    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          participants: [currentUser.id, receiverId],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start chat (${response.status})`);
+      }
+
+      const data = (await response.json()) as { chatId: number };
+      const { chatId } = data;
+
+      router.push({
+        pathname: "/(tabs)/messages/[chatId]",
+        params: { chatId: String(chatId), name: receiverName, receiverId: String(receiverId) },
+      });
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to start chat. Please try again.");
+    }
+  };
+
+  // Loading + error UI
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -182,7 +243,7 @@ export default function NearbyScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header section */}
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Visibility: {status}</Text>
         <Button
@@ -230,6 +291,10 @@ export default function NearbyScreen() {
                 <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
               </View>
 
+              <Text style={styles.trustScoreName}>
+                Trust Score: <Text style={styles.trustScoreNumber}>{item.trustScore ?? "—"}</Text>
+              </Text>
+
               {item.interestTags.length > 0 && (
                 <View style={styles.cardTagsWrapper}>
                   {item.interestTags.map((tag) => (
@@ -240,7 +305,6 @@ export default function NearbyScreen() {
                 </View>
               )}
 
-              {/* Report button */}
               <View style={styles.cardActions}>
                 <ReportButton
                   reportedUserId={item.id}
@@ -249,6 +313,13 @@ export default function NearbyScreen() {
                   onReportSuccess={() => console.log(`Reported user ${item.name}`)}
                 />
               </View>
+
+              <Pressable
+                onPress={() => startChat(item.id, item.name || item.email)}
+                style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
+              >
+                <Ionicons name="chatbubble" size={10} color="white" />
+              </Pressable>
             </View>
           );
         }}
@@ -309,5 +380,22 @@ const styles = StyleSheet.create({
   },
   cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
   cardActions: { marginTop: 12, flexDirection: "row", justifyContent: "flex-end" },
+  chatButton: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    width: 20,
+    height: 20,
+    backgroundColor: "#007BFF",
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  trustScoreName: { textAlign: "right", bottom: 25, fontSize: 15 },
+  trustScoreNumber: { color: "#007BFF" },
   flexGrow: { flexGrow: 1 },
 });
