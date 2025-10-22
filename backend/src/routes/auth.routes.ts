@@ -21,16 +21,16 @@ const router = Router();
 
 type UserAuthRecord = {
   id: number;
-  username: string;
   email: string | null;
+  name: string | null;
   password: string;
   tokenVersion: number;
 };
 
 const userAuthSelect = {
   id: true,
-  username: true,
   email: true,
+  name: true,
   password: true,
   tokenVersion: true,
 } satisfies Record<keyof UserAuthRecord, boolean>;
@@ -65,7 +65,13 @@ const normalizeEmail = (value: unknown): string => {
  * @returns An object containing token type, access & refresh tokens, expiration info, and user data.
  */
 const buildAuthResponse = (user: UserAuthRecord) => {
-  const tokens = issueTokenPair(user);
+  const tokens = issueTokenPair({
+    id: user.id,
+    email: user.email,
+    name: user.name ?? undefined,
+    tokenVersion: user.tokenVersion,
+  });
+
   return {
     tokenType: tokens.tokenType,
     accessToken: tokens.accessToken,
@@ -74,8 +80,8 @@ const buildAuthResponse = (user: UserAuthRecord) => {
     refreshExpiresIn: tokens.refreshExpiresIn,
     user: toAuthenticatedUser({
       id: user.id,
-      username: user.username,
       email: user.email,
+      name: user.name ?? undefined,
     }),
   };
 };
@@ -99,22 +105,15 @@ const validateEmail = (email: string): boolean =>
 
 /**
  * POST /register
- * Register a new user with username, email, and password.
+ * Register a new user with email, optional name, and password.
  * Does not require authentication.
  * Returns 201 with auth tokens and user info on success.
  */
 router.post("/register", async (req: Request, res: Response) => {
   // Extract and normalize input values
-  const username = normalizePlain(req.body.username);
   const email = normalizeEmail(req.body.email);
+  const name = normalizePlain(req.body.name);
   const password = typeof req.body.password === "string" ? req.body.password : "";
-
-  // Validate username length
-  if (!username || username.length < 3) {
-    return res
-      .status(400)
-      .json({ error: "Username must be at least 3 characters long" });
-  }
 
   // Validate email format
   if (!email || !validateEmail(email)) {
@@ -134,9 +133,9 @@ router.post("/register", async (req: Request, res: Response) => {
     // Create the user in the database
     const user = await prisma.user.create({
       data: {
-        username,
         email,
         password: hashedPassword,
+        ...(name ? { name } : {}),
       },
       select: userAuthSelect,
     });
@@ -144,10 +143,10 @@ router.post("/register", async (req: Request, res: Response) => {
     // Respond with authentication tokens and user info
     return res.status(201).json(buildAuthResponse(user));
   } catch (error) {
-    // Handle unique constraint violation (username/email already exists)
+    // Handle unique constraint violation (email already exists)
     if (handlePrismaUniqueError(error)) {
       return res.status(409).json({
-        error: "Username or email already exists",
+        error: "Email already exists",
       });
     }
 
@@ -159,22 +158,18 @@ router.post("/register", async (req: Request, res: Response) => {
 
 /**
  * POST /login
- * Authenticate a user with username/email and password.
+ * Authenticate a user with email and password.
  * Does not require authentication.
  * Returns auth tokens and user info on success.
  */
 router.post("/login", async (req: Request, res: Response) => {
-  // Extract password and identifier from request body
+  // Extract password and email from request body
   const password = typeof req.body.password === "string" ? req.body.password : "";
-  const identifierRaw =
-    req.body.identifier ?? req.body.username ?? req.body.email;
-  const identifier = normalizePlain(identifierRaw);
+  const email = normalizeEmail(req.body.email);
 
-  // Validate presence of identifier
-  if (!identifier) {
-    return res
-      .status(400)
-      .json({ error: "Username or email is required to log in" });
+  // Validate email format
+  if (!email || !validateEmail(email)) {
+    return res.status(400).json({ error: "A valid email address is required to log in" });
   }
 
   // Validate presence of password
@@ -182,16 +177,10 @@ router.post("/login", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Password is required" });
   }
 
-  // Determine whether identifier is an email or username
-  const whereClause =
-    identifier.includes("@") && validateEmail(identifier)
-      ? { email: normalizeEmail(identifier) }
-      : { username: identifier };
-
   try {
-    // Find user by username or email
+    // Find user by email
     const user = await prisma.user.findUnique({
-      where: whereClause,
+      where: { email },
       select: userAuthSelect,
     });
 
@@ -313,7 +302,6 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
       where: { id: userId },
       select: {
         id: true,
-        username: true,
         email: true,
         name: true,
         status: true,

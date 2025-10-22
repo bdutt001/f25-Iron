@@ -20,38 +20,35 @@ export interface TokenPair {
 }
 
 export interface AuthTokenPayload extends JwtPayload {
-  username?: string;
   email?: string | null;
+  name?: string | null;
   tokenVersion: number;
 }
 
+type TokenUser = {
+  id: number;
+  email: string | null;
+  name?: string | null;
+  tokenVersion: number;
+};
+
 /**
  * Builds the payload object for a JWT token from a user object.
- * @param user - The user object containing id, username, email, and tokenVersion.
+ * @param user - The user object containing id, email, optional name, and tokenVersion.
  * @returns An object representing the payload for JWT.
  */
-export const buildTokenPayload = (user: {
-  id: number;
-  username: string;
-  email: string | null;
-  tokenVersion: number;
-}): Record<string, unknown> => ({
-  username: user.username,
+export const buildTokenPayload = (user: TokenUser): Record<string, unknown> => ({
   email: user.email,
+  name: user.name,
   tokenVersion: user.tokenVersion,
 });
 
 /**
  * Issues a pair of JWT tokens (access and refresh) for the given user.
- * @param user - The user object containing id, username, email, and tokenVersion.
+ * @param user - The user object containing id, email, optional name, and tokenVersion.
  * @returns An object containing the access token, refresh token, their expirations, and token type.
  */
-export const issueTokenPair = (user: {
-  id: number;
-  username: string;
-  email: string | null;
-  tokenVersion: number;
-}): TokenPair => {
+export const issueTokenPair = (user: TokenUser): TokenPair => {
   const payload = buildTokenPayload(user);
 
   const accessToken = signJwt(payload, jwtConfig.accessSecret, {
@@ -86,15 +83,15 @@ export const verifyRefreshToken = (token: string): AuthTokenPayload =>
 
 /**
  * Converts a user object to an AuthenticatedUser object.
- * @param user - An object with id, username, and email properties.
+ * @param user - An object with id, email, and optional name properties.
  * @returns An AuthenticatedUser object.
  */
 export const toAuthenticatedUser = (
-  user: Pick<AuthenticatedUser, "id" | "username" | "email">
+  user: Pick<AuthenticatedUser, "id" | "email" | "name">
 ): AuthenticatedUser => ({
   id: user.id,
-  username: user.username,
   email: user.email,
+  name: user.name,
 });
 
 /**

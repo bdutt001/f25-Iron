@@ -7,7 +7,6 @@ const safeSelect = {
   id: true,
   email: true,
   name: true,
-  username: true,
   interestTags: { select: { name: true } },
   createdAt: true,
 } as const;
@@ -16,7 +15,6 @@ type SafeUserRecord = {
   id: number;
   email: string | null;
   name: string | null;
-  username: string | null;
   interestTags?: { name: string }[];
   createdAt: Date;
 };
@@ -38,10 +36,8 @@ export const signup = async (req: Request, res: Response) => {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: "Email already registered" });
 
-    const username = email.split("@")[0] || email;
-
     const userRecord = (await prisma.user.create({
-      data: { email, name, username, password: passwordRaw },
+      data: { email, name, password: passwordRaw },
       select: safeSelect,
     })) as SafeUserRecord;
 

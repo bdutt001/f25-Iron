@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client";
 
 export const userWithTagsSelect = {
   id: true,
-  username: true,
   email: true,
   name: true,
   createdAt: true,
