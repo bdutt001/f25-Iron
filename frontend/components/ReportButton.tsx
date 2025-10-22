@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { useUser } from "../context/UserContext";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/utils/api";
 
 type ReportButtonProps = {
   reportedUserId: number;
   reportedUserName: string;
-  onReportSuccess?: () => void;
+  onReportSuccess?: (updatedTrustScore: number) => void;
   size?: "small" | "medium" | "large";
   style?: any;
+  defaultSeverity?: number;
 };
 
 export default function ReportButton({
@@ -18,106 +18,95 @@ export default function ReportButton({
   onReportSuccess,
   size = "small",
   style,
+  defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, accessToken } = useUser(); // ✅ Get user + token from context
+  const { currentUser, isLoggedIn, accessToken } = useUser();
 
   const handleReport = async () => {
-    // Check if user is logged in
-    if (!isLoggedIn || !currentUser) {
+    if (!isLoggedIn || !currentUser || !accessToken) {
       Alert.alert("Error", "You must be logged in to report users.");
       return;
     }
 
-    const reporterId = currentUser.id; // ✅ Local variable only, not passed as prop
-
-    // Prevent self-reporting
+    const reporterId = currentUser.id;
     if (reporterId === reportedUserId) {
       Alert.alert("Error", "You cannot report yourself.");
       return;
     }
 
-    // Show confirmation dialog
     Alert.alert(
       "Report User",
       `Are you sure you want to report ${reportedUserName}?`,
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Report",
-          style: "destructive",
-          onPress: () => showReasonDialog(),
-        },
+        { text: "Cancel", style: "cancel" },
+        { text: "Report", style: "destructive", onPress: () => showReasonDialog() },
       ]
     );
   };
 
   const showReasonDialog = () => {
-    // For now, show predefined reasons. Later, this could be a modal with text input
-    Alert.alert(
-      "Reason for Report",
-      "Why are you reporting this user?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Inappropriate Behavior",
-          onPress: () => submitReport("Inappropriate Behavior"),
-        },
-        {
-          text: "Spam/Fake Profile",
-          onPress: () => submitReport("Spam/Fake Profile"),
-        },
-        {
-          text: "Harassment",
-          onPress: () => submitReport("Harassment"),
-        },
-        {
-          text: "Other",
-          onPress: () => submitReport("Other"),
-        },
-      ]
-    );
+    Alert.alert("Reason for Report", "Why are you reporting this user?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Inappropriate Behavior", onPress: () => submitReport("Inappropriate Behavior") },
+      { text: "Spam/Fake Profile", onPress: () => submitReport("Spam/Fake Profile") },
+      { text: "Harassment", onPress: () => submitReport("Harassment") },
+      { text: "Other", onPress: () => submitReport("Other") },
+    ]);
   };
 
-  const submitReport = async (reason: string) => {
-    if (!currentUser) return;
+  const submitReport = async (reason: string, severityOverride?: number) => {
+    if (!currentUser || !accessToken) return;
 
     setIsReporting(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reports`, {
+      const severity =
+        typeof severityOverride === "number" && Number.isFinite(severityOverride)
+          ? severityOverride
+          : defaultSeverity;
+
+      const response = await fetch(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`, // ✅ Uses token from context
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          reason,
-          reporterId: currentUser.id, // ✅ Obtained internally
           reportedId: reportedUserId,
+          reason,
+          severity,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        const message = (errorData as any)?.error || "Failed to submit report";
+      const payload = (await response.json()) as { trustScore?: number; error?: string };
+
+      if (!response.ok || typeof payload.trustScore !== "number") {
+        const message = payload?.error ?? "Failed to submit report";
         throw new Error(message);
       }
 
-      Alert.alert(
-        "Report Submitted",
-        "Thank you for your report. We will review it promptly."
-      );
-      onReportSuccess?.();
+      let latestTrustScore = payload.trustScore;
+
+      // Refresh the trust score from the server
+      try {
+        const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (trustResponse.ok) {
+          const trustData = (await trustResponse.json()) as { trustScore?: number };
+          if (typeof trustData.trustScore === "number") {
+            latestTrustScore = trustData.trustScore;
+          }
+        }
+      } catch (error) {
+        console.warn("Unable to refresh trust score after report:", error);
+      }
+
+      Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
+      onReportSuccess?.(latestTrustScore);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to submit report";
+      const message = error instanceof Error ? error.message : "Failed to submit report";
       Alert.alert("Error", message);
     } finally {
       setIsReporting(false);
@@ -160,8 +149,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "500",
   },
-
-  // Size variants
   small: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -170,7 +157,6 @@ const styles = StyleSheet.create({
   smallText: {
     fontSize: 12,
   },
-
   medium: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -179,7 +165,6 @@ const styles = StyleSheet.create({
   mediumText: {
     fontSize: 14,
   },
-
   large: {
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -188,8 +173,6 @@ const styles = StyleSheet.create({
   largeText: {
     fontSize: 16,
   },
-
-  // Disabled state
   disabled: {
     backgroundColor: "#6c757d",
     opacity: 0.6,
