@@ -15,20 +15,20 @@ import type { AuthenticatedUser } from "../types/auth";
 
 // Interface describing the expected payload fields in the authentication JWT token
 interface AuthTokenPayload extends JwtPayload {
-  username?: unknown;
   email?: unknown;
+  name?: unknown;
   tokenVersion?: unknown;
 }
 
 // Helper to construct an AuthenticatedUser object from a user record
 const buildUserFromRecord = (record: {
   id: number;
-  username: string;
   email: string | null;
+  name: string | null;
 }): AuthenticatedUser => ({
   id: record.id,
-  username: record.username,
   email: record.email,
+  name: record.name,
 });
 
 // Express middleware to authenticate requests using JWT
@@ -70,8 +70,8 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       where: { id: userId },
       select: {
         id: true,
-        username: true,
         email: true,
+        name: true,
         tokenVersion: true,
       },
     });

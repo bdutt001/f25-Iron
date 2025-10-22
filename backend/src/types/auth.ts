@@ -1,7 +1,12 @@
+/**
+ * AuthenticatedUser type
+ *
+ * Represents the safe, minimal user data returned to the client after authentication.
+ */
 export interface AuthenticatedUser {
   id: number;
-  username?: string;
   email: string | null;
-  profilePicture: string | null; // ✅ add this
-  interestTags?: string[]; // ✅ include interest tags
+  name?: string | null;
+  profilePicture: string | null;
+  interestTags?: string[];
 }

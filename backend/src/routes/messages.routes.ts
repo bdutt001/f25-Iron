@@ -98,7 +98,7 @@
 
 //       return {
 //         id: otherParticipant?.id.toString() ?? "",
-//         name: otherParticipant?.name ?? otherParticipant?.username ?? "Unknown",
+//         name: otherParticipant?.name ?? otherParticipant?.email ?? "Unknown",
 //         lastMessage: lastMsg?.content,
 //         lastTimestamp: lastMsg?.createdAt.toISOString(),
 //       };
@@ -246,7 +246,7 @@ router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res)
 
       return {
         id: chat.id.toString(), // use ChatSession ID
-        name: otherParticipant?.name ?? otherParticipant?.username ?? "Unknown",
+        name: otherParticipant?.name ?? otherParticipant?.email ?? "Unknown",
         lastMessage: lastMsg?.content,
         lastTimestamp: lastMsg?.createdAt.toISOString(),
         receiverId: otherParticipant?.id, // ✅ Added so frontend knows the other participant's user ID (needed for reporting)

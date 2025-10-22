@@ -3,7 +3,6 @@ import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import prisma from "../prisma";
 import fs from "fs";
-import path from "path";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
 import {
@@ -16,10 +15,15 @@ import {
   userWithTagsSelect,
 } from "../services/users.services";
 
-
-// ensure env vars load before config
+// Load environment variables early
 dotenv.config();
-if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+
+// Cloudinary setup
+if (
+  !process.env.CLOUDINARY_CLOUD_NAME ||
+  !process.env.CLOUDINARY_API_KEY ||
+  !process.env.CLOUDINARY_API_SECRET
+) {
   throw new Error("❌ Missing Cloudinary environment variables.");
 }
 cloudinary.config({
@@ -28,29 +32,31 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET as string,
 });
 
-
+// ---------- Utility ----------
 const toNumberId = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
 };
 
-// Create a new user
+// ---------- Create User ----------
 export const createUser = async (req: Request, res: Response) => {
-  const emailRaw = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  const usernameRaw = typeof req.body.username === "string" ? req.body.username.trim() : "";
-  const nameRaw = typeof req.body.name === "string" ? req.body.name.trim() : undefined;
-  const passwordRaw = typeof req.body.password === "string" ? req.body.password : "";
-  const interestTagsInput = Array.isArray(req.body.interestTags) ? normalizeTagNames(req.body.interestTags) : [];
+  const emailRaw =
+    typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const nameRaw =
+    typeof req.body.name === "string" ? req.body.name.trim() : undefined;
+  const passwordRaw =
+    typeof req.body.password === "string" ? req.body.password : "";
+  const interestTagsInput = Array.isArray(req.body.interestTags)
+    ? normalizeTagNames(req.body.interestTags)
+    : [];
 
   if (!emailRaw) return res.status(400).json({ error: "Email is required" });
   if (!passwordRaw) return res.status(400).json({ error: "Password is required" });
-  if (!usernameRaw) return res.status(400).json({ error: "Username is required" });
 
   try {
     const hashedPassword = await bcrypt.hash(passwordRaw, 10);
 
     const data: Prisma.UserCreateInput = {
-      username: usernameRaw,
       email: emailRaw,
       password: hashedPassword,
     };
@@ -74,7 +80,7 @@ export const createUser = async (req: Request, res: Response) => {
   }
 };
 
-// Get all users
+// ---------- Get All Users ----------
 export const getUsers = async (_req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({ select: userWithTagsSelect });
@@ -85,12 +91,10 @@ export const getUsers = async (_req: Request, res: Response) => {
   }
 };
 
-// Get one user by ID
+// ---------- Get User by ID ----------
 export const getUserById = async (req: Request, res: Response) => {
   const userId = toNumberId(req.params.id);
-  if (!userId) {
-    return res.status(400).json({ error: "User not found" });
-  }
+  if (!userId) return res.status(400).json({ error: "User not found" });
 
   try {
     const user = await prisma.user.findUnique({
@@ -105,15 +109,17 @@ export const getUserById = async (req: Request, res: Response) => {
   }
 };
 
-// Update a user
+// ---------- Update User ----------
 export const updateUser = async (req: Request, res: Response) => {
   const userId = toNumberId(req.params.id);
   if (!userId) return res.status(400).json({ error: "User ID is required" });
 
-  const emailRaw = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : undefined;
-  const usernameRaw = typeof req.body.username === "string" ? req.body.username.trim() : undefined;
-  const nameRaw = typeof req.body.name === "string" ? req.body.name.trim() : undefined;
-  const passwordRaw = typeof req.body.password === "string" ? req.body.password.trim() : undefined;
+  const emailRaw =
+    typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : undefined;
+  const nameRaw =
+    typeof req.body.name === "string" ? req.body.name.trim() : undefined;
+  const passwordRaw =
+    typeof req.body.password === "string" ? req.body.password.trim() : undefined;
   const interestTagsProvided = Array.isArray(req.body.interestTags)
     ? normalizeTagNames(req.body.interestTags)
     : null;
@@ -123,16 +129,13 @@ export const updateUser = async (req: Request, res: Response) => {
     let passwordUpdated = false;
 
     if (emailRaw) data.email = emailRaw;
-    if (usernameRaw) data.username = usernameRaw;
     if (typeof nameRaw === "string") data.name = nameRaw;
 
     if (passwordRaw) {
       data.password = await bcrypt.hash(passwordRaw, 10);
       passwordUpdated = true;
     }
-    if (passwordUpdated) {
-      data.tokenVersion = { increment: 1 };
-    }
+    if (passwordUpdated) data.tokenVersion = { increment: 1 };
 
     if (interestTagsProvided !== null) {
       const interestUpdate: Prisma.TagUpdateManyWithoutUsersNestedInput = { set: [] };
@@ -149,34 +152,30 @@ export const updateUser = async (req: Request, res: Response) => {
     });
     res.json(serializeUser(user));
   } catch (err: any) {
-    if (err?.code === "P2025") {
+    if (err?.code === "P2025")
       return res.status(404).json({ error: "User not found" });
-    }
     console.error("Failed to update user", err);
     res.status(500).json({ error: "Failed to update user" });
   }
 };
 
-// Delete a user
+// ---------- Delete User ----------
 export const deleteUser = async (req: Request, res: Response) => {
   const userId = toNumberId(req.params.id);
-  if (!userId) {
-    return res.status(400).json({ error: "User not found" });
-  }
+  if (!userId) return res.status(400).json({ error: "User not found" });
 
   try {
     await prisma.user.delete({ where: { id: userId } });
     res.status(204).send();
   } catch (err: any) {
-    if (err?.code === "P2025") {
+    if (err?.code === "P2025")
       return res.status(404).json({ error: "User not found" });
-    }
     console.error("Failed to delete user", err);
     res.status(500).json({ error: "Failed to delete user" });
   }
 };
 
-// List all user: GET /api/users
+// ---------- List Users ----------
 export const listUsers = async (_req: Request, res: Response) => {
   try {
     const users = await getAllUsers();
@@ -187,19 +186,17 @@ export const listUsers = async (_req: Request, res: Response) => {
   }
 };
 
-// Add tag to a specific user: POST /api/users/:id/tags
+// ---------- Add Tag ----------
 export const addTag = async (req: Request, res: Response) => {
   try {
     const userId = toNumberId(req.params.id);
-    if (!userId) {
+    if (!userId)
       return res.status(400).json({ error: "Invalid user ID" });
-    }
 
     const tagName = typeof req.body.tagName === "string" ? req.body.tagName : "";
     const normalized = normalizeTagNames([tagName])[0];
-    if (!normalized) {
+    if (!normalized)
       return res.status(400).json({ error: "tagName is required" });
-    }
 
     const user = await addTagToUser(userId, normalized);
     res.json(user);
@@ -209,14 +206,12 @@ export const addTag = async (req: Request, res: Response) => {
   }
 };
 
-// Look for Users with a tag: GET /api/users/tags/:tagName
+// ---------- Find Users by Tag ----------
 export const getUsersByTag = async (req: Request, res: Response) => {
   try {
     const normalized = normalizeTagNames([req.params.tagName ?? ""])[0];
-
-    if (!normalized) {
+    if (!normalized)
       return res.status(400).json({ error: "tagName parameter is required" });
-    }
 
     const users = await findUsersByTag(normalized);
     res.json(users);
@@ -226,18 +221,16 @@ export const getUsersByTag = async (req: Request, res: Response) => {
   }
 };
 
-// Remove a tag from a user: DELETE /api/users/:id/tags/:tagName
+// ---------- Remove Tag ----------
 export const deleteTagFromUser = async (req: Request, res: Response) => {
   try {
     const userId = toNumberId(req.params.id);
     const normalized = normalizeTagNames([req.params.tagName ?? ""])[0];
 
-    if (!userId) {
+    if (!userId)
       return res.status(400).json({ error: "Invalid user ID" });
-    }
-    if (!normalized) {
+    if (!normalized)
       return res.status(400).json({ error: "tagName is required" });
-    }
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -252,41 +245,37 @@ export const deleteTagFromUser = async (req: Request, res: Response) => {
     res.json(serializeUser(user));
   } catch (error: any) {
     console.error("Error removing tag from user:", error);
-    if (error?.code === "P2025") {
+    if (error?.code === "P2025")
       return res.status(404).json({ error: "User or tag not found" });
-    }
     res.status(500).json({ error: "Failed to remove tag from user" });
   }
 };
 
+// ---------- Upload Profile Picture ----------
 export const uploadProfilePicture = async (req: Request, res: Response) => {
   try {
     const userId = Number(req.params.id);
-    if (!userId) {
+    if (!userId)
       return res.status(400).json({ error: "Invalid user ID" });
-    }
-
-    if (!req.file) {
+    if (!req.file)
       return res.status(400).json({ error: "No file uploaded" });
-    }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
+    if (!user)
       return res.status(404).json({ error: "User not found" });
-    }
 
-    // Upload image to Cloudinary
+    // Upload to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-      folder: "minglemap_profiles", // optional folder name
-      transformation: [{ width: 512, height: 512, crop: "limit" }], // optional resize limit
+      folder: "minglemap_profiles",
+      transformation: [{ width: 512, height: 512, crop: "limit" }],
     });
 
-    // Delete local temp file after upload
+    // Remove temp file
     fs.unlink(req.file.path, (err) => {
       if (err) console.warn("⚠️ Could not delete local temp file:", err.message);
     });
 
-    // Save Cloudinary URL to database
+    // Save URL in DB
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { profilePicture: uploadResult.secure_url },
@@ -303,5 +292,3 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Failed to upload profile picture" });
   }
 };
-
-
