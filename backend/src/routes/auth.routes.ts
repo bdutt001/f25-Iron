@@ -186,7 +186,7 @@ router.post("/login", async (req: Request, res: Response) => {
 
     return res.json({
       ...tokens,
-      user: serializeUser(toAuthenticatedUser(safeUser)),
+      user: serializeUser(user),
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -230,7 +230,7 @@ router.post("/refresh", async (req: Request, res: Response) => {
     const tokens = buildAuthResponse(user);
     return res.json({
       ...tokens,
-      user: serializeUser(toAuthenticatedUser(user)),
+      user: serializeUser(user), // ✅ keep raw Prisma user, interestTags intact
     });
   } catch (error) {
     console.error("Refresh Error:", error);
@@ -276,8 +276,9 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
-    return res.json(serializeUser(toAuthenticatedUser(user)));
+    
+  console.log("🧩 /me → user.interestTags:", user.interestTags); // ✅ debug log
+    return res.json(serializeUser(user)); // ✅ preserve interestTags
   } catch (error) {
     console.error("Profile Error:", error);
     return res.status(500).json({ error: "Failed to load profile" });

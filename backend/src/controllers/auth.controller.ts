@@ -65,7 +65,16 @@ export const login = async (req: Request, res: Response) => {
 
     const userRecord = (await prisma.user.findUnique({
       where: { email },
-      select: { ...safeSelect, password: true } as any,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        username: true,
+        profilePicture: true,
+        password: true,
+        interestTags: { select: { name: true } }, // ✅ FIXED
+        createdAt: true,
+      },
     })) as (SafeUserRecord & { password: string }) | null;
 
     if (!userRecord) return res.status(401).json({ error: "Invalid credentials" });

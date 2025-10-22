@@ -84,7 +84,7 @@ const extractErrorMessage = async (response: Response): Promise<string> => {
 
 // ✅ Fetch logged-in user's profile
 export const fetchProfile = async (accessToken: string): Promise<CurrentUser> => {
-  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
     headers: buildAuthHeaders(accessToken),
   });
 

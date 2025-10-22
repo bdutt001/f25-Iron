@@ -22,22 +22,12 @@ type UserContextType = {
   isLoggedIn: boolean;
 };
 
+
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [status, setStatus] = useState<"Visible" | "Hidden">("Visible");
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
-    // Demo user for testing both trustScore and profilePicture
-    return {
-      id: 99,
-      email: "demo@example.com",
-      name: "Demo User",
-      interestTags: ["Testing", "Reports"],
-      profilePicture: null,
-      trustScore: 99,
-    };
-  });
-
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
@@ -47,6 +37,11 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const isLoggedIn = currentUser !== null;
+  
+  // 🧩 Add this right here (before the return)
+  React.useEffect(() => {
+    console.log("👤 currentUser updated:", currentUser);
+  }, [currentUser]);
 
   return (
     <UserContext.Provider

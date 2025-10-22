@@ -95,11 +95,17 @@ export const toAuthenticatedUser = (user: {
   username?: string;
   email?: string | null;
   profilePicture?: string | null;
+  interestTags?: { name: string }[]; // ✅ add this line
 }): AuthenticatedUser => ({
   id: user.id,
   username: user.username ?? "",
   email: user.email ?? null,
   profilePicture: user.profilePicture ?? null,
+  interestTags: Array.isArray(user.interestTags)
+    ? user.interestTags.map((t: any) =>
+        typeof t === "string" ? t : t.name
+      )
+    : [],
 });
 
 /**

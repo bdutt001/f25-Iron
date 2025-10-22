@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { Alert, Image } from "react-native";
 import {
   ActivityIndicator,
@@ -132,16 +133,12 @@ export default function ProfileScreen() {
     router.replace("/login");
   };
 
-  // ✅ Upload Profile Picture
+  // ✅ Stable version for Android + iOS
   const uploadImage = async () => {
     try {
-      const permissionResult =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert(
-          "Permission required",
-          "You must grant photo access to upload a profile picture."
-        );
+        Alert.alert("Permission required", "You must grant photo access to upload a profile picture.");
         return;
       }
 
@@ -154,39 +151,36 @@ export default function ProfileScreen() {
 
       if (result.canceled) return;
 
-      const uri = result.assets[0].uri;
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const mimeType = asset.mimeType || "image/jpeg";
       console.log("📸 Selected image URI:", uri);
 
-      if (!currentUser) {
+      if (!currentUser || !accessToken) {
         Alert.alert("Error", "You must be logged in to upload a profile picture.");
         return;
       }
 
-      const formData = new FormData();
-      formData.append("image", {
-        uri,
-        name: "profile.jpg",
-        type: "image/jpeg",
-      } as any);
-
       const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
       console.log("🌐 Uploading to:", uploadUrl);
 
-      const response = await fetch(uploadUrl, {
-        method: "POST",
+      const res = await FileSystem.uploadAsync(uploadUrl, uri, {
+        httpMethod: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-        body: formData as any,
-      });
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART, // legacy enum again
+        fieldName: "image", // field expected by our backend (matches multer)
+        mimeType,
+    });
 
-      if (!response.ok) throw new Error("Failed to upload image");
+      console.log("📤 Upload response:", res.status, res.body);
 
-      const data = (await response.json()) as {
-        success?: boolean;
-        profilePicture?: string;
-      };
-
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`Upload failed (${res.status})`);
+    }
+      
+      const data = JSON.parse(res.body || "{}");
       if (data.profilePicture) {
         // ✅ Use the full Cloudinary URL directly, with a cache-buster
         const newUrl = data.profilePicture.startsWith("http")
