@@ -40,7 +40,6 @@ type NearbyWithDistance = NearbyUser & {
 };
 
 export default function NearbyScreen() {
-  // State variables
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -56,16 +55,9 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const { status, setStatus, accessToken, currentUser } = useUser();
 
-  /**
-   * Fetches users from the API, filters out the current user,
-   * scatters them around the given coordinates, calculates distances,
-   * sorts by proximity, and updates the users state.
-   * Handles loading and error states accordingly.
-   */
   const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
-        // ✅ If no access token, show demo users
         if (!accessToken) {
           console.log("No access token available, using demo users");
           const demoUsers: NearbyWithDistance[] = [
@@ -93,7 +85,20 @@ export default function NearbyScreen() {
                 longitude: ODU_CENTER.longitude - 0.001,
               },
               distanceMeters: 150,
-              trustScore: 95,
+              trustScore: 65,
+            },
+            {
+              id: 3,
+              name: "Charlie Demo",
+              email: "charlie@example.com",
+              interestTags: ["Running"],
+              profilePicture: null,
+              coords: {
+                latitude: ODU_CENTER.latitude + 0.002,
+                longitude: ODU_CENTER.longitude - 0.002,
+              },
+              distanceMeters: 250,
+              trustScore: 45,
             },
           ];
           setUsers(demoUsers);
@@ -105,12 +110,9 @@ export default function NearbyScreen() {
         const response = await fetch(`${API_BASE_URL}/users`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        if (!response.ok) {
-          throw new Error(`Failed to load users (${response.status})`);
-        }
+        if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
-        // Filter out current user
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
@@ -141,10 +143,6 @@ export default function NearbyScreen() {
     [accessToken, currentUser]
   );
 
-  /**
-   * Requests location (simulated as ODU center for demo),
-   * sets location state, and loads users near that location.
-   */
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
@@ -166,12 +164,10 @@ export default function NearbyScreen() {
     }
   }, [loadUsers]);
 
-  // Load users on mount and when profile picture or visibility changes
   useEffect(() => {
     requestAndLoad();
   }, [requestAndLoad, currentUser?.profilePicture, status]);
 
-  // Pull-to-refresh
   const onRefresh = useCallback(async () => {
     if (!location) {
       await requestAndLoad();
@@ -181,7 +177,6 @@ export default function NearbyScreen() {
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
 
-  // Start chat session
   const startChat = async (receiverId: number, receiverName: string) => {
     if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
 
@@ -197,9 +192,7 @@ export default function NearbyScreen() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to start chat (${response.status})`);
-      }
+      if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
 
       const data = (await response.json()) as { chatId: number };
       const { chatId } = data;
@@ -214,7 +207,6 @@ export default function NearbyScreen() {
     }
   };
 
-  // Loading + error UI
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -270,6 +262,14 @@ export default function NearbyScreen() {
               ? `${API_BASE_URL}${item.profilePicture}?t=${Date.now()}`
               : null;
 
+          // ✅ Dynamic color based on trust score
+          const score = item.trustScore ?? 0;
+          let trustColor = "#007BFF"; // default blue
+          if (score >= 90) trustColor = "#28a745"; // dark green
+          else if (score >= 70) trustColor = "#7ED957"; // light green
+          else if (score >= 51) trustColor = "#FFC107"; // yellow
+          else trustColor = "#DC3545"; // red
+
           return (
             <View style={[styles.card, index === 0 && styles.closestCard]}>
               <View style={styles.cardHeader}>
@@ -290,10 +290,6 @@ export default function NearbyScreen() {
                 <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
               </View>
 
-              <Text style={styles.trustScoreName}>
-                Trust Score: <Text style={styles.trustScoreNumber}>{item.trustScore ?? "—"}</Text>
-              </Text>
-
               {item.interestTags.length > 0 && (
                 <View style={styles.cardTagsWrapper}>
                   {item.interestTags.map((tag) => (
@@ -304,21 +300,29 @@ export default function NearbyScreen() {
                 </View>
               )}
 
-              <View style={styles.cardActions}>
-                <ReportButton
-                  reportedUserId={item.id}
-                  reportedUserName={item.name}
-                  size="small"
-                  onReportSuccess={() => console.log(`Reported user ${item.name}`)}
-                />
-              </View>
+              {/* ✅ Bottom action bar */}
+              <View style={styles.cardFooter}>
+                {/* Chat button (bottom-left) */}
+                <Pressable
+                  onPress={() => startChat(item.id, item.name || item.email)}
+                  style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
+                >
+                  <Ionicons name="chatbubble" size={18} color="white" />
+                </Pressable>
 
-              <Pressable
-                onPress={() => startChat(item.id, item.name || item.email)}
-                style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
-              >
-                <Ionicons name="chatbubble" size={10} color="white" />
-              </Pressable>
+                {/* Report button + trust score (bottom-right) */}
+                <View style={styles.reportContainer}>
+                  <ReportButton
+                    reportedUserId={item.id}
+                    reportedUserName={item.name}
+                    size="small"
+                    onReportSuccess={() => console.log(`Reported user ${item.name}`)}
+                  />
+                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
+                    Trust Score {score}
+                  </Text>
+                </View>
+              </View>
             </View>
           );
         }}
@@ -366,7 +370,6 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
   avatarInitial: { fontSize: 18, fontWeight: "bold", color: "#555" },
   cardTitle: { fontSize: 18, fontWeight: "600" },
-  cardSubtitle: { fontSize: 14, color: "#666" },
   cardDistance: { fontSize: 16, fontWeight: "500", color: "#007BFF" },
   cardTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   cardTagChip: {
@@ -378,23 +381,35 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
-  cardActions: { marginTop: 12, flexDirection: "row", justifyContent: "flex-end" },
+
+  /* ✅ Bottom buttons layout */
+  cardFooter: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
   chatButton: {
-    position: "absolute",
-    bottom: 12,
-    right: 12,
-    width: 20,
-    height: 20,
+    width: 44,
+    height: 44,
     backgroundColor: "#007BFF",
-    borderRadius: 18,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 3,
+    elevation: 2,
   },
-  trustScoreName: { textAlign: "right", bottom: 25, fontSize: 15 },
-  trustScoreNumber: { color: "#007BFF" },
+  reportContainer: {
+    alignItems: "center",
+  },
+  trustScoreLabel: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
   flexGrow: { flexGrow: 1 },
 });
