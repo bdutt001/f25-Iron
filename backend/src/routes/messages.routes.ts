@@ -244,12 +244,21 @@ router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res)
       const otherParticipant = chat.participants.find((p) => p.userId !== userId)?.user;
       const lastMsg = chat.messages[0];
 
+  // Construct full Cloudinary or API URL for profile picture
+  let receiverProfilePicture: string | null = null;
+    if (otherParticipant?.profilePicture) {
+      receiverProfilePicture = otherParticipant.profilePicture.startsWith("http")
+        ? otherParticipant.profilePicture
+        : `${process.env.API_BASE_URL || ""}${otherParticipant.profilePicture}`;
+    }
+
       return {
         id: chat.id.toString(), // use ChatSession ID
         name: otherParticipant?.name ?? otherParticipant?.email ?? "Unknown",
         lastMessage: lastMsg?.content,
         lastTimestamp: lastMsg?.createdAt.toISOString(),
         receiverId: otherParticipant?.id, // ✅ Added so frontend knows the other participant's user ID (needed for reporting)
+        receiverProfilePicture,
       };
     });
 

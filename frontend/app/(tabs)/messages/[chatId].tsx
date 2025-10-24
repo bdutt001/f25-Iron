@@ -9,6 +9,7 @@ import {
   Button,
   StyleSheet,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useUser } from "../../../context/UserContext";
@@ -25,10 +26,11 @@ type Message = {
 };
 
 export default function ChatScreen() {
-  const { chatId, name, receiverId } = useLocalSearchParams<{ 
+  const { chatId, name, receiverId, profilePicture } = useLocalSearchParams<{
     chatId: string;
     name?: string;
     receiverId?: string;
+    profilePicture?: string;
   }>();
   const navigation = useNavigation();
   const { currentUser, accessToken } = useUser();
@@ -37,6 +39,7 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // ✅ Simplify header — just show title + Report button
   useLayoutEffect(() => {
     if (name) {
       navigation.setOptions({
@@ -51,12 +54,11 @@ export default function ChatScreen() {
         ),
       });
     }
-  }, [navigation, name, chatId, currentUser]);
+  }, [navigation, name, chatId, receiverId]);
 
-  // Fetch messages from backend
+  // Fetch messages
   const fetchMessages = useCallback(async () => {
-    if (!accessToken) return; 
-
+    if (!accessToken) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/messages/${chatId}`, {
         headers: {
@@ -64,15 +66,11 @@ export default function ChatScreen() {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-
       if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
-
       const data = (await response.json()) as Message[];
-
-      setMessages(data); // Will be empty array if no messages
+      setMessages(data);
     } catch (err) {
       console.error("Fetch messages error:", err);
-      //setMessages([]); // Just show empty messages, don't block typing
     } finally {
       setLoading(false);
     }
@@ -85,7 +83,6 @@ export default function ChatScreen() {
   // Send a message
   const handleSend = async () => {
     if (!newMessage.trim() || !currentUser) return;
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/messages`, {
         method: "POST",
@@ -98,13 +95,9 @@ export default function ChatScreen() {
           chatSessionId: Number(chatId),
         }),
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send message (${response.status})`);
-      }
-
+      if (!response.ok) throw new Error(`Failed to send message (${response.status})`);
       setNewMessage("");
-      await fetchMessages(); // Refresh messages from backend
+      await fetchMessages();
     } catch (err) {
       console.error("Send message error:", err);
     }
@@ -124,6 +117,26 @@ export default function ChatScreen() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      {/* ✅ Profile section at top of chat */}
+      <View style={styles.chatHeader}>
+        {profilePicture ? (
+          <Image
+            source={{
+              uri: profilePicture.startsWith("http")
+                ? profilePicture
+                : `${API_BASE_URL}${profilePicture}`,
+            }}
+            style={styles.chatHeaderAvatar}
+          />
+        ) : (
+          <View style={styles.chatHeaderAvatarPlaceholder}>
+            <Text style={styles.chatHeaderAvatarInitial}>
+              {name?.[0]?.toUpperCase() || "?"}
+            </Text>
+          </View>
+        )}
+      </View>
+
       {messages.length === 0 && (
         <View style={styles.centered}>
           <Text style={styles.note}>No prior messages.</Text>
@@ -133,23 +146,48 @@ export default function ChatScreen() {
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.messageBubble,
-              item.senderId === currentUser?.id ? styles.myMessage : styles.theirMessage,
-            ]}
-          >
-            <Text
-              style={[
-                styles.messageText,
-                item.senderId === currentUser?.id ? { color: "white" } : { color: "black" },
-              ]}
-            >
-              {item.content}
-            </Text>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const isMine = item.senderId === currentUser?.id;
+          return (
+            <View style={[styles.messageRow, isMine ? { justifyContent: "flex-end" } : {}]}>
+              {!isMine && (
+                <>
+                  {profilePicture ? (
+                    <Image
+                      source={{
+                        uri: profilePicture.startsWith("http")
+                          ? profilePicture
+                          : `${API_BASE_URL}${profilePicture}`,
+                      }}
+                      style={styles.messageAvatarPlaceholder} // ✅ use placeholder style
+                    />
+                  ) : (
+                    <View style={styles.messageAvatarPlaceholder}>
+                      <Text style={styles.messageAvatarInitial}>
+                        {name?.[0]?.toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+              <View
+                style={[
+                  styles.messageBubble,
+                  isMine ? styles.myMessage : styles.theirMessage,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.messageText,
+                    isMine ? { color: "white" } : { color: "black" },
+                  ]}
+                >
+                  {item.content}
+                </Text>
+              </View>
+            </View>
+          );
+        }}
         contentContainerStyle={styles.messagesContainer}
       />
 
@@ -170,21 +208,24 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   messagesContainer: { padding: 10, flexGrow: 1 },
-  messageBubble: {
-    padding: 10,
-    borderRadius: 12,
-    marginVertical: 5,
-    maxWidth: "80%",
-  },
-  myMessage: {
-    alignSelf: "flex-end",
-    backgroundColor: "#007AFF",
-  },
-  theirMessage: {
-    alignSelf: "flex-start",
-    backgroundColor: "#E5E5EA",
-  },
+  messageRow: { flexDirection: "row", alignItems: "flex-end", marginVertical: 4 },
+  messageBubble: { padding: 10, borderRadius: 12, maxWidth: "75%" },
+  myMessage: { alignSelf: "flex-end", backgroundColor: "#007AFF" },
+  theirMessage: { alignSelf: "flex-start", backgroundColor: "#E5E5EA" },
   messageText: { fontSize: 16 },
+
+  // ✅ Reuse placeholder for both avatar and image case
+  messageAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#ddd",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  messageAvatarInitial: { fontSize: 16, fontWeight: "bold", color: "#555" },
+
   inputContainer: {
     flexDirection: "row",
     padding: 10,
@@ -199,19 +240,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginRight: 8,
   },
-  centered: {
-    flex: 1,
+
+  /* ✅ New profile section inside chat */
+  chatHeader: { alignItems: "center", marginVertical: 12 },
+  chatHeaderAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    marginBottom: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  chatHeaderAvatarPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#ddd",
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 5,
   },
-  reportContainer: {
-    marginTop: 12,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  note: {
-    color: "#555",
-    fontSize: 16,
-  },
+  chatHeaderAvatarInitial: { fontSize: 20, fontWeight: "bold", color: "#555" },
+
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  note: { color: "#555", fontSize: 16 },
 });
