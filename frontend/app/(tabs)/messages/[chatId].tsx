@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useEffect, useCallback } from "react";
+import React, { useState, useLayoutEffect, useEffect, useCallback, useRef } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Image,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context"; // ✅ modern SafeAreaView
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useUser } from "../../../context/UserContext";
 import ReportButton from "../../../components/ReportButton";
@@ -38,6 +39,9 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // ✅ Add FlatList ref for auto-scroll
+  const flatListRef = useRef<FlatList<Message>>(null);
 
   // ✅ Simplify header — just show title + Report button
   useLayoutEffect(() => {
@@ -69,6 +73,9 @@ export default function ChatScreen() {
       if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
       const data = (await response.json()) as Message[];
       setMessages(data);
+
+      // ✅ Scroll to bottom after fetching messages
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
     } catch (err) {
       console.error("Fetch messages error:", err);
     } finally {
@@ -98,6 +105,9 @@ export default function ChatScreen() {
       if (!response.ok) throw new Error(`Failed to send message (${response.status})`);
       setNewMessage("");
       await fetchMessages();
+
+      // ✅ Scroll to bottom after sending
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       console.error("Send message error:", err);
     }
@@ -112,96 +122,105 @@ export default function ChatScreen() {
     );
   }
 
+  // ✅ Fixed layout so input bar moves above keyboard (especially on iPhone 14 Pro / iOS 18)
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      {/* ✅ Profile section at top of chat */}
-      <View style={styles.chatHeader}>
-        {profilePicture ? (
-          <Image
-            source={{
-              uri: profilePicture.startsWith("http")
-                ? profilePicture
-                : `${API_BASE_URL}${profilePicture}`,
-            }}
-            style={styles.chatHeaderAvatar}
-          />
-        ) : (
-          <View style={styles.chatHeaderAvatarPlaceholder}>
-            <Text style={styles.chatHeaderAvatarInitial}>
-              {name?.[0]?.toUpperCase() || "?"}
-            </Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["bottom", "left", "right"]}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 150 : 0} // ✅ calibrated offset for iPhone 14 Pro
+      >
+        {/* ✅ Profile section at top of chat */}
+        <View style={styles.chatHeader}>
+          {profilePicture ? (
+            <Image
+              source={{
+                uri: profilePicture.startsWith("http")
+                  ? profilePicture
+                  : `${API_BASE_URL}${profilePicture}`,
+              }}
+              style={styles.chatHeaderAvatar}
+            />
+          ) : (
+            <View style={styles.chatHeaderAvatarPlaceholder}>
+              <Text style={styles.chatHeaderAvatarInitial}>
+                {name?.[0]?.toUpperCase() || "?"}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {messages.length === 0 && (
+          <View style={styles.centered}>
+            <Text style={styles.note}>No prior messages.</Text>
           </View>
         )}
-      </View>
 
-      {messages.length === 0 && (
-        <View style={styles.centered}>
-          <Text style={styles.note}>No prior messages.</Text>
-        </View>
-      )}
-
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => {
-          const isMine = item.senderId === currentUser?.id;
-          return (
-            <View style={[styles.messageRow, isMine ? { justifyContent: "flex-end" } : {}]}>
-              {!isMine && (
-                <>
-                  {profilePicture ? (
-                    <Image
-                      source={{
-                        uri: profilePicture.startsWith("http")
-                          ? profilePicture
-                          : `${API_BASE_URL}${profilePicture}`,
-                      }}
-                      style={styles.messageAvatarPlaceholder} // ✅ use placeholder style
-                    />
-                  ) : (
-                    <View style={styles.messageAvatarPlaceholder}>
-                      <Text style={styles.messageAvatarInitial}>
-                        {name?.[0]?.toUpperCase() || "?"}
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
-              <View
-                style={[
-                  styles.messageBubble,
-                  isMine ? styles.myMessage : styles.theirMessage,
-                ]}
-              >
-                <Text
+        <FlatList
+          ref={flatListRef} // ✅ attach ref
+          data={messages}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => {
+            const isMine = item.senderId === currentUser?.id;
+            return (
+              <View style={[styles.messageRow, isMine ? { justifyContent: "flex-end" } : {}]}>
+                {!isMine && (
+                  <>
+                    {profilePicture ? (
+                      <Image
+                        source={{
+                          uri: profilePicture.startsWith("http")
+                            ? profilePicture
+                            : `${API_BASE_URL}${profilePicture}`,
+                        }}
+                        style={styles.messageAvatarPlaceholder} // ✅ use placeholder style
+                      />
+                    ) : (
+                      <View style={styles.messageAvatarPlaceholder}>
+                        <Text style={styles.messageAvatarInitial}>
+                          {name?.[0]?.toUpperCase() || "?"}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )}
+                <View
                   style={[
-                    styles.messageText,
-                    isMine ? { color: "white" } : { color: "black" },
+                    styles.messageBubble,
+                    isMine ? styles.myMessage : styles.theirMessage,
                   ]}
                 >
-                  {item.content}
-                </Text>
+                  <Text
+                    style={[
+                      styles.messageText,
+                      isMine ? { color: "white" } : { color: "black" },
+                    ]}
+                  >
+                    {item.content}
+                  </Text>
+                </View>
               </View>
-            </View>
-          );
-        }}
-        contentContainerStyle={styles.messagesContainer}
-      />
-
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message..."
-          value={newMessage}
-          onChangeText={setNewMessage}
-          onSubmitEditing={handleSend}
+            );
+          }}
+          contentContainerStyle={[styles.messagesContainer, { paddingBottom: 80 }]} // ✅ space for input
+          keyboardShouldPersistTaps="handled" // ✅ keeps taps working while keyboard is open
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })} // ✅ auto-scroll when new content added
         />
-        <Button title="Send" onPress={handleSend} />
-      </View>
-    </KeyboardAvoidingView>
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type a message..."
+            value={newMessage}
+            onChangeText={setNewMessage}
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            blurOnSubmit={false}
+          />
+          <Button title="Send" onPress={handleSend} />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -231,6 +250,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderTopWidth: 1,
     borderColor: "#ccc",
+    backgroundColor: "#fff", // ✅ keeps visible above keyboard
   },
   input: {
     flex: 1,

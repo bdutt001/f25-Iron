@@ -184,8 +184,8 @@ export default function MapScreen() {
                 <Animated.Image
                   source={{
                     uri: selfUser.profilePicture.startsWith("http")
-                      ? selfUser.profilePicture
-                      : `${API_BASE_URL}${selfUser.profilePicture}`,
+                      ? `${selfUser.profilePicture}?t=${Date.now()}`
+                      : `${API_BASE_URL}${selfUser.profilePicture}?t=${Date.now()}`,
                   }}
                   style={[
                     styles.markerImage,
@@ -217,8 +217,8 @@ export default function MapScreen() {
                 <Image
                   source={{
                     uri: user.profilePicture.startsWith("http")
-                      ? user.profilePicture
-                      : `${API_BASE_URL}${user.profilePicture}`,
+                      ? `${user.profilePicture}?t=${Date.now()}`
+                      : `${API_BASE_URL}${user.profilePicture}?t=${Date.now()}`,
                   }}
                   style={[
                     styles.markerImage,
@@ -250,8 +250,8 @@ export default function MapScreen() {
             <Image
               source={{
                 uri: selectedUser.profilePicture.startsWith("http")
-                  ? selectedUser.profilePicture
-                  : `${API_BASE_URL}${selectedUser.profilePicture}`,
+                  ? `${selectedUser.profilePicture}?t=${Date.now()}`
+                  : `${API_BASE_URL}${selectedUser.profilePicture}?t=${Date.now()}`,
               }}
               style={[
                 styles.floatingImage,
@@ -298,7 +298,7 @@ export default function MapScreen() {
 
             {/* ✅ Color-coded trust score */}
             <Text style={styles.trustScoreName}>
-              Trust Score{" "}
+              Trust Score:{" "}
               <Text
                 style={[
                   styles.trustScoreNumber,
@@ -339,14 +339,16 @@ export default function MapScreen() {
       )}
 
       {/* Controls */}
-      <View style={[styles.controls, selectedUser ? { bottom: 180 } : null]}>
-        <Text style={styles.statusText}>Status: {status}</Text>
-        <Button
-          title={status === "Visible" ? "Hide Me" : "Show Me"}
-          onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}
-        />
-        {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
-      </View>
+      {(!selectedUser || selectedUser.isCurrentUser) && (
+        <View style={[styles.controls, selectedUser ? { bottom: 180 } : null]}>
+          <Text style={styles.statusText}>Status: {status}</Text>
+          <Button
+            title={status === "Visible" ? "Hide Me" : "Show Me"}
+            onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}
+          />
+          {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+        </View>
+      )}
     </View>
   );
 }

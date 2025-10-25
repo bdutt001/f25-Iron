@@ -212,11 +212,23 @@ export default function NearbyScreen() {
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
 
-  // Start a new chat session with another user
+  /**
+   * ✅ Start a new chat session with another user (always fetch latest info first)
+   */
   const startChat = async (receiverId: number, receiverName: string) => {
     if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
 
     try {
+      // ✅ Step 1: Fetch the latest receiver data before starting chat
+      const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      let latestUser = null;
+      if (userResponse.ok) {
+        latestUser = await userResponse.json();
+      }
+
+      // ✅ Step 2: Create or retrieve the chat session
       const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
         method: "POST",
         headers: {
@@ -233,9 +245,15 @@ export default function NearbyScreen() {
       const data = (await response.json()) as { chatId: number };
       const { chatId } = data;
 
+      // ✅ Step 3: Pass latest profile picture and name to the chat screen
       router.push({
         pathname: "/(tabs)/messages/[chatId]",
-        params: { chatId: String(chatId), name: receiverName, receiverId: String(receiverId) },
+        params: {
+          chatId: String(chatId),
+          name: latestUser?.name || receiverName,
+          receiverId: String(receiverId),
+          profilePicture: latestUser?.profilePicture || "",
+        },
       });
     } catch (err) {
       console.error(err);
@@ -359,7 +377,7 @@ export default function NearbyScreen() {
                     }}
                   />
                   <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
-                    Trust Score {score}
+                    Trust Score: {score}  
                   </Text>
                 </View>
               </View>
