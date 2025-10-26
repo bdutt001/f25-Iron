@@ -7,6 +7,7 @@ export type CurrentUser = {
   name?: string | null;
   createdAt?: string;
   interestTags?: string[];
+  trustScore?: number;
 };
 
 type UserContextType = {
@@ -17,13 +18,23 @@ type UserContextType = {
   accessToken: string | null;
   refreshToken: string | null;
   setTokens: (t: { accessToken: string | null; refreshToken: string | null }) => void;
+  isLoggedIn: boolean;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [status, setStatus] = useState<"Visible" | "Hidden">("Visible");
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    // Demo user for testing report feature
+    return {
+      id: 99,
+      email: "demo@example.com", 
+      name: "Demo User",
+      interestTags: ["Testing", "Reports"],
+      trustScore: 99,
+    };
+  });
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
@@ -32,15 +43,18 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     setRefreshToken(t.refreshToken);
   };
 
+  const isLoggedIn = currentUser !== null;
+
   return (
-    <UserContext.Provider value={{ status, setStatus, currentUser, setCurrentUser, accessToken, refreshToken, setTokens }}>
+    <UserContext.Provider value={{ status, setStatus, currentUser, setCurrentUser, accessToken, refreshToken, setTokens, isLoggedIn }}>
       {children}
     </UserContext.Provider>
   );
 };
 
 export const useUser = () => {
-  const context = useContext(UserContext);
-  if (!context) throw new Error("useUser must be used inside UserProvider");
-  return context;
+  const ctx = useContext(UserContext);
+  if (!ctx) throw new Error("useUser must be used within a UserProvider");
+  return ctx;
 };
+

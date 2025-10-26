@@ -10,6 +10,11 @@ const normalizeString = (value: unknown, fallback = ""): string =>
 const normalizeOptionalString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
+const normalizeOptionalNumber = (value: unknown): number | undefined => {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+};
+
 const normalizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
 
@@ -44,6 +49,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   name: normalizeOptionalString(payload.name),
   createdAt: normalizeOptionalString(payload.createdAt),
   interestTags: normalizeStringArray(payload.interestTags),
+  trustScore: normalizeOptionalNumber(payload.trustScore),
 });
 
 const buildAuthHeaders = (token: string): HeadersInit => ({

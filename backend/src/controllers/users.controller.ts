@@ -20,20 +20,17 @@ const toNumberId = (value: string | undefined) => {
 // Create a new user
 export const createUser = async (req: Request, res: Response) => {
   const emailRaw = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  const usernameRaw = typeof req.body.username === "string" ? req.body.username.trim() : "";
   const nameRaw = typeof req.body.name === "string" ? req.body.name.trim() : undefined;
   const passwordRaw = typeof req.body.password === "string" ? req.body.password : "";
   const interestTagsInput = Array.isArray(req.body.interestTags) ? normalizeTagNames(req.body.interestTags) : [];
 
   if (!emailRaw) return res.status(400).json({ error: "Email is required" });
   if (!passwordRaw) return res.status(400).json({ error: "Password is required" });
-  if (!usernameRaw) return res.status(400).json({ error: "Username is required" });
 
   try {
     const hashedPassword = await bcrypt.hash(passwordRaw, 10);
 
     const data: Prisma.UserCreateInput = {
-      username: usernameRaw,
       email: emailRaw,
       password: hashedPassword,
     };
@@ -94,7 +91,6 @@ export const updateUser = async (req: Request, res: Response) => {
   if (!userId) return res.status(400).json({ error: "User ID is required" });
 
   const emailRaw = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : undefined;
-  const usernameRaw = typeof req.body.username === "string" ? req.body.username.trim() : undefined;
   const nameRaw = typeof req.body.name === "string" ? req.body.name.trim() : undefined;
   const passwordRaw = typeof req.body.password === "string" ? req.body.password.trim() : undefined;
   const interestTagsProvided = Array.isArray(req.body.interestTags)
@@ -106,7 +102,6 @@ export const updateUser = async (req: Request, res: Response) => {
     let passwordUpdated = false;
 
     if (emailRaw) data.email = emailRaw;
-    if (usernameRaw) data.username = usernameRaw;
     if (typeof nameRaw === "string") data.name = nameRaw;
 
     if (passwordRaw) {

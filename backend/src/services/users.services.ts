@@ -3,11 +3,11 @@ import { Prisma } from "@prisma/client";
 
 export const userWithTagsSelect = {
   id: true,
-  username: true,
   email: true,
   name: true,
   createdAt: true,
   interestTags: { select: { name: true } },
+  trustScore: true,
 } satisfies Prisma.UserSelect;
 
 export type PrismaUserWithTags = Prisma.UserGetPayload<{ select: typeof userWithTagsSelect }>;

@@ -3,6 +3,7 @@ export type ApiUser = {
   email: string;
   name?: string | null;
   interestTags?: string[] | null;
+  trustScore?: number ;
 };
 
 export type NearbyUser = {
@@ -14,6 +15,7 @@ export type NearbyUser = {
     latitude: number;
     longitude: number;
   };
+  trustScore: number;
 };
 
 function seededRandom(seed: number): number {
@@ -57,6 +59,7 @@ export function scatterUsersAround(
         latitude: baseLat + latOffset,
         longitude: baseLng + lngOffset,
       },
+      trustScore: user.trustScore ?? 0,
     };
   });
 }

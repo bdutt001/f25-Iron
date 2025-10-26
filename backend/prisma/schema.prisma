@@ -1,37 +1,44 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// ---------- GENERATOR & DATASOURCE ----------
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") //env("DATABASE_URL"). What is there now is to test locally
+  url      = env("DATABASE_URL")
 }
 
+// ---------- ENUMS ----------
 enum UserStatus {
   AVAILABLE
   BUSY
   DND
 }
 
-// User Table
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// ---------- MODELS ----------
+
 model User {
   id             Int        @id @default(autoincrement())
-  username       String    @unique
-  email          String?   @unique
-  password       String // hashed with bcrypt, not plain text
+  email          String     @unique
+  password       String
   tokenVersion   Int        @default(0)
   name           String?
   profilePicture String?
   status         UserStatus @default(AVAILABLE)
   visibility     Boolean    @default(true)
-  trustScore     Decimal    @default(0.0)
+  trustScore     Int        @default(99)
   createdAt      DateTime   @default(now())
+  lastLogin      DateTime?
+  dateOfBirth    DateTime?
+  gender         Gender?
+  emailVerified  Boolean    @default(false)
+  isAdmin        Boolean    @default(false)
 
   // Relations
   messagesSent     Message[]         @relation("SentMessages")
@@ -39,20 +46,39 @@ model User {
   wavesRecv        Wave[]            @relation("WavesReceived")
   reportsMade      Report[]          @relation("ReportsMade")
   reportsAgainst   Report[]          @relation("ReportsAgainst")
-  interestTags     Tag[]            @relation("UserInterestTags") // User interests
+  interestTags     Tag[]             @relation("UserInterestTags")
   chatParticipants ChatParticipant[]
+  locations        UserLocation[]
+  blocksMade       Block[]           @relation("BlocksMade")
+  blocksReceived   Block[]           @relation("BlocksReceived")
+
+  @@index([email])
 }
 
+// User location tracking
+model UserLocation {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  latitude  Float
+  longitude Float
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// Chat sessions
 model ChatSession {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relationships
   messages     Message[]
   participants ChatParticipant[]
 }
 
+// Chat participants
 model ChatParticipant {
   id            Int      @id @default(autoincrement())
   chatSessionId Int
@@ -62,9 +88,10 @@ model ChatParticipant {
   chatSession ChatSession @relation(fields: [chatSessionId], references: [id])
   user        User        @relation(fields: [userId], references: [id])
 
-  @@unique([chatSessionId, userId]) // prevent duplicate participants
+  @@unique([chatSessionId, userId])
 }
 
+// Messages
 model Message {
   id            Int      @id @default(autoincrement())
   content       String
@@ -78,29 +105,49 @@ model Message {
   @@index([chatSessionId])
 }
 
+// Waves (user-to-user)
 model Wave {
   id         Int      @id @default(autoincrement())
   createdAt  DateTime @default(now())
   senderId   Int
   receiverId Int
-  sender     User     @relation("WavesSent", fields: [senderId], references: [id])
-  receiver   User     @relation("WavesReceived", fields: [receiverId], references: [id])
+
+  sender   User @relation("WavesSent", fields: [senderId], references: [id])
+  receiver User @relation("WavesReceived", fields: [receiverId], references: [id])
 }
 
+// Reports (misconduct)
 model Report {
-  id         Int      @id @default(autoincrement())
-  reason     String
-  createdAt  DateTime @default(now())
-  reporterId Int
-  reportedId Int
-  reporter   User     @relation("ReportsMade", fields: [reporterId], references: [id])
-  reported   User     @relation("ReportsAgainst", fields: [reportedId], references: [id])
+  id          Int      @id @default(autoincrement())
+  reason      String
+  description String?
+  createdAt   DateTime @default(now())
+  reporterId  Int
+  reportedId  Int
+  severity    Int?     @default(1)
+
+  reporter User @relation("ReportsMade", fields: [reporterId], references: [id])
+  reported User @relation("ReportsAgainst", fields: [reportedId], references: [id])
 }
 
+// Blocks (prevent user interaction)
+model Block {
+  id        Int      @id @default(autoincrement())
+  blockerId Int
+  blockedId Int
+  createdAt DateTime @default(now())
+
+  blocker User @relation("BlocksMade", fields: [blockerId], references: [id])
+  blocked User @relation("BlocksReceived", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+// Tags (user interests)
 model Tag {
   id    Int    @id @default(autoincrement())
   name  String @unique
-  users User[] @relation("UserInterestTags") // allows for relation between users and tags via a join table
+  users User[] @relation("UserInterestTags")
 }
-
-

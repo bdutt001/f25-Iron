@@ -1,3 +1,9 @@
+/**
+ * NearbyScreen component displays a list of users nearby relative to the current user's location.
+ * For demo purposes, it simulates user proximity centered around Old Dominion University (Norfolk, VA).
+ * It fetches user data from the API, calculates distances, and allows toggling visibility status.
+ */
+
 import * as Location from "expo-location";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -8,7 +14,10 @@ import {
   StyleSheet,
   Text,
   View,
+  Pressable,
+  Alert,
 } from "react-native";
+import { router } from "expo-router";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import {
@@ -19,16 +28,20 @@ import {
   scatterUsersAround,
 } from "../../utils/geo";
 import { rankNearbyUsers, type RankedUser } from "../../utils/rank";
+// import ReportButton from "../../components/ReportButton";
 
+import { Ionicons } from "@expo/vector-icons";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
-type NearbyWithDistance = RankedUser & {
+// Types
+type NearbyWithDistance = NearbyUser & {
   distanceMeters: number;
 };
 
 export default function NearbyScreen() {
+  // State variables
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -44,15 +57,51 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const { status, setStatus, accessToken, currentUser } = useUser();
 
-const loadUsers = useCallback(
+  /**
+   * Fetches users from the API, filters out the current user,
+   * scatters them around the given coordinates, calculates distances,
+   * sorts by proximity, and updates the users state.
+   * Handles loading and error states accordingly.
+   */
+  const loadUsers = useCallback(
     async (coords: Location.LocationObjectCoords) => {
       try {
+        // Skip loading users if no access token (not authenticated)
+        if (!accessToken) {
+          console.log("No access token available, using demo users");
+          // Create demo users for testing report feature
+          const demoUsers = [
+            {
+              id: 1,
+              name: "Alice Demo",
+              email: "alice@example.com",
+              interestTags: ["Coffee", "Reading"],
+              coords: { latitude: ODU_CENTER.latitude + 0.001, longitude: ODU_CENTER.longitude + 0.001 },
+              distanceMeters: 100,
+              trustScore: 99,
+            },
+            {
+              id: 2, 
+              name: "Bob Demo",
+              email: "bob@example.com",
+              interestTags: ["Gaming", "Movies"],
+              coords: { latitude: ODU_CENTER.latitude - 0.001, longitude: ODU_CENTER.longitude - 0.001 },
+              distanceMeters: 150,
+              trustScore: 95,
+            },
+          ];
+          setUsers(demoUsers);
+          setError(null);
+          return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/users`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
+        // Filter out the current user from the fetched list
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
@@ -78,7 +127,7 @@ const loadUsers = useCallback(
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        setError(message);
+        setError(message); // Set error message on failure
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -87,6 +136,11 @@ const loadUsers = useCallback(
     [accessToken, currentUser]
   );
 
+  /**
+   * Requests location (simulated as ODU center for demo),
+   * sets the location state, and loads users near that location.
+   * Handles loading and error states.
+   */
   const requestAndLoad = useCallback(async () => {
     try {
       setLoading(true);
@@ -100,8 +154,8 @@ const loadUsers = useCallback(
         heading: undefined as any,
         speed: undefined as any,
       };
-      setLocation(coords);
-      await loadUsers(coords);
+      setLocation(coords); // Set location to ODU center
+      await loadUsers(coords); // Load users near ODU center
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -109,10 +163,11 @@ const loadUsers = useCallback(
     }
   }, [loadUsers]);
 
-  useEffect(() => {
-    requestAndLoad();
-  }, [requestAndLoad]);
-
+  /**
+   * Handles pull-to-refresh action.
+   * If location is unavailable, triggers a full request and load.
+   * Otherwise, reloads users based on current location.
+   */
   const onRefresh = useCallback(async () => {
     if (!location) {
       await requestAndLoad();
@@ -122,6 +177,44 @@ const loadUsers = useCallback(
     setRefreshing(true);
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
+
+    // Load users on component mount or when requestAndLoad changes
+  useEffect(() => {
+    requestAndLoad();
+  }, [requestAndLoad]);
+
+  // 🔹 Create or get chat session
+  const startChat = async (receiverId: number, receiverName: string) => {
+    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          participants: [currentUser.id, receiverId],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start chat (${response.status})`);
+      }
+
+      const data = (await response.json()) as { chatId: number };
+      const { chatId } = data;
+
+      router.push({
+        pathname: "/(tabs)/messages/[chatId]",
+        params: { chatId: String(chatId), name: receiverName, receiverId: String(receiverId) },
+      });
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to start chat. Please try again.");
+    }
+  };
 
   if (loading) {
     return (
@@ -178,6 +271,12 @@ const loadUsers = useCallback(
               {item.email} • {Math.round(item.score * 100)}% match
             </Text>
             {item.sharedTags.length > 0 && (
+              <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+              
+            </View>
+            <Text style={styles.cardSubtitle}>{item.email}</Text>
+            <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{item.trustScore}</Text></Text>
+            {item.interestTags.length > 0 && (
               <View style={styles.cardTagsWrapper}>
                 {item.sharedTags.map((tag) => (
                   <View key={tag} style={styles.cardTagChip}>
@@ -186,6 +285,32 @@ const loadUsers = useCallback(
                 ))}
               </View>
             )}
+
+            {/* 🔹 Start Chat Button */}
+            <Pressable
+              onPress={() => startChat(item.id, item.name || item.email)}
+              style={({ pressed }) => [
+                styles.chatButton,
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <Ionicons name="chatbubble" size={10} color="white" />
+              {/* <Text style={styles.chatButtonText}>Start Chat</Text> */}
+            </Pressable>
+            {/* <View style={styles.cardActions}>
+              <ReportButton
+                reportedUserId={item.id}
+                reportedUserName={item.name}
+                size="small"
+                onReportSuccess={(updatedTrustScore) => {
+                  setUsers((prev) =>
+                    prev.map((user) =>
+                      user.id === item.id ? { ...user, trustScore: updatedTrustScore } : user
+                    )
+                  );
+                }}
+              />
+            </View> */}
           </View>
         )}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
@@ -288,11 +413,35 @@ const styles = StyleSheet.create({
     color: "#1f5fbf",
     fontWeight: "500",
   },
+  chatButton: {
+    position: 'absolute',
+    bottom: 12,      // align bottom
+    right: 12,       // align right
+    width: 20,       // smaller square
+    height: 20,
+    backgroundColor: '#007BFF',
+    borderRadius: 18, // fully rounded
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',    // optional shadow for floating effect
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  chatButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
+  },
   flexGrow: {
     flexGrow: 1,
   },
+  trustScoreName:{
+    textAlign: "right",
+    bottom: 25,
+    fontSize: 15
+  },
+  trustScoreNumber:{
+    color: "#007BFF"
+  }
 });
-
-
-
-

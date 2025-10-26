@@ -16,9 +16,9 @@ afterAll(async () => {
 
 describe("Auth API", () => {
   const credentials = {
-    username: "alice",
     email: "alice@example.com",
     password: "Secret123!",
+    name: "Alice",
   };
 
   let accessToken: string;
@@ -49,9 +49,9 @@ describe("Auth API", () => {
     expect(matches).toBe(true);
   });
 
-  it("logs in with username", async () => {
+  it("logs in with email", async () => {
     const res = await request(app).post(`${AUTH_PREFIX}/login`).send({
-      username: credentials.username,
+      email: credentials.email,
       password: credentials.password,
     });
 
@@ -103,7 +103,7 @@ describe("Auth API", () => {
 
 describe("Users API (protected)", () => {
   const adminCredentials = {
-    username: "alice",
+    email: "alice@example.com",
     password: "Secret123!",
   };
 
@@ -111,12 +111,11 @@ describe("Users API (protected)", () => {
   let createdUserId: number;
   const uniqueSuffix = Date.now();
   const newUserEmail = `bob${uniqueSuffix}@example.com`;
-  const newUserUsername = `bob-${uniqueSuffix}`;
   const newUserPassword = "Secret456!";
 
   beforeAll(async () => {
     const res = await request(app).post(`${AUTH_PREFIX}/login`).send({
-      username: adminCredentials.username,
+      email: adminCredentials.email,
       password: adminCredentials.password,
     });
 
@@ -129,7 +128,6 @@ describe("Users API (protected)", () => {
       .post(`${API_PREFIX}/users`)
       .set("Authorization", `Bearer ${accessToken}`)
       .send({
-        username: newUserUsername,
         email: newUserEmail,
         password: newUserPassword,
         name: "Bob",

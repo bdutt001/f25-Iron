@@ -1,5 +1,5 @@
 import * as Location from "expo-location";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Button, StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useUser } from "../../context/UserContext";
@@ -12,6 +12,13 @@ const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 type Coords = { latitude: number; longitude: number };
 
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
+
+const normalizeInterestTags = (tags: ApiUser["interestTags"]): string[] | null => {
+  if (!Array.isArray(tags)) {
+    return null;
+  }
+  return tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0);
+};
 
 export default function MapScreen() {
   // Center the map and "you are here" at ODU for the demo
@@ -31,11 +38,12 @@ export default function MapScreen() {
         email: currentUser.email,
         interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
         coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
+        trustScore: currentUser.trustScore ?? 99,
         isCurrentUser: true,
       }
     : null;
 
-  const loadUsers = async (): Promise<void> => {
+  const loadUsers = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(`${API_BASE_URL}/users`, {
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
@@ -56,12 +64,126 @@ export default function MapScreen() {
       console.error("Unable to load users", err);
       setErrorMsg("Unable to load users from the server");
     }
-  };
+  }, [accessToken, center.latitude, center.longitude, currentUser?.id]);
+
+  const fetchUserDetails = useCallback(
+    async (userId: number): Promise<ApiUser | null> => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch user ${userId} (${response.status})`);
+        }
+
+        return (await response.json()) as ApiUser;
+      } catch (error) {
+        console.error(`Unable to refresh user ${userId}`, error);
+        return null;
+      }
+    },
+    [accessToken]
+  );
+
+  const refreshSelection = useCallback(
+    async (userId: number) => {
+      const details = await fetchUserDetails(userId);
+      if (!details) {
+        return;
+      }
+
+      const normalizedTags = normalizeInterestTags(details.interestTags);
+      const updatedScore = typeof details.trustScore === "number" ? details.trustScore : null;
+
+      setSelectedUser((prev) => {
+        if (!prev || prev.id !== userId) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          name: details.name ?? details.email ?? prev.name,
+          email: details.email ?? prev.email,
+          interestTags:
+            normalizedTags !== null
+              ? normalizedTags
+              : prev.interestTags,
+          trustScore: updatedScore ?? prev.trustScore,
+        };
+      });
+
+      setNearbyUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId
+            ? {
+                ...user,
+                trustScore: updatedScore ?? user.trustScore,
+                interestTags:
+                  normalizedTags !== null ? normalizedTags : user.interestTags,
+              }
+            : user
+        )
+      );
+    },
+    [fetchUserDetails]
+  );
+
+  const handleSelectUser = useCallback(
+    (user: NearbyUser | SelectedUser, overrides?: { isCurrentUser?: boolean }) => {
+      const selection: SelectedUser = {
+        ...user,
+        coords: { ...user.coords },
+        isCurrentUser: overrides?.isCurrentUser ?? (user as SelectedUser).isCurrentUser ?? false,
+      };
+      setSelectedUser(selection);
+      void refreshSelection(selection.id);
+    },
+    [refreshSelection]
+  );
 
   useEffect(() => {
     // Always load users around ODU
     void loadUsers();
-  }, []);
+  }, [loadUsers]);
+
+  const selectedId = selectedUser?.id ?? null;
+
+  useEffect(() => {
+    if (!selectedUser) {
+      return;
+    }
+
+    const match = nearbyUsers.find((user) => user.id === selectedUser.id);
+    if (!match) {
+      return;
+    }
+
+    if (match.trustScore === selectedUser.trustScore) {
+      return;
+    }
+
+    setSelectedUser((prev) => {
+      if (!prev || prev.id !== match.id) {
+        return prev;
+      }
+      return {
+        ...prev,
+        trustScore: match.trustScore,
+      };
+    });
+  }, [nearbyUsers, selectedUser?.id, selectedUser?.trustScore]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadUsers();
+      if (selectedId !== null) {
+        void refreshSelection(selectedId);
+      }
+    }, 12000);
+
+    return () => clearInterval(interval);
+  }, [loadUsers, refreshSelection, selectedId]);
 
   return (
     <View style={styles.container}>
@@ -81,7 +203,7 @@ export default function MapScreen() {
             pinColor="blue"
             title="You are here"
             description={selfUser.email}
-            onPress={() => setSelectedUser(selfUser)}
+            onPress={() => handleSelectUser(selfUser, { isCurrentUser: true })}
           />
         )}
 
@@ -91,7 +213,7 @@ export default function MapScreen() {
             key={user.id}
             coordinate={user.coords}
             pinColor="red"
-            onPress={() => setSelectedUser(user)}
+            onPress={() => handleSelectUser(user)}
           />
         ))}
       </MapView>
@@ -130,7 +252,7 @@ export default function MapScreen() {
               {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
             </View>
             <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
-
+            <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{selectedUser.trustScore}</Text></Text>
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
@@ -270,5 +392,12 @@ const styles = StyleSheet.create({
   sheetClose: {
     color: "#1f5fbf",
     fontWeight: "600",
+  },
+  trustScoreName:{
+    textAlign: "right",
+    fontSize: 15
+  },
+  trustScoreNumber:{
+    color: "#007BFF"
   },
 });
