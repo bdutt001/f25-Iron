@@ -265,20 +265,16 @@ export default function NearbyScreen() {
           <View style={[styles.card, index === 0 && styles.closestCard]}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardDistance}>{item.distanceLabel}</Text>
+              <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+              
             </View>
             <Text style={styles.cardSubtitle}>
               {item.email} • {Math.round(item.score * 100)}% match
             </Text>
-            {item.sharedTags.length > 0 && (
-              <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
-              
-            </View>
-            <Text style={styles.cardSubtitle}>{item.email}</Text>
             <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{item.trustScore}</Text></Text>
             {item.interestTags.length > 0 && (
               <View style={styles.cardTagsWrapper}>
-                {item.sharedTags.map((tag) => (
+                {item.interestTags.map((tag) => (
                   <View key={tag} style={styles.cardTagChip}>
                     <Text style={styles.cardTagText}>{tag}</Text>
                   </View>
@@ -313,11 +309,13 @@ export default function NearbyScreen() {
             </View> */}
           </View>
         )}
+        
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
       />
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

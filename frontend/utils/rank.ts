@@ -16,8 +16,8 @@ export type RankedUser = NearbyUser & {
 };
 
 const DEFAULTS = {
-  weights: { tagSim: 0.7, distance: 0.3 },
-  halfLifeMeters: 1200,  // reduces distance score by half every
+  weights: { tagSim: 1, distance: 0 },
+  halfLifeMeters: 10000,  // reduces distance score by half every
 };
 
 const norm = (tags?: string[]) =>
