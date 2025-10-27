@@ -13,6 +13,7 @@ import {
   normalizeTagNames,
   serializeUser,
   userWithTagsSelect,
+  updateUserVisibility,
 } from "../services/users.services";
 
 // Load environment variables early
@@ -83,7 +84,10 @@ export const createUser = async (req: Request, res: Response) => {
 // ---------- Get All Users ----------
 export const getUsers = async (_req: Request, res: Response) => {
   try {
-    const users = await prisma.user.findMany({ select: userWithTagsSelect });
+    const users = await prisma.user.findMany({
+      where: { visibility: true },
+      select: userWithTagsSelect,
+    });
     res.json(users.map(serializeUser));
   } catch (err) {
     console.error("Failed to fetch users", err);
@@ -123,6 +127,8 @@ export const updateUser = async (req: Request, res: Response) => {
   const interestTagsProvided = Array.isArray(req.body.interestTags)
     ? normalizeTagNames(req.body.interestTags)
     : null;
+  const visibilityRaw =
+    typeof req.body.visibility === "boolean" ? req.body.visibility : undefined;
 
   try {
     const data: Prisma.UserUpdateInput = {};
@@ -143,6 +149,10 @@ export const updateUser = async (req: Request, res: Response) => {
         interestUpdate.connectOrCreate = buildConnectOrCreate(interestTagsProvided);
       }
       data.interestTags = interestUpdate;
+    }
+
+    if (typeof visibilityRaw === "boolean") {
+      data.visibility = visibilityRaw;
     }
 
     const user = await prisma.user.update({
@@ -183,6 +193,25 @@ export const listUsers = async (_req: Request, res: Response) => {
   } catch (error) {
     console.error("Error listing users:", error);
     res.status(500).json({ error: "Failed to list users" });
+  }
+};
+
+// ---------- Update Visibility (self) ----------
+export const updateVisibility = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const visibility = req.body?.visibility;
+  if (typeof visibility !== "boolean") {
+    return res.status(400).json({ error: "visibility must be a boolean" });
+  }
+
+  try {
+    const updated = await updateUserVisibility(userId, visibility);
+    return res.json(updated);
+  } catch (error) {
+    console.error("Failed to update visibility", error);
+    return res.status(500).json({ error: "Failed to update visibility" });
   }
 };
 

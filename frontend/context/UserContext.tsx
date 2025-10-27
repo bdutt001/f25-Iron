@@ -1,4 +1,7 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { Alert } from "react-native";
+
+import { updateUserProfile, updateUserVisibility } from "@/utils/api";
 
 export type CurrentUser = {
   id: number;
@@ -9,6 +12,7 @@ export type CurrentUser = {
   interestTags?: string[];
   profilePicture?: string | null; // ✅ from your branch
   trustScore?: number;            // ✅ from main
+  visibility?: boolean;
 };
 
 type UserContextType = {
@@ -38,24 +42,68 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     setRefreshToken(t.refreshToken);
   };
 
-  // ✅ Debounced version of setStatus
   const setStatus = (newStatus: "Visible" | "Hidden") => {
     if (isStatusUpdating) {
       console.log("⏳ Ignored toggle spam");
       return;
     }
-    setIsStatusUpdating(true);
-    setStatusRaw(newStatus);
 
-    // Wait 1.5 seconds before allowing another toggle
-    setTimeout(() => setIsStatusUpdating(false), 1500);
+    if (newStatus === status) return;
+
+    const previousStatus = status;
+    const visibilityFlag = newStatus === "Visible";
+
+    setStatusRaw(newStatus);
+    setIsStatusUpdating(true);
+
+    const finish = () => setIsStatusUpdating(false);
+
+    if (!currentUser || !accessToken) {
+      setCurrentUser((prev) => (prev ? { ...prev, visibility: visibilityFlag } : prev));
+      finish();
+      return;
+    }
+
+    void (async () => {
+      try {
+        const updated = await updateUserVisibility(visibilityFlag, accessToken);
+
+        setCurrentUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...updated,
+                interestTags: updated.interestTags ?? prev.interestTags,
+                profilePicture: updated.profilePicture ?? prev.profilePicture,
+                visibility: updated.visibility ?? visibilityFlag,
+              }
+            : updated
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update visibility";
+        console.error("Visibility toggle failed", error);
+        Alert.alert("Visibility", message);
+        setStatusRaw(previousStatus);
+      } finally {
+        finish();
+      }
+    })();
   };
 
   const isLoggedIn = currentUser !== null;
 
-  React.useEffect(() => {
+  useEffect(() => {
     console.log("👤 currentUser updated:", currentUser);
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setStatusRaw("Hidden");
+      return;
+    }
+
+    setStatusRaw(currentUser.visibility === false ? "Hidden" : "Visible");
+  }, [currentUser?.visibility]);
 
   return (
     <UserContext.Provider

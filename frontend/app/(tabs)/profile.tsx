@@ -107,6 +107,10 @@ export default function ProfileScreen() {
         updated.interestTags ?? currentUser.interestTags,
       profilePicture:
         updated.profilePicture ?? currentUser.profilePicture,
+      visibility:
+        typeof updated.visibility === "boolean"
+          ? updated.visibility
+          : currentUser.visibility,
     });
   };
 
@@ -421,7 +425,7 @@ export default function ProfileScreen() {
         )}
         <Text style={styles.label}>Email:</Text>
         <Text style={styles.value}>{currentUser?.email || "-"}</Text>
-        <Text style={styles.label}>Status:</Text>
+        <Text style={styles.label}>Visibility:</Text>
         <Text style={styles.value}>{status}</Text>
 
         <View style={styles.divider} />

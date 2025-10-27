@@ -1,4 +1,3 @@
-import * as Location from "expo-location";
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   Animated,
@@ -39,6 +38,7 @@ export default function MapScreen() {
   };
 
   const { status, setStatus, accessToken, currentUser } = useUser();
+  const currentUserId = currentUser?.id;
 
   const selfUser: SelectedUser | null = currentUser
     ? {
@@ -63,7 +63,10 @@ export default function MapScreen() {
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       const data = (await response.json()) as ApiUser[];
       const filtered = Array.isArray(data)
-        ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
+        ? data.filter(
+            (u) =>
+              (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+          )
         : [];
       setNearbyUsers(scatterUsersAround(filtered, center.latitude, center.longitude));
       setErrorMsg(null);
@@ -71,7 +74,7 @@ export default function MapScreen() {
       console.error("Unable to load users", err);
       setErrorMsg("Unable to load users from the server");
     }
-  }, [accessToken, center.latitude, center.longitude, currentUser?.id]);
+  }, [accessToken, center.latitude, center.longitude, currentUserId]);
 
   const fetchUserDetails = useCallback(
     async (userId: number): Promise<ApiUser | null> => {
@@ -132,7 +135,7 @@ export default function MapScreen() {
 
   useEffect(() => {
     void loadUsers();
-  }, [loadUsers, currentUser?.profilePicture]);
+  }, [loadUsers, currentUser?.profilePicture, currentUser?.visibility]);
 
   const selectedId = selectedUser?.id ?? null;
   useEffect(() => {
@@ -152,7 +155,7 @@ export default function MapScreen() {
       duration: 150,
       useNativeDriver: true,
     }).start();
-  }, [scale]);
+  }, [animatedScale, scale]);
 
   return (
     <View style={styles.container}>
@@ -341,7 +344,7 @@ export default function MapScreen() {
       {/* Controls */}
       {(!selectedUser || selectedUser.isCurrentUser) && (
         <View style={[styles.controls, selectedUser ? { bottom: 180 } : null]}>
-          <Text style={styles.statusText}>Status: {status}</Text>
+          <Text style={styles.statusText}>Visibility: {status}</Text>
           <Button
             title={status === "Visible" ? "Hide Me" : "Show Me"}
             onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}

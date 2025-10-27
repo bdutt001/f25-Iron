@@ -5,7 +5,7 @@
  */
 
 import * as Location from "expo-location";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Button,
@@ -59,7 +59,10 @@ export default function NearbyScreen() {
    * Fetches users from the API and updates their distance relative to the current location.
    */
   const loadUsers = useCallback(
-    async (coords: Location.LocationObjectCoords) => {
+    async (
+      coords: Location.LocationObjectCoords,
+      options?: { silent?: boolean }
+    ) => {
       try {
         if (!accessToken) {
           console.log("No access token available, using demo users");
@@ -117,7 +120,10 @@ export default function NearbyScreen() {
 
         const data = (await response.json()) as ApiUser[];
         const filtered = Array.isArray(data)
-          ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
+          ? data.filter(
+              (u) =>
+                (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
+            )
           : [];
 
         const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
@@ -139,7 +145,9 @@ export default function NearbyScreen() {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
       } finally {
-        setLoading(false);
+        if (!options?.silent) {
+          setLoading(false);
+        }
         setRefreshing(false);
       }
     },
@@ -176,38 +184,50 @@ export default function NearbyScreen() {
   /**
    * Requests location (simulated as ODU center for demo) and loads users nearby.
    */
-  const requestAndLoad = useCallback(async () => {
-    try {
-      setLoading(true);
-      const coords = {
-        latitude: ODU_CENTER.latitude,
-        longitude: ODU_CENTER.longitude,
-        altitude: undefined as any,
-        accuracy: undefined as any,
-        altitudeAccuracy: undefined as any,
-        heading: undefined as any,
-        speed: undefined as any,
-      };
-      setLocation(coords);
-      await loadUsers(coords);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-      setLoading(false);
-    }
-  }, [loadUsers]);
+  const hasLoadedOnceRef = useRef(false);
+
+  const requestAndLoad = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? hasLoadedOnceRef.current;
+
+      try {
+        if (!silent) {
+          setLoading(true);
+        }
+
+        const coords = {
+          latitude: ODU_CENTER.latitude,
+          longitude: ODU_CENTER.longitude,
+          altitude: undefined as any,
+          accuracy: undefined as any,
+          altitudeAccuracy: undefined as any,
+          heading: undefined as any,
+          speed: undefined as any,
+        };
+        setLocation(coords);
+        await loadUsers(coords, { silent });
+        hasLoadedOnceRef.current = true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [loadUsers]
+  );
 
   // Load users initially and when profile picture or visibility changes
   useEffect(() => {
-    // Only run on mount or when profile picture changes
-    requestAndLoad();
+    void requestAndLoad({ silent: hasLoadedOnceRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUser?.profilePicture]);
+  }, [currentUser?.profilePicture, currentUser?.visibility]);
 
   // Pull-to-refresh functionality
   const onRefresh = useCallback(async () => {
     if (!location) {
-      await requestAndLoad();
+      await requestAndLoad({ silent: false });
       return;
     }
     setRefreshing(true);
@@ -264,7 +284,9 @@ export default function NearbyScreen() {
   };
 
   // Loading and error handling UI
-  if (loading) {
+  const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
+
+  if (showInitialLoader) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#007BFF" />
@@ -277,7 +299,12 @@ export default function NearbyScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
-        <Button title="Try Again" onPress={requestAndLoad} />
+        <Button
+          title="Try Again"
+          onPress={() => {
+            void requestAndLoad({ silent: false });
+          }}
+        />
       </View>
     );
   }
@@ -304,6 +331,13 @@ export default function NearbyScreen() {
       disabled={isStatusUpdating}
     />
   </View>
+
+      {loading && hasLoadedOnceRef.current && (
+        <View style={styles.inlineLoader}>
+          <ActivityIndicator size="small" color="#007BFF" />
+          <Text style={styles.inlineLoaderText}>Updating nearby users…</Text>
+        </View>
+      )}
 
       {/* User list */}
       <FlatList
@@ -416,6 +450,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
+  inlineLoader: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  inlineLoaderText: { marginLeft: 8, fontSize: 13, color: "#555" },
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,

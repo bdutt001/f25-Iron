@@ -5,6 +5,7 @@ export type ApiUser = {
   interestTags?: string[] | null;
   profilePicture?: string | null;
   trustScore?: number;
+  visibility?: boolean | null;
 };
 
 export type NearbyUser = {

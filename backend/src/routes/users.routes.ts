@@ -13,6 +13,7 @@ import {
   addTag,
   getUsersByTag,
   deleteTagFromUser,
+  updateVisibility,
   uploadProfilePicture, // ✅ controller now uploads to Cloudinary
 } from "../controllers/users.controller";
 
@@ -43,6 +44,7 @@ router.post("/users", createUser);
 router.get("/users", getUsers);
 router.get("/users/:id", getUserById);
 router.patch("/users/:id", updateUser);
+router.patch("/users/me/visibility", updateVisibility);
 router.delete("/users/:id", deleteUser);
 router.post("/users/:id/tags", addTag);
 router.get("/users/tags/:tagName", getUsersByTag);

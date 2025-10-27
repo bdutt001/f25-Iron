@@ -20,6 +20,13 @@ const normalizeOptionalNumber = (value: unknown): number | undefined => {
   return Number.isFinite(numeric) ? numeric : undefined;
 };
 
+const normalizeOptionalBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+};
+
 const normalizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
 
@@ -66,6 +73,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   interestTags: normalizeStringArray(payload.interestTags),
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),
+  visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
 });
 
 const buildAuthHeaders = (token: string): Record<string, string> => ({
@@ -114,6 +122,7 @@ export const fetchTagCatalog = async (accessToken: string): Promise<string[]> =>
 export type UpdateUserProfilePayload = {
   name?: string | null;
   interestTags?: string[];
+  visibility?: boolean;
 };
 
 // ✅ Update user profile details (name, tags, etc.)
@@ -126,6 +135,7 @@ export const updateUserProfile = async (
 
   if ("name" in payload) body.name = payload.name;
   if ("interestTags" in payload) body.interestTags = payload.interestTags;
+  if ("visibility" in payload) body.visibility = payload.visibility;
 
   if (Object.keys(body).length === 0) {
     throw new Error("No profile fields provided.");
@@ -138,6 +148,27 @@ export const updateUserProfile = async (
       ...buildAuthHeaders(accessToken),
     },
     body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+
+  const data = (await response.json()) as JsonRecord;
+  return toCurrentUser(data);
+};
+
+export const updateUserVisibility = async (
+  visibility: boolean,
+  accessToken: string
+): Promise<CurrentUser> => {
+  const response = await fetch(`${API_BASE_URL}/users/me/visibility`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders(accessToken),
+    },
+    body: JSON.stringify({ visibility }),
   });
 
   if (!response.ok) {

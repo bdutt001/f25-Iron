@@ -83,6 +83,7 @@ export const toAuthenticatedUser = (user: {
   name?: string | null;
   profilePicture?: string | null;
   interestTags?: { name: string }[];
+  visibility?: boolean;
 }): AuthenticatedUser => ({
   id: user.id,
   email: user.email ?? null,
@@ -93,6 +94,7 @@ export const toAuthenticatedUser = (user: {
         typeof t === "string" ? t : t.name
       )
     : [],
+  visibility: user.visibility ?? false,
 });
 
 /**

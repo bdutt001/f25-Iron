@@ -46,6 +46,7 @@ const serializeUser = (user: any) => ({
   ...user,
   profilePicture: user.profilePicture ?? null,
   interestTags: (user.interestTags ?? []).map((t: any) => t.name),
+  visibility: user.visibility ?? false,
 });
 
 /**
@@ -60,6 +61,7 @@ const userAuthSelect = {
   profilePicture: true, // ✅ added
   interestTags: { select: { name: true } }, // ✅ added
   createdAt: true,
+  visibility: true,
 } as const;
 
 type UserAuthRecord = {
@@ -71,6 +73,7 @@ type UserAuthRecord = {
   profilePicture: string | null;
   interestTags?: { name: string }[];
   createdAt: Date;
+  visibility: boolean;
 };
 
 /**
@@ -96,6 +99,7 @@ const buildAuthResponse = (user: UserAuthRecord) => {
       name: user.name ?? undefined,
       profilePicture: user.profilePicture ?? null,
       interestTags: user.interestTags ?? [],
+      visibility: user.visibility,
     }),
   };
 };
