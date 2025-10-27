@@ -37,7 +37,14 @@ export default function MapScreen() {
     return Math.round(Math.log(360 / angle) / Math.LN2);
   };
 
-  const { status, setStatus, accessToken, currentUser } = useUser();
+  const {
+    status,
+    setStatus,
+    accessToken,
+    currentUser,
+    prefetchedUsers,
+    setPrefetchedUsers,
+  } = useUser();
   const currentUserId = currentUser?.id;
 
   const selfUser: SelectedUser | null = currentUser
@@ -68,13 +75,14 @@ export default function MapScreen() {
               (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
           )
         : [];
+      setPrefetchedUsers(filtered);
       setNearbyUsers(scatterUsersAround(filtered, center.latitude, center.longitude));
       setErrorMsg(null);
     } catch (err) {
       console.error("Unable to load users", err);
       setErrorMsg("Unable to load users from the server");
     }
-  }, [accessToken, center.latitude, center.longitude, currentUserId]);
+  }, [accessToken, center.latitude, center.longitude, currentUserId, setPrefetchedUsers]);
 
   const fetchUserDetails = useCallback(
     async (userId: number): Promise<ApiUser | null> => {
@@ -136,6 +144,16 @@ export default function MapScreen() {
   useEffect(() => {
     void loadUsers();
   }, [loadUsers, currentUser?.profilePicture, currentUser?.visibility]);
+
+  useEffect(() => {
+    if (!prefetchedUsers) return;
+
+    const filtered = prefetchedUsers.filter(
+      (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+    );
+
+    setNearbyUsers(scatterUsersAround(filtered, center.latitude, center.longitude));
+  }, [prefetchedUsers, center.latitude, center.longitude, currentUserId]);
 
   const selectedId = selectedUser?.id ?? null;
   useEffect(() => {

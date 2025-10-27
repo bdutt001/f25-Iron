@@ -53,7 +53,15 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, setStatus, isStatusUpdating, accessToken, currentUser } = useUser();
+  const {
+    status,
+    setStatus,
+    isStatusUpdating,
+    accessToken,
+    currentUser,
+    prefetchedUsers,
+    setPrefetchedUsers,
+  } = useUser();
 
   /**
    * Fetches users from the API and updates their distance relative to the current location.
@@ -139,6 +147,7 @@ export default function NearbyScreen() {
           }))
           .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
+        setPrefetchedUsers(filtered);
         setUsers(withDistance);
         setError(null);
       } catch (err) {
@@ -151,7 +160,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    [accessToken, currentUser]
+    [accessToken, currentUser, setPrefetchedUsers]
   );
 
   /**
@@ -217,6 +226,41 @@ export default function NearbyScreen() {
     },
     [loadUsers]
   );
+
+  useEffect(() => {
+    if (!prefetchedUsers) return;
+
+    const coords = location ?? {
+      latitude: ODU_CENTER.latitude,
+      longitude: ODU_CENTER.longitude,
+      altitude: undefined as any,
+      accuracy: undefined as any,
+      altitudeAccuracy: undefined as any,
+      heading: undefined as any,
+      speed: undefined as any,
+    };
+
+    const filtered = prefetchedUsers.filter((u) =>
+      (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
+    );
+
+    const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+    const withDistance = scattered
+      .map<NearbyWithDistance>((user) => ({
+        ...user,
+        distanceMeters: haversineDistanceMeters(
+          coords.latitude,
+          coords.longitude,
+          user.coords.latitude,
+          user.coords.longitude
+        ),
+      }))
+      .sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+    setUsers(withDistance);
+    setLoading(false);
+    hasLoadedOnceRef.current = true;
+  }, [prefetchedUsers, location, currentUser]);
 
   // Load users initially and when profile picture or visibility changes
   useEffect(() => {

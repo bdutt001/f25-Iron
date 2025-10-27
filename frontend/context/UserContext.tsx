@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Alert } from "react-native";
 
 import { updateUserProfile, updateUserVisibility } from "@/utils/api";
+import type { ApiUser } from "../utils/geo";
 
 export type CurrentUser = {
   id: number;
@@ -10,8 +11,8 @@ export type CurrentUser = {
   name?: string | null;
   createdAt?: string;
   interestTags?: string[];
-  profilePicture?: string | null; // ✅ from your branch
-  trustScore?: number;            // ✅ from main
+  profilePicture?: string | null;
+  trustScore?: number;            
   visibility?: boolean;
 };
 
@@ -25,6 +26,8 @@ type UserContextType = {
   setTokens: (t: { accessToken: string | null; refreshToken: string | null }) => void;
   isLoggedIn: boolean;
   isStatusUpdating: boolean;
+  prefetchedUsers: ApiUser[] | null;
+  setPrefetchedUsers: (users: ApiUser[] | null) => void;
 };
 
 
@@ -36,6 +39,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [prefetchedUsers, setPrefetchedUsers] = useState<ApiUser[] | null>(null);
 
   const setTokens = (t: { accessToken: string | null; refreshToken: string | null }) => {
     setAccessToken(t.accessToken);
@@ -99,6 +103,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (!currentUser) {
       setStatusRaw("Hidden");
+      setPrefetchedUsers(null);
       return;
     }
 
@@ -117,6 +122,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
         setTokens,
         isLoggedIn,
         isStatusUpdating, // ✅ add this
+        prefetchedUsers,
+        setPrefetchedUsers,
       }}
     >
       {children}
