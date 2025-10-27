@@ -357,7 +357,7 @@ export default function ProfileScreen() {
       : currentUser?.email || "Anonymous";
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.card}>
         <Text style={styles.title}>User Profile</Text>
 
@@ -466,7 +466,7 @@ export default function ProfileScreen() {
         )}
 
         {expanded && (
-          <View style={styles.catalogSection}>
+          <View style={[styles.catalogSection, { maxHeight: undefined }] }>
             <View style={styles.tagSearchWrapper}>
               <TextInput
                 value={tagSearch}
@@ -501,7 +501,7 @@ export default function ProfileScreen() {
               </View>
             ) : (
               filteredTagOptions.length > 0 && (
-                <ScrollView style={styles.catalogScroll}>
+                <View>
                   <View style={styles.catalogGrid}>
                     {filteredTagOptions.map((tag) => {
                       const selected = selectedTags.includes(tag);
@@ -529,7 +529,7 @@ export default function ProfileScreen() {
                       );
                     })}
                   </View>
-                </ScrollView>
+                </View>
               )
             )}
             {tagError && <Text style={styles.errorText}>{tagError}</Text>}
@@ -550,14 +550,15 @@ export default function ProfileScreen() {
       <View style={styles.logout}>
         <Button title="Logout" onPress={handleLogout} color="#d9534f" />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 // ✅ Styles
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f2f2f2", padding: 20 },
-  card: { backgroundColor: "white", padding: 20, borderRadius: 10, width: "90%", marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
+  container: { flex: 1, backgroundColor: "#f2f2f2" },
+  scrollContent: { alignItems: "center", padding: 20, paddingBottom: 40 },
+  card: { backgroundColor: "white", padding: 20, borderRadius: 10, width: "100%", maxWidth: 580, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
   label: { fontSize: 16, fontWeight: "600", marginTop: 10 },
   labelCount: { fontSize: 13, color: "#1f5fbf", fontWeight: "500" },
@@ -580,12 +581,11 @@ const styles = StyleSheet.create({
   selectedTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   selectedChip: { backgroundColor: "#e6f0ff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, marginBottom: 8 },
   selectedChipText: { color: "#1f5fbf", fontSize: 14, fontWeight: "500" },
-  catalogSection: { marginTop: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, padding: 12, backgroundColor: "#fafafa", maxHeight: 260 },
+  catalogSection: { marginTop: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, padding: 12, backgroundColor: "#fafafa" },
   tagSearchWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12, backgroundColor: "#fff" },
   tagSearchInput: { flex: 1, paddingVertical: 8, fontSize: 14, color: "#333" },
   tagSearchClear: { marginLeft: 8 },
   tagSearchClearText: { color: "#007BFF", fontSize: 13, fontWeight: "600" },
-  catalogScroll: { maxHeight: 200 },
   catalogGrid: { flexDirection: "row", flexWrap: "wrap" },
   tagOption: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: "#ccc", backgroundColor: "#fff", marginRight: 8, marginBottom: 8 },
   tagOptionSelected: { borderColor: "#007BFF", backgroundColor: "#e6f0ff" },
@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
   catalogLoadingText: { marginLeft: 8 },
   helperText: { marginTop: 12, fontSize: 13, color: "#666" },
   errorText: { marginTop: 12, fontSize: 13, color: "#c00" },
-  logout: { width: "90%" },
+  logout: { width: "100%", maxWidth: 580 },
   profilePictureSection: { alignItems: "center", marginBottom: 20 },
   profilePicture: { width: 120, height: 120, borderRadius: 60, marginBottom: 10 },
   profilePlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
