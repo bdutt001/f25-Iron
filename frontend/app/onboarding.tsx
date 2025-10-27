@@ -13,7 +13,7 @@ import {
   Image,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system/legacy";
+// Use standard fetch + FormData for uploads to avoid legacy module types
 
 import { useUser } from "../context/UserContext";
 import {
@@ -195,21 +195,20 @@ export default function OnboardingScreen() {
 
       const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
 
-      const res = await FileSystem.uploadAsync(uploadUrl, uri, {
-        httpMethod: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-        fieldName: "image",
-        mimeType,
+      const form = new FormData();
+      form.append("image", { uri, name: "profile.jpg", type: mimeType } as any);
+
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: form,
       });
 
-      if (res.status < 200 || res.status >= 300) {
+      if (!res.ok) {
         throw new Error(`Upload failed (${res.status})`);
       }
 
-      const data = JSON.parse(res.body || "{}");
+      const data = (await res.json()) as { profilePicture?: string };
       if (data.profilePicture) {
         const newUrl = data.profilePicture.startsWith("http")
           ? `${data.profilePicture}?t=${Date.now()}`
