@@ -53,7 +53,7 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, setStatus, accessToken, currentUser } = useUser();
+  const { status, setStatus, isStatusUpdating, accessToken, currentUser } = useUser();
 
   /**
    * Fetches users from the API and updates their distance relative to the current location.
@@ -199,8 +199,10 @@ export default function NearbyScreen() {
 
   // Load users initially and when profile picture or visibility changes
   useEffect(() => {
+    // Only run on mount or when profile picture changes
     requestAndLoad();
-  }, [requestAndLoad, currentUser?.profilePicture, status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser?.profilePicture]);
 
   // Pull-to-refresh functionality
   const onRefresh = useCallback(async () => {
@@ -293,11 +295,15 @@ export default function NearbyScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Visibility: {status}</Text>
-        <Button
-          title={status === "Visible" ? "Hide Me" : "Show Me"}
-          onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}
-        />
-      </View>
+    <Button
+      title={status === "Visible" ? "Hide Me" : "Show Me"}
+      onPress={() => {
+        const newStatus = status === "Visible" ? "Hidden" : "Visible";
+        setStatus(newStatus);
+      }}
+      disabled={isStatusUpdating}
+    />
+  </View>
 
       {/* User list */}
       <FlatList

@@ -20,13 +20,15 @@ type UserContextType = {
   refreshToken: string | null;
   setTokens: (t: { accessToken: string | null; refreshToken: string | null }) => void;
   isLoggedIn: boolean;
+  isStatusUpdating: boolean;
 };
 
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
-  const [status, setStatus] = useState<"Visible" | "Hidden">("Visible");
+  const [status, setStatusRaw] = useState<"Visible" | "Hidden">("Visible");
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
@@ -36,9 +38,21 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     setRefreshToken(t.refreshToken);
   };
 
+  // ✅ Debounced version of setStatus
+  const setStatus = (newStatus: "Visible" | "Hidden") => {
+    if (isStatusUpdating) {
+      console.log("⏳ Ignored toggle spam");
+      return;
+    }
+    setIsStatusUpdating(true);
+    setStatusRaw(newStatus);
+
+    // Wait 1.5 seconds before allowing another toggle
+    setTimeout(() => setIsStatusUpdating(false), 1500);
+  };
+
   const isLoggedIn = currentUser !== null;
-  
-  // 🧩 Add this right here (before the return)
+
   React.useEffect(() => {
     console.log("👤 currentUser updated:", currentUser);
   }, [currentUser]);
@@ -54,6 +68,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
         refreshToken,
         setTokens,
         isLoggedIn,
+        isStatusUpdating, // ✅ add this
       }}
     >
       {children}
