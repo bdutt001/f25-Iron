@@ -77,34 +77,35 @@ export default function MapScreen() {
     }
   }, [accessToken, currentUserId, setPrefetchedUsers]);
 
-  // 🧭 Unified loading for first login and prefetched data
-  useEffect(() => {
-    if (prefetchedUsers && prefetchedUsers.length > 0) {
-      const filtered = prefetchedUsers.filter(
-        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+useEffect(() => {
+  if (prefetchedUsers && prefetchedUsers.length > 0) {
+    const filtered = prefetchedUsers.filter(
+      (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+    );
+    const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
+    setNearbyUsers(scattered);
+
+    // ✅ Only animate/zoom once on initial mount
+    if (!hasAnimatedRegion.current && mapRef.current && scattered.length > 0) {
+      const first = scattered[0].coords;
+      mapRef.current.animateToRegion(
+        {
+          latitude: first.latitude,
+          longitude: first.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        },
+        400
       );
-      const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
-      setNearbyUsers(scattered);
-
-      if (mapRef.current && scattered.length > 0) {
-        const first = scattered[0].coords;
-        mapRef.current.animateToRegion(
-          {
-            latitude: first.latitude,
-            longitude: first.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          },
-          400
-        );
-        setTimeout(() => setMarkersVersion((v) => v + 1), 600);
-      }
-      return;
+      hasAnimatedRegion.current = true;
+      setTimeout(() => setMarkersVersion((v) => v + 1), 600);
     }
+    return;
+  }
 
-    if (!accessToken || !currentUser) return;
-    void loadUsers();
-  }, [prefetchedUsers, accessToken, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
+  if (!accessToken || !currentUser) return;
+  void loadUsers();
+}, [prefetchedUsers, accessToken, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
 
   // 🧠 Bridge effect for late prefetched users
   useEffect(() => {
@@ -114,7 +115,6 @@ export default function MapScreen() {
     );
     const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
     setNearbyUsers(scattered);
-    setTimeout(() => setMarkersVersion((v) => v + 1), 300);
   }, [prefetchedUsers, nearbyUsers.length, currentUserId, center.latitude, center.longitude]);
 
   // Turn off tracksViewChanges a moment after mount
@@ -132,6 +132,7 @@ export default function MapScreen() {
   // iOS marker size animation (disabled on Android)
   const scale = IS_ANDROID ? 1 : Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 1.6), 0.8);
   const animatedScale = useRef(new Animated.Value(scale)).current;
+  const hasAnimatedRegion = useRef(false);
   useEffect(() => {
     Animated.timing(animatedScale, {
       toValue: scale,
