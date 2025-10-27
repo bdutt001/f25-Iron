@@ -27,6 +27,7 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
+import { rankNearbyUsers, type RankedUser } from "../../utils/rank";
 // import ReportButton from "../../components/ReportButton";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -97,32 +98,33 @@ export default function NearbyScreen() {
         const response = await fetch(`${API_BASE_URL}/users`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        if (!response.ok) {
-          throw new Error(`Failed to load users (${response.status})`);
-        }
+        if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
         // Filter out the current user from the fetched list
         const filtered = Array.isArray(data)
           ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
           : [];
-        // Scatter users around the given coordinates for demo purposes
-        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
-        // Calculate distance for each user and sort by closest first
-        const withDistance = scattered
-          .map<NearbyWithDistance>((user) => ({
-            ...user,
-            distanceMeters: haversineDistanceMeters(
-              coords.latitude,
-              coords.longitude,
-              user.coords.latitude,
-              user.coords.longitude
-            ),
-          }))
-          .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
-        setUsers(withDistance); // Update users state with sorted nearby users
-        setError(null); // Clear any previous errors
+        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+
+        // 👇 NEW: rank by tag similarity + distance
+        const ranked = rankNearbyUsers(
+          {
+            id: currentUser?.id ?? -1,
+            interestTags: (currentUser?.interestTags as string[] | undefined) ?? [],
+            coords: { latitude: coords.latitude, longitude: coords.longitude },
+          },
+          scattered,
+          {
+            weights: { tagSim: 0.7, distance: 0.3 }, // weights
+            halfLifeMeters: 1200,                    // distance decays every ...
+            // maxMeters: 10000,                      // optional hard cutoff
+          }
+        );
+
+        setUsers(ranked);
+        setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message); // Set error message on failure
@@ -266,7 +268,9 @@ export default function NearbyScreen() {
               <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
               
             </View>
-            <Text style={styles.cardSubtitle}>{item.email}</Text>
+            <Text style={styles.cardSubtitle}>
+              {item.email} • {Math.round(item.score * 100)}% match
+            </Text>
             <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{item.trustScore}</Text></Text>
             {item.interestTags.length > 0 && (
               <View style={styles.cardTagsWrapper}>
@@ -305,11 +309,13 @@ export default function NearbyScreen() {
             </View> */}
           </View>
         )}
+        
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
       />
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
