@@ -111,19 +111,33 @@ export const fetchTagCatalog = async (accessToken: string): Promise<string[]> =>
   return tags.sort((a, b) => a.localeCompare(b));
 };
 
-// ✅ Update user's interest tags
-export const updateUserInterestTags = async (
+export type UpdateUserProfilePayload = {
+  name?: string | null;
+  interestTags?: string[];
+};
+
+// ✅ Update user profile details (name, tags, etc.)
+export const updateUserProfile = async (
   userId: number,
-  tags: string[],
+  payload: UpdateUserProfilePayload,
   accessToken: string
 ): Promise<CurrentUser> => {
+  const body: Record<string, unknown> = {};
+
+  if ("name" in payload) body.name = payload.name;
+  if ("interestTags" in payload) body.interestTags = payload.interestTags;
+
+  if (Object.keys(body).length === 0) {
+    throw new Error("No profile fields provided.");
+  }
+
   const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       ...buildAuthHeaders(accessToken),
     },
-    body: JSON.stringify({ interestTags: tags }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

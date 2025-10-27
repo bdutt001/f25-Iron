@@ -13,12 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useUser } from "../../context/UserContext";
-import {
-  fetchTagCatalog,
-  updateUserInterestTags,
-  API_BASE_URL,
-} from "@/utils/api";
+import { useUser, type CurrentUser } from "../../context/UserContext";
+import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
@@ -93,9 +89,44 @@ export default function ProfileScreen() {
       : null
   );
 
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(currentUser?.name ?? "");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  const applyUserUpdate = (updated: CurrentUser) => {
+    if (!currentUser) {
+      setCurrentUser(updated);
+      return;
+    }
+
+    setCurrentUser({
+      ...currentUser,
+      ...updated,
+      interestTags:
+        updated.interestTags ?? currentUser.interestTags,
+      profilePicture:
+        updated.profilePicture ?? currentUser.profilePicture,
+    });
+  };
+
   useEffect(() => {
     setSelectedTags(currentUser?.interestTags ?? []);
   }, [currentUser?.interestTags]);
+
+  useEffect(() => {
+    if (!isEditingName) {
+      setNameInput(currentUser?.name ?? "");
+    }
+  }, [currentUser?.name, isEditingName]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setIsEditingName(false);
+      setNameError(null);
+      setNameInput("");
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (!expanded) setTagSearch("");
@@ -127,6 +158,60 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [accessToken]);
+
+  const handleNameInputChange = (value: string) => {
+    if (nameError) setNameError(null);
+    setNameInput(value);
+  };
+
+  const startNameEdit = () => {
+    if (!currentUser) return;
+    setNameError(null);
+    setNameInput(currentUser.name ?? "");
+    setIsEditingName(true);
+  };
+
+  const handleCancelNameEdit = () => {
+    setIsEditingName(false);
+    setNameError(null);
+    setNameInput(currentUser?.name ?? "");
+  };
+
+  const handleSaveName = async () => {
+    if (!currentUser || !accessToken) return;
+
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      setNameError("Name cannot be empty.");
+      return;
+    }
+
+    if (trimmed === (currentUser.name ?? "").trim()) {
+      setIsEditingName(false);
+      return;
+    }
+
+    setSavingName(true);
+    setNameError(null);
+
+    try {
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { name: trimmed },
+        accessToken
+      );
+      applyUserUpdate(updated);
+      setNameInput(updated.name ?? trimmed);
+      setIsEditingName(false);
+      Alert.alert("Success", "Name updated!");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update name";
+      setNameError(message);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -220,16 +305,12 @@ export default function ProfileScreen() {
     setTagError(null);
 
     try {
-      const updated = await updateUserInterestTags(
+      const updated = await updateUserProfile(
         currentUser.id,
-        sortedNext,
+        { interestTags: sortedNext },
         accessToken
       );
-      setCurrentUser({
-        ...currentUser,
-        ...updated,
-        interestTags: updated.interestTags ?? [],
-      });
+      applyUserUpdate(updated);
       setSelectedTags(updated.interestTags ?? []);
     } catch (error) {
       const message =
@@ -265,6 +346,11 @@ export default function ProfileScreen() {
       ? "No tags selected yet. Tap Edit to choose your interests."
       : undefined;
 
+  const displayName =
+    currentUser?.name && currentUser.name.trim().length > 0
+      ? currentUser.name
+      : currentUser?.email || "Anonymous";
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
@@ -283,9 +369,56 @@ export default function ProfileScreen() {
         </View>
 
         <Text style={styles.label}>Name:</Text>
-        <Text style={styles.value}>
-          {currentUser?.name || currentUser?.email || "Anonymous"}
-        </Text>
+        {isEditingName ? (
+          <View style={styles.nameEditContainer}>
+            <TextInput
+              value={nameInput}
+              onChangeText={handleNameInputChange}
+              placeholder="Enter your name"
+              autoCapitalize="words"
+              returnKeyType="done"
+              editable={!savingName}
+              onSubmitEditing={() => {
+                if (!savingName) void handleSaveName();
+              }}
+              style={styles.nameInput}
+              accessibilityLabel="Name input"
+            />
+            {nameError && (
+              <Text style={[styles.errorText, styles.nameError]}>{nameError}</Text>
+            )}
+            <View style={styles.nameActions}>
+              <View style={[styles.nameActionButton, styles.nameActionButtonFirst]}>
+                <Button
+                  title={savingName ? "Saving..." : "Save"}
+                  onPress={handleSaveName}
+                  disabled={savingName}
+                />
+              </View>
+              <View style={styles.nameActionButton}>
+                <Button
+                  title="Cancel"
+                  onPress={handleCancelNameEdit}
+                  color="#6c757d"
+                  disabled={savingName}
+                />
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.valueRow}>
+            <Text style={[styles.value, styles.nameValue]}>{displayName}</Text>
+            <TouchableOpacity
+              onPress={startNameEdit}
+              disabled={!currentUser}
+              accessibilityRole="button"
+              accessibilityLabel="Edit display name"
+              style={!currentUser ? styles.disabledAction : undefined}
+            >
+              <Text style={styles.toggleText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <Text style={styles.label}>Email:</Text>
         <Text style={styles.value}>{currentUser?.email || "-"}</Text>
         <Text style={styles.label}>Status:</Text>
@@ -416,7 +549,7 @@ export default function ProfileScreen() {
   );
 }
 
-// ✅ Styles (unchanged from your version)
+// ✅ Styles
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f2f2f2", padding: 20 },
   card: { backgroundColor: "white", padding: 20, borderRadius: 10, width: "90%", marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
@@ -424,6 +557,15 @@ const styles = StyleSheet.create({
   label: { fontSize: 16, fontWeight: "600", marginTop: 10 },
   labelCount: { fontSize: 13, color: "#1f5fbf", fontWeight: "500" },
   value: { fontSize: 16, color: "#333" },
+  valueRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
+  nameValue: { flex: 1, marginRight: 12 },
+  nameEditContainer: { marginTop: 8, width: "100%" },
+  nameInput: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: "#333", backgroundColor: "#fff" },
+  nameActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 12 },
+  nameActionButton: { marginLeft: 12 },
+  nameActionButtonFirst: { marginLeft: 0 },
+  nameError: { marginTop: 8 },
+  disabledAction: { opacity: 0.5 },
   divider: { marginVertical: 16, height: 1, backgroundColor: "#eee" },
   tagHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   tagHeaderActions: { flexDirection: "row", alignItems: "center" },
