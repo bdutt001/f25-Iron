@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
+  ActivityIndicator,
   Animated,
-  Button,
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  Image,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import MapView, { Marker } from "react-native-maps";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
@@ -44,6 +44,7 @@ export default function MapScreen() {
     currentUser,
     prefetchedUsers,
     setPrefetchedUsers,
+    isStatusUpdating,
   } = useUser();
   const currentUserId = currentUser?.id;
 
@@ -201,25 +202,33 @@ export default function MapScreen() {
             centerOffset={{ x: 0, y: 0 }}
           >
             <View style={styles.markerContainer}>
-              {selfUser.profilePicture ? (
-                <Animated.Image
-                  source={{
-                    uri: selfUser.profilePicture.startsWith("http")
-                      ? `${selfUser.profilePicture}?t=${Date.now()}`
-                      : `${API_BASE_URL}${selfUser.profilePicture}?t=${Date.now()}`,
-                  }}
-                  style={[
-                    styles.markerImage,
-                    { borderColor: "#1f5fbf", transform: [{ scale: animatedScale }] },
-                  ]}
-                />
-              ) : (
-                <View style={[styles.markerPlaceholder, { borderColor: "#1f5fbf" }]}>
-                  <Text style={styles.markerInitials}>
-                    {selfUser.name?.charAt(0)?.toUpperCase() || "U"}
-                  </Text>
-                </View>
-              )}
+              <Animated.View
+                style={[
+                  styles.markerImageWrapper,
+                  styles.markerSelfWrapper,
+                  { transform: [{ scale: animatedScale }] },
+                ]}
+              >
+                {selfUser.profilePicture ? (
+                  <ExpoImage
+                    source={{
+                      uri: selfUser.profilePicture.startsWith("http")
+                        ? selfUser.profilePicture
+                        : `${API_BASE_URL}${selfUser.profilePicture}`,
+                    }}
+                    style={styles.markerImageInner}
+                    cachePolicy="memory-disk"
+                    transition={0}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={styles.markerPlaceholderInner}>
+                    <Text style={styles.markerPlaceholderText}>
+                      {selfUser.name?.charAt(0)?.toUpperCase() || "U"}
+                    </Text>
+                  </View>
+                )}
+              </Animated.View>
             </View>
           </Marker>
         )}
@@ -234,25 +243,27 @@ export default function MapScreen() {
             centerOffset={{ x: 0, y: 0 }}
           >
             <View style={styles.markerContainer}>
-              {user.profilePicture ? (
-                <Image
-                  source={{
-                    uri: user.profilePicture.startsWith("http")
-                      ? `${user.profilePicture}?t=${Date.now()}`
-                      : `${API_BASE_URL}${user.profilePicture}?t=${Date.now()}`,
-                  }}
-                  style={[
-                    styles.markerImage,
-                    { borderColor: "#e63946", width: 40, height: 40, borderRadius: 20 },
-                  ]}
-                />
-              ) : (
-                <View style={[styles.markerPlaceholder, { borderColor: "#e63946" }]}>
-                  <Text style={styles.markerInitials}>
-                    {user.name?.charAt(0)?.toUpperCase() || "?"}
-                  </Text>
-                </View>
-              )}
+              <View style={[styles.markerImageWrapper, styles.markerOtherWrapper]}>
+                {user.profilePicture ? (
+                  <ExpoImage
+                    source={{
+                      uri: user.profilePicture.startsWith("http")
+                        ? user.profilePicture
+                        : `${API_BASE_URL}${user.profilePicture}`,
+                    }}
+                    style={styles.markerImageInner}
+                    cachePolicy="memory-disk"
+                    transition={0}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={styles.markerPlaceholderInner}>
+                    <Text style={styles.markerPlaceholderText}>
+                      {user.name?.charAt(0)?.toUpperCase() || "?"}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </Marker>
         ))}
@@ -268,16 +279,19 @@ export default function MapScreen() {
           ]}
         >
           {selectedUser.profilePicture ? (
-            <Image
+            <ExpoImage
               source={{
                 uri: selectedUser.profilePicture.startsWith("http")
-                  ? `${selectedUser.profilePicture}?t=${Date.now()}`
-                  : `${API_BASE_URL}${selectedUser.profilePicture}?t=${Date.now()}`,
+                  ? selectedUser.profilePicture
+                  : `${API_BASE_URL}${selectedUser.profilePicture}`,
               }}
               style={[
                 styles.floatingImage,
                 { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
               ]}
+              cachePolicy="memory-disk"
+              transition={0}
+              contentFit="cover"
             />
           ) : (
             <View
@@ -363,10 +377,27 @@ export default function MapScreen() {
       {(!selectedUser || selectedUser.isCurrentUser) && (
         <View style={[styles.controls, selectedUser ? { bottom: 180 } : null]}>
           <Text style={styles.statusText}>Visibility: {status}</Text>
-          <Button
-            title={status === "Visible" ? "Hide Me" : "Show Me"}
-            onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}
-          />
+          <TouchableOpacity
+            style={[
+              styles.visibilityToggle,
+              status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
+              isStatusUpdating && styles.visibilityToggleDisabled,
+            ]}
+            onPress={() => {
+              if (isStatusUpdating) return;
+              setStatus(status === "Visible" ? "Hidden" : "Visible");
+            }}
+            activeOpacity={0.85}
+            disabled={isStatusUpdating}
+          >
+            {isStatusUpdating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.visibilityToggleText}>
+                {status === "Visible" ? "Hide Me" : "Show Me"}
+              </Text>
+            )}
+          </TouchableOpacity>
           {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
         </View>
       )}
@@ -388,18 +419,42 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 16, marginBottom: 8, fontWeight: "bold" },
   errorText: { marginTop: 8, color: "#c00", fontSize: 13 },
-  markerContainer: { alignItems: "center", justifyContent: "center", width: 40, height: 40 },
-  markerImage: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, backgroundColor: "#fff" },
-  markerPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 3,
-    backgroundColor: "#f1f1f1",
+  visibilityToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+    minWidth: 120,
     alignItems: "center",
-    justifyContent: "center",
+    marginBottom: 8,
+    backgroundColor: "#007BFF",
   },
-  markerInitials: { fontSize: 16, fontWeight: "600", color: "#555" },
+  visibilityShow: {},
+  visibilityHide: {},
+  visibilityToggleDisabled: { opacity: 0.6 },
+  visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  markerContainer: { alignItems: "center", justifyContent: "center" },
+  markerImageWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 3,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  markerSelfWrapper: { borderColor: "#1f5fbf" },
+  markerOtherWrapper: { borderColor: "#e63946" },
+  markerImageInner: { width: "100%", height: "100%" },
+  markerPlaceholderInner: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 22,
+    backgroundColor: "#f1f1f1",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  markerPlaceholderText: { fontSize: 18, fontWeight: "600", color: "#555" },
   floatingMarker: {
     position: "absolute",
     alignItems: "center",

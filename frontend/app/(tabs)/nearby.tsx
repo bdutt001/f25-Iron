@@ -10,14 +10,15 @@ import {
   ActivityIndicator,
   Button,
   FlatList,
-  Image,
   RefreshControl,
   StyleSheet,
   Text,
   View,
   Pressable,
   Alert,
+  TouchableOpacity,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "../../context/UserContext";
@@ -366,15 +367,29 @@ export default function NearbyScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Visibility: {status}</Text>
-    <Button
-      title={status === "Visible" ? "Hide Me" : "Show Me"}
-      onPress={() => {
-        const newStatus = status === "Visible" ? "Hidden" : "Visible";
-        setStatus(newStatus);
-      }}
-      disabled={isStatusUpdating}
-    />
-  </View>
+        <TouchableOpacity
+          style={[
+            styles.visibilityToggle,
+            status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
+            isStatusUpdating && styles.visibilityToggleDisabled,
+          ]}
+          onPress={() => {
+            if (isStatusUpdating) return;
+            const newStatus = status === "Visible" ? "Hidden" : "Visible";
+            setStatus(newStatus);
+          }}
+          disabled={isStatusUpdating}
+          activeOpacity={0.85}
+        >
+            {isStatusUpdating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.visibilityToggleText}>
+                {status === "Visible" ? "Hide Me" : "Show Me"}
+              </Text>
+            )}
+        </TouchableOpacity>
+      </View>
 
       {loading && hasLoadedOnceRef.current && (
         <View style={styles.inlineLoader}>
@@ -396,9 +411,9 @@ export default function NearbyScreen() {
         renderItem={({ item, index }) => {
           const imageUri =
             item.profilePicture && item.profilePicture.startsWith("http")
-              ? `${item.profilePicture}?t=${Date.now()}`
+              ? item.profilePicture
               : item.profilePicture
-              ? `${API_BASE_URL}${item.profilePicture}?t=${Date.now()}`
+              ? `${API_BASE_URL}${item.profilePicture}`
               : null;
 
           // ✅ Dynamic color based on trust score
@@ -414,7 +429,13 @@ export default function NearbyScreen() {
               <View style={styles.cardHeader}>
                 <View style={styles.userInfo}>
                   {imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.avatar} />
+                    <ExpoImage
+                      source={{ uri: imageUri }}
+                      style={styles.avatar}
+                      cachePolicy="memory-disk"
+                      transition={0}
+                      contentFit="cover"
+                    />
                   ) : (
                     <View style={[styles.avatar, styles.avatarPlaceholder]}>
                       <Text style={styles.avatarInitial}>
@@ -494,6 +515,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
+  visibilityToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+    minWidth: 120,
+    alignItems: "center",
+    backgroundColor: "#007BFF",
+  },
+  visibilityShow: {},
+  visibilityHide: {},
+  visibilityToggleDisabled: { opacity: 0.6 },
+  visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   inlineLoader: {
     flexDirection: "row",
     alignItems: "center",
