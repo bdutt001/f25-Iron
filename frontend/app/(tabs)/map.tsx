@@ -152,8 +152,10 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
+    // Wait until accessToken and currentUser exist before loading
+    if (!accessToken || !currentUser) return;
     void loadUsers();
-  }, [loadUsers, currentUser?.profilePicture, currentUser?.visibility]);
+  }, [accessToken, currentUser, loadUsers]);
 
   useEffect(() => {
     if (!prefetchedUsers) return;
