@@ -146,7 +146,7 @@ export default function LoginScreen() {
         setCurrentUser(toUserOrFallback(json));
       }
       Alert.alert("Account created", "You are now logged in.");
-      router.replace("/(tabs)/profile");
+      router.replace("/onboarding");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       Alert.alert("Signup failed", message);

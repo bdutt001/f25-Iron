@@ -70,7 +70,7 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { status, currentUser, setCurrentUser, accessToken } = useUser();
+  const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers } = useUser();
 
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -219,6 +219,7 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setPrefetchedUsers(null);
     router.replace("/login");
   };
 
