@@ -129,14 +129,6 @@ export default function MapScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  // Light periodic refresh (keeps list fresh; selection remains)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void loadUsers();
-    }, 12000);
-    return () => clearInterval(interval);
-  }, [loadUsers]);
-
   // iOS marker size animation (disabled on Android)
   const scale = IS_ANDROID ? 1 : Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 1.6), 0.8);
   const animatedScale = useRef(new Animated.Value(scale)).current;
