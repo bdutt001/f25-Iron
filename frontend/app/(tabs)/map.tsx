@@ -6,6 +6,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Platform,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import MapView, { Marker } from "react-native-maps";
@@ -14,6 +15,12 @@ import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
+
+const IS_ANDROID = Platform.OS === "android";
+const MARKER_SIZE = IS_ANDROID ? 36 : 44; // slightly smaller on Android to avoid clipping
+const MARKER_RADIUS = MARKER_SIZE / 2;
+const MARKER_BORDER = IS_ANDROID ? 2 : 3;
+const MarkerWrapper: any = IS_ANDROID ? View : Animated.View;
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
@@ -31,6 +38,8 @@ export default function MapScreen() {
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
   const [zoomLevel, setZoomLevel] = useState(14);
+  // Control RN Maps marker snapshotting to avoid Android flicker and delayed image rendering
+  const [markerTracks, setMarkerTracks] = useState<Record<string, boolean>>({});
 
   const getZoomLevel = (region: { longitudeDelta: number }) => {
     const angle = region.longitudeDelta;
@@ -76,8 +85,8 @@ export default function MapScreen() {
               (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
           )
         : [];
+      // Only update prefetched users; let the effect recompute nearbyUsers once
       setPrefetchedUsers(filtered);
-      setNearbyUsers(scatterUsersAround(filtered, center.latitude, center.longitude));
       setErrorMsg(null);
     } catch (err) {
       console.error("Unable to load users", err);
@@ -156,6 +165,63 @@ export default function MapScreen() {
     setNearbyUsers(scatterUsersAround(filtered, center.latitude, center.longitude));
   }, [prefetchedUsers, center.latitude, center.longitude, currentUserId]);
 
+  // Ensure new markers track view changes until their images load
+  useEffect(() => {
+    setMarkerTracks((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+
+      if (selfUser) {
+        if (typeof next.self === "undefined") next.self = true;
+      } else if (typeof next.self !== "undefined") {
+        delete next.self;
+      }
+
+      for (const u of nearbyUsers) {
+        const key = String(u.id);
+        if (typeof next[key] === "undefined") next[key] = true;
+      }
+
+      // Clean up entries for users no longer present
+      Object.keys(next).forEach((key) => {
+        if (key === "self") return;
+        if (!nearbyUsers.some((u) => String(u.id) === key)) delete next[key];
+      });
+
+      // Shallow compare to avoid unnecessary state updates (prevents update loops)
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length === nextKeys.length) {
+        let same = true;
+        for (const k of nextKeys) {
+          if (prev[k] !== next[k]) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return prev;
+      }
+      return next;
+    });
+  }, [nearbyUsers, selfUser]);
+
+  // One-time safety: after mount, stop tracking view changes if any stayed true
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setMarkerTracks((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const k of Object.keys(next)) {
+          if (next[k]) {
+            next[k] = false;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 450);
+    return () => clearTimeout(t);
+  }, []);
+
   const selectedId = selectedUser?.id ?? null;
   useEffect(() => {
     const interval = setInterval(() => {
@@ -165,7 +231,8 @@ export default function MapScreen() {
     return () => clearInterval(interval);
   }, [loadUsers, refreshSelection, selectedId]);
 
-  const scale = Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 2.0), 0.6);
+  // Disable animated scaling on Android to avoid bitmap clipping inside Marker
+  const scale = IS_ANDROID ? 1 : Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 1.6), 0.8);
   const animatedScale = useRef(new Animated.Value(scale)).current;
 
   useEffect(() => {
@@ -195,18 +262,23 @@ export default function MapScreen() {
         {status === "Visible" && selfUser && (
           <Marker
             coordinate={myCoords}
-            title="You are here"
-            description={selfUser.email}
+            // Remove default callout text
             onPress={() => handleSelectUser(selfUser, { isCurrentUser: true })}
             anchor={{ x: 0.5, y: 0.5 }}
             centerOffset={{ x: 0, y: 0 }}
+            tracksViewChanges={markerTracks.self ?? true}
           >
-            <View style={styles.markerContainer}>
-              <Animated.View
+            <View
+              style={styles.markerContainer}
+              // Prevent Android from optimizing away the wrapper so borders render correctly
+              collapsable={false}
+              renderToHardwareTextureAndroid
+            >
+              <MarkerWrapper
                 style={[
                   styles.markerImageWrapper,
                   styles.markerSelfWrapper,
-                  { transform: [{ scale: animatedScale }] },
+                  !IS_ANDROID && { transform: [{ scale: animatedScale }] },
                 ]}
               >
                 {selfUser.profilePicture ? (
@@ -220,6 +292,20 @@ export default function MapScreen() {
                     cachePolicy="memory-disk"
                     transition={0}
                     contentFit="cover"
+                    onLoadEnd={() => {
+                      // Small delay helps RN Maps finish snapshot and avoid flicker
+                      setTimeout(
+                        () =>
+                          setMarkerTracks((prev) => {
+                            if (prev.self === false) return prev;
+                            return { ...prev, self: false };
+                          }),
+                        60
+                      );
+                    }}
+                    onError={() =>
+                      setMarkerTracks((prev) => ({ ...prev, self: false }))
+                    }
                   />
                 ) : (
                   <View style={styles.markerPlaceholderInner}>
@@ -228,7 +314,7 @@ export default function MapScreen() {
                     </Text>
                   </View>
                 )}
-              </Animated.View>
+              </MarkerWrapper>
             </View>
           </Marker>
         )}
@@ -241,8 +327,13 @@ export default function MapScreen() {
             onPress={() => handleSelectUser(user, { isCurrentUser: false })}
             anchor={{ x: 0.5, y: 0.5 }}
             centerOffset={{ x: 0, y: 0 }}
+            tracksViewChanges={markerTracks[String(user.id)] ?? true}
           >
-            <View style={styles.markerContainer}>
+            <View
+              style={styles.markerContainer}
+              collapsable={false}
+              renderToHardwareTextureAndroid
+            >
               <View style={[styles.markerImageWrapper, styles.markerOtherWrapper]}>
                 {user.profilePicture ? (
                   <ExpoImage
@@ -255,6 +346,21 @@ export default function MapScreen() {
                     cachePolicy="memory-disk"
                     transition={0}
                     contentFit="cover"
+                    onLoadEnd={() => {
+                      const key = String(user.id);
+                      setTimeout(
+                        () =>
+                          setMarkerTracks((prev) => {
+                            if (prev[key] === false) return prev;
+                            return { ...prev, [key]: false };
+                          }),
+                        60
+                      );
+                    }}
+                    onError={() => {
+                      const key = String(user.id);
+                      setMarkerTracks((prev) => ({ ...prev, [key]: false }));
+                    }}
                   />
                 ) : (
                   <View style={styles.markerPlaceholderInner}>
@@ -434,22 +540,28 @@ const styles = StyleSheet.create({
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   markerContainer: { alignItems: "center", justifyContent: "center" },
   markerImageWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 3,
+    width: MARKER_SIZE,
+    height: MARKER_SIZE,
+    borderRadius: MARKER_RADIUS,
+    borderWidth: MARKER_BORDER,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
-    overflow: "hidden",
+    // Avoid relying on overflow clipping inside Marker (problematic on Android)
+    overflow: "visible",
   },
   markerSelfWrapper: { borderColor: "#1f5fbf" },
   markerOtherWrapper: { borderColor: "#e63946" },
-  markerImageInner: { width: "100%", height: "100%" },
+  // Round the image itself to avoid platform clipping issues
+  markerImageInner: {
+    width: "100%",
+    height: "100%",
+    borderRadius: MARKER_RADIUS,
+  },
   markerPlaceholderInner: {
     width: "100%",
     height: "100%",
-    borderRadius: 22,
+    borderRadius: MARKER_RADIUS,
     backgroundColor: "#f1f1f1",
     justifyContent: "center",
     alignItems: "center",
