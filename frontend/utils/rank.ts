@@ -66,7 +66,7 @@ export function rankNearbyUsers(
     const tagSim = jaccard(reqTags, candTags);
     const dScore = distanceScore(d, halfLife);
 
-    const score = Math.max(0, Math.min(1, weights.tagSim * tagSim + weights.distance * dScore));
+    const score = Math.max(0, Math.min(1, weights.tagSim * tagSim));
 
     ranked.push({
       ...u,
