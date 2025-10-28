@@ -153,6 +153,27 @@ router.post("/session", authenticate, async (req: AuthRequest, res) => {
   }
 
   try {
+    const authUserId = req.user!.id;
+    if (!participants.includes(authUserId)) {
+      return res.status(403).json({ message: "Authenticated user must be a participant" });
+    }
+
+    const otherId = participants[0] === authUserId ? participants[1] : participants[0];
+
+    // Enforce blocking both directions
+    const blocked = await prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: authUserId, blockedId: otherId },
+          { blockerId: otherId, blockedId: authUserId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (blocked) {
+      return res.status(403).json({ message: "Cannot start chat with blocked user" });
+    }
+
     // Check for existing chat session
     const existingChat = await prisma.chatSession.findFirst({
       where: {
@@ -203,17 +224,44 @@ router.get("/:chatId", authenticate, async (req: AuthRequest, res) => {
 // Send a new message
 // -------------------------
 router.post("/", authenticate, async (req: AuthRequest, res) => {
-  const { content, chatSessionId } = req.body;
+  const { content, chatSessionId } = req.body as { content: string; chatSessionId: number };
   if (!content || !chatSessionId) {
     return res.status(400).json({ message: "Missing required fields" });
   }
 
   try {
+    const chat = await prisma.chatSession.findUnique({
+      where: { id: Number(chatSessionId) },
+      include: { participants: true },
+    });
+    if (!chat) return res.status(404).json({ message: "Chat not found" });
+
+    const authUserId = req.user!.id;
+    if (!chat.participants.some((p) => p.userId === authUserId)) {
+      return res.status(403).json({ message: "Not a participant" });
+    }
+    const otherId = chat.participants.find((p) => p.userId !== authUserId)?.userId;
+    if (!otherId) return res.status(400).json({ message: "Invalid chat participants" });
+
+    // Enforce blocking both directions
+    const blocked = await prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: authUserId, blockedId: otherId },
+          { blockerId: otherId, blockedId: authUserId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (blocked) {
+      return res.status(403).json({ message: "Messaging blocked between users" });
+    }
+
     const message = await prisma.message.create({
       data: {
         content,
-        senderId: req.user!.id, // use authenticated user
-        chatSessionId,
+        senderId: authUserId, // use authenticated user
+        chatSessionId: chat.id,
       },
     });
 
@@ -240,7 +288,22 @@ router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res)
       },
     });
 
-    const conversations = chats.map((chat) => {
+    // Load blocks for this user and build hidden set
+    const blockPairs = await prisma.block.findMany({
+      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+      select: { blockerId: true, blockedId: true },
+    });
+    const hiddenIds = new Set<number>();
+    for (const b of blockPairs) {
+      hiddenIds.add(b.blockerId === userId ? b.blockedId : b.blockerId);
+    }
+
+    const visibleChats = chats.filter((chat) => {
+      const otherId = chat.participants.find((p) => p.userId !== userId)?.userId;
+      return otherId ? !hiddenIds.has(otherId) : false;
+    });
+
+    const conversations = visibleChats.map((chat) => {
       const otherParticipant = chat.participants.find((p) => p.userId !== userId)?.user;
       const lastMsg = chat.messages[0];
 

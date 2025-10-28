@@ -340,7 +340,7 @@ useEffect(() => {
       )}
 
       {/* 🔘 Controls (lift when sheet is open) */}
-      <View style={[styles.controls, selectedUser ? { bottom: 180 } : null]}>
+      <View style={[styles.controls, selectedUser ? { display: 'none' } : null]}>
         <Text style={styles.statusText}>Visibility: {status}</Text>
         <TouchableOpacity
           style={[

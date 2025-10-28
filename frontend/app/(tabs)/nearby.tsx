@@ -17,6 +17,8 @@ import {
   Pressable,
   Alert,
   TouchableOpacity,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
@@ -62,6 +64,8 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedVisible, setBlockedVisible] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
 
   const {
     status,
@@ -335,6 +339,59 @@ export default function NearbyScreen() {
     }
   };
 
+  const loadBlockedUsers = useCallback(async () => {
+    if (!accessToken) return setBlockedUsers([]);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/me/blocks`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) throw new Error(`Failed to load blocked users (${response.status})`);
+      const data = (await response.json()) as ApiUser[];
+      setBlockedUsers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load blocked users", err);
+      setBlockedUsers([]);
+    }
+  }, [accessToken]);
+
+  const handleBlock = useCallback(
+    async (userId: number) => {
+      if (!accessToken) return Alert.alert("Not logged in", "Please log in to block users.");
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new Error(`Failed to block (${res.status})`);
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        setPrefetchedUsers((prev) => (prev ? prev.filter((u) => u.id !== userId) : prev));
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error", "Could not block user. Please try again.");
+      }
+    },
+    [accessToken, setPrefetchedUsers]
+  );
+
+  const handleUnblock = useCallback(
+    async (userId: number) => {
+      if (!accessToken) return Alert.alert("Not logged in", "Please log in to unblock users.");
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok && res.status !== 204) throw new Error(`Failed to unblock (${res.status})`);
+        setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
+        void requestAndLoad({ silent: true });
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error", "Could not unblock user. Please try again.");
+      }
+    },
+    [accessToken, requestAndLoad]
+  );
+
   // Loading and error UI
   const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
 
@@ -395,6 +452,15 @@ export default function NearbyScreen() {
               {status === "Visible" ? "Hide Me" : "Show Me"}
             </Text>
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.blockedBtn}
+          onPress={() => {
+            setBlockedVisible(true);
+            void loadBlockedUsers();
+          }}
+        >
+          <Text style={styles.blockedBtnText}>Blocked</Text>
         </TouchableOpacity>
       </View>
 
@@ -493,16 +559,69 @@ export default function NearbyScreen() {
                       refreshTrustScore(item.id);
                     }}
                   />
-                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
+                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}> 
                     Trust Score: {scoreTS}
                   </Text>
                 </View>
+                {/* Block button */}
+                <Pressable
+                  onPress={() =>
+                    Alert.alert(
+                      "Block User",
+                      `Hide ${item.name || item.email} and prevent messages?`,
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Block",
+                          style: "destructive",
+                          onPress: () => void handleBlock(item.id),
+                        },
+                      ]
+                    )
+                  }
+                  style={({ pressed }) => [styles.blockButton, pressed && { opacity: 0.85 }]}
+                >
+                  <Ionicons name="remove-circle" size={18} color="white" />
+                </Pressable>
               </View>
             </View>
           );
         }}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
       />
+      {/* Blocked users modal */}
+      <Modal
+        visible={blockedVisible}
+        animationType="slide"
+        onRequestClose={() => setBlockedVisible(false)}
+        transparent={true}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Blocked Users</Text>
+            <ScrollView style={{ maxHeight: 380 }}>
+              {blockedUsers.length === 0 ? (
+                <Text style={styles.note}>No blocked users.</Text>
+              ) : (
+                blockedUsers.map((u) => (
+                  <View key={u.id} style={styles.blockedRow}>
+                    <Text style={styles.blockedName}>{u.name || u.email}</Text>
+                    <TouchableOpacity
+                      style={styles.unblockBtn}
+                      onPress={() => void handleUnblock(u.id)}
+                    >
+                      <Text style={styles.unblockBtnText}>Unblock</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setBlockedVisible(false)}>
+              <Text style={styles.closeBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -539,6 +658,14 @@ const styles = StyleSheet.create({
   visibilityHide: {},
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  blockedBtn: {
+    marginLeft: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: "#6c757d",
+  },
+  blockedBtnText: { color: "#fff", fontWeight: "700" },
   inlineLoader: {
     flexDirection: "row",
     alignItems: "center",
@@ -596,7 +723,60 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  blockButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: "#dc3545",
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 2,
+  },
   reportContainer: { alignItems: "center" },
   trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
   flexGrow: { flexGrow: 1 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 12 },
+  blockedRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ddd",
+  },
+  blockedName: { fontSize: 16 },
+  unblockBtn: {
+    backgroundColor: "#28a745",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  unblockBtnText: { color: "#fff", fontWeight: "700" },
+  closeBtn: {
+    marginTop: 12,
+    alignSelf: "flex-end",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#007BFF",
+    borderRadius: 18,
+  },
+  closeBtnText: { color: "#fff", fontWeight: "700" },
 });

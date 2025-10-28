@@ -3,6 +3,8 @@ import { authenticate } from "../middleware/authenticate";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { blockUser, unblockUser } from "../controllers/users.controller";
+import { listMyBlockedUsers } from "../controllers/users.controller";
 import {
   createUser,
   getUsers,
@@ -56,5 +58,10 @@ router.post(
   upload.single("image"), // multer stores image in /temp
   uploadProfilePicture     // controller uploads to Cloudinary and deletes temp file
 );
+
+// Blocking routes
+router.post("/users/:id/block", blockUser);
+router.delete("/users/:id/block", unblockUser);
+router.get("/users/me/blocks", listMyBlockedUsers);
 
 export default router;
