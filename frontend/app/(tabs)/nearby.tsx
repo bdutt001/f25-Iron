@@ -5,7 +5,7 @@
  */
 
 import * as Location from "expo-location";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Button,
@@ -16,8 +16,11 @@ import {
   View,
   Pressable,
   Alert,
+  TouchableOpacity,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import {
@@ -27,21 +30,25 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
-import { rankNearbyUsers, type RankedUser } from "../../utils/rank";
-// import ReportButton from "../../components/ReportButton";
-
-import { Ionicons } from "@expo/vector-icons";
+import { rankNearbyUsers } from "../../utils/rank";
+import ReportButton from "../../components/ReportButton";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
 // Types
 type NearbyWithDistance = NearbyUser & {
-  distanceMeters: number;
+  distanceMeters: number;   // for display only
+  score?: number;           // matchmaking score 0..1
 };
 
+// Defensive tags normalization
+const normalizeTags = (tags: unknown): string[] =>
+  Array.isArray(tags)
+    ? tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    : [];
+
 export default function NearbyScreen() {
-  // State variables
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -55,43 +62,106 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, setStatus, accessToken, currentUser } = useUser();
+
+  const {
+    status,
+    setStatus,
+    isStatusUpdating,
+    accessToken,
+    currentUser,
+    prefetchedUsers,
+    setPrefetchedUsers,
+  } = useUser();
 
   /**
-   * Fetches users from the API, filters out the current user,
-   * scatters them around the given coordinates, calculates distances,
-   * sorts by proximity, and updates the users state.
-   * Handles loading and error states accordingly.
+   * Build final ranked list:
+   * 1) filter (visibility, not current user)
+   * 2) scatter (demo coords)
+   * 3) rank by SCORE ONLY (tagSim weight 1.0, distance weight 0.0)
+   * 4) compute distance for display (does NOT affect order)
+   */
+  const buildRankedList = useCallback(
+    (rawUsers: ApiUser[], coords: Location.LocationObjectCoords): NearbyWithDistance[] => {
+      const filtered = Array.isArray(rawUsers)
+        ? rawUsers.filter(
+            (u) => (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
+          )
+        : [];
+
+      const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+
+      const ranked = rankNearbyUsers(
+        {
+          id: currentUser?.id ?? -1,
+          interestTags: normalizeTags(currentUser?.interestTags),
+          coords: { latitude: coords.latitude, longitude: coords.longitude },
+        },
+        scattered,
+        {
+          weights: { tagSim: 1.0, distance: 0.0 }, // 👈 rank strictly by tag similarity (score)
+          // halfLifeMeters still accepted but irrelevant with distance weight 0
+          halfLifeMeters: 1200,
+        }
+      );
+
+      // Preserve ranked order; enrich with distance for UI only
+      const rankedWithDistance: NearbyWithDistance[] = ranked.map((u) => ({
+        ...u,
+        distanceMeters: haversineDistanceMeters(
+          coords.latitude,
+          coords.longitude,
+          u.coords.latitude,
+          u.coords.longitude
+        ),
+      }));
+
+      return rankedWithDistance;
+    },
+    [currentUser]
+  );
+
+  /**
+   * Fetches users and sets ranked list (score-only ordering).
    */
   const loadUsers = useCallback(
-    async (coords: Location.LocationObjectCoords) => {
+    async (
+      coords: Location.LocationObjectCoords,
+      options?: { silent?: boolean }
+    ) => {
       try {
-        // Skip loading users if no access token (not authenticated)
         if (!accessToken) {
-          console.log("No access token available, using demo users");
-          // Create demo users for testing report feature
-          const demoUsers = [
+          // Demo users when not authenticated
+          const demoUsers: ApiUser[] = [
             {
               id: 1,
               name: "Alice Demo",
               email: "alice@example.com",
               interestTags: ["Coffee", "Reading"],
-              coords: { latitude: ODU_CENTER.latitude + 0.001, longitude: ODU_CENTER.longitude + 0.001 },
-              distanceMeters: 100,
-              trustScore: 99,
-            },
+              profilePicture: null,
+              visibility: true,
+            } as unknown as ApiUser,
             {
-              id: 2, 
+              id: 2,
               name: "Bob Demo",
               email: "bob@example.com",
               interestTags: ["Gaming", "Movies"],
-              coords: { latitude: ODU_CENTER.latitude - 0.001, longitude: ODU_CENTER.longitude - 0.001 },
-              distanceMeters: 150,
-              trustScore: 95,
-            },
+              profilePicture: null,
+              visibility: true,
+            } as unknown as ApiUser,
+            {
+              id: 3,
+              name: "Charlie Demo",
+              email: "charlie@example.com",
+              interestTags: ["Running"],
+              profilePicture: null,
+              visibility: true,
+            } as unknown as ApiUser,
           ];
-          setUsers(demoUsers);
+
+          const rankedList = buildRankedList(demoUsers, coords);
+          setUsers(rankedList);
           setError(null);
+          if (!options?.silent) setLoading(false);
           return;
         }
 
@@ -101,51 +171,93 @@ export default function NearbyScreen() {
         if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
-        // Filter out the current user from the fetched list
-        const filtered = Array.isArray(data)
-          ? data.filter((u) => (currentUser ? u.id !== currentUser.id : true))
-          : [];
 
-        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+        // Keep a warm cache of raw users
+        setPrefetchedUsers(data);
 
-        // 👇 NEW: rank by tag similarity + distance
-        const ranked = rankNearbyUsers(
-          {
-            id: currentUser?.id ?? -1,
-            interestTags: (currentUser?.interestTags as string[] | undefined) ?? [],
-            coords: { latitude: coords.latitude, longitude: coords.longitude },
-          },
-          scattered,
-          {
-            weights: { tagSim: 0.7, distance: 0.3 }, // weights
-            halfLifeMeters: 1200,                    // distance decays every ...
-            // maxMeters: 10000,                      // optional hard cutoff
-          }
-        );
-
-        setUsers(ranked);
+        // Build ranked output strictly by score
+        const rankedList = buildRankedList(data, coords);
+        setUsers(rankedList);
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        setError(message); // Set error message on failure
+        setError(message);
       } finally {
-        setLoading(false);
+        if (!options?.silent) setLoading(false);
         setRefreshing(false);
       }
     },
-    [accessToken, currentUser]
+    [accessToken, setPrefetchedUsers, buildRankedList]
   );
 
   /**
-   * Requests location (simulated as ODU center for demo),
-   * sets the location state, and loads users near that location.
-   * Handles loading and error states.
+   * Refresh just one user's trust score after a report.
    */
-  const requestAndLoad = useCallback(async () => {
-    try {
-      setLoading(true);
-      // Demo mode: center and compute distances from ODU
-      const coords = {
+  const refreshTrustScore = useCallback(
+    async (userId: number) => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!response.ok) throw new Error(`Failed to fetch user ${userId} (${response.status})`);
+        const updatedUser = (await response.json()) as ApiUser;
+
+        setUsers((prevUsers) =>
+          prevUsers.map((u) =>
+            u.id === userId
+              ? { ...u, trustScore: (updatedUser.trustScore ?? u.trustScore) as number }
+              : u
+          )
+        );
+      } catch (err) {
+        console.error("Failed to refresh trust score:", err);
+      }
+    },
+    [accessToken]
+  );
+
+  /**
+   * Request (simulated) location and load users.
+   */
+  const hasLoadedOnceRef = useRef(false);
+
+  const requestAndLoad = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? hasLoadedOnceRef.current;
+
+      try {
+        if (!silent) setLoading(true);
+
+        const coords = {
+          latitude: ODU_CENTER.latitude,
+          longitude: ODU_CENTER.longitude,
+          altitude: undefined as any,
+          accuracy: undefined as any,
+          altitudeAccuracy: undefined as any,
+          heading: undefined as any,
+          speed: undefined as any,
+        };
+        setLocation(coords);
+        await loadUsers(coords, { silent });
+        hasLoadedOnceRef.current = true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        if (!silent) setLoading(false);
+      }
+    },
+    [loadUsers]
+  );
+
+  /**
+   * Rebuild from warm cache when it changes.
+   * Still rank strictly by score; distance only displayed.
+   */
+  useEffect(() => {
+    if (!prefetchedUsers) return;
+
+    const coords =
+      location ?? {
         latitude: ODU_CENTER.latitude,
         longitude: ODU_CENTER.longitude,
         altitude: undefined as any,
@@ -154,40 +266,44 @@ export default function NearbyScreen() {
         heading: undefined as any,
         speed: undefined as any,
       };
-      setLocation(coords); // Set location to ODU center
-      await loadUsers(coords); // Load users near ODU center
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-      setLoading(false);
-    }
-  }, [loadUsers]);
 
-  /**
-   * Handles pull-to-refresh action.
-   * If location is unavailable, triggers a full request and load.
-   * Otherwise, reloads users based on current location.
-   */
+    const rankedList = buildRankedList(prefetchedUsers, coords);
+    setUsers(rankedList);
+    setLoading(false);
+    hasLoadedOnceRef.current = true;
+  }, [prefetchedUsers, location, buildRankedList]);
+
+  // Reload when profile picture or visibility changes
+  useEffect(() => {
+    void requestAndLoad({ silent: hasLoadedOnceRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.profilePicture, currentUser?.visibility]);
+
+  // Pull-to-refresh
   const onRefresh = useCallback(async () => {
     if (!location) {
-      await requestAndLoad();
+      await requestAndLoad({ silent: false });
       return;
     }
-
     setRefreshing(true);
     await loadUsers(location);
   }, [loadUsers, location, requestAndLoad]);
 
-    // Load users on component mount or when requestAndLoad changes
-  useEffect(() => {
-    requestAndLoad();
-  }, [requestAndLoad]);
-
-  // 🔹 Create or get chat session
+  /**
+   * Start a new chat session (fetch latest receiver first).
+   */
   const startChat = async (receiverId: number, receiverName: string) => {
     if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
 
     try {
+      // Fetch latest receiver (for name/picture)
+      const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      let latestUser: ApiUser | null = null;
+      if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
+
+      // Create or get chat session
       const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
         method: "POST",
         headers: {
@@ -198,17 +314,20 @@ export default function NearbyScreen() {
           participants: [currentUser.id, receiverId],
         }),
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to start chat (${response.status})`);
-      }
+      if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
 
       const data = (await response.json()) as { chatId: number };
       const { chatId } = data;
 
+      // Navigate with latest user info
       router.push({
         pathname: "/(tabs)/messages/[chatId]",
-        params: { chatId: String(chatId), name: receiverName, receiverId: String(receiverId) },
+        params: {
+          chatId: String(chatId),
+          name: latestUser?.name || receiverName,
+          receiverId: String(receiverId),
+          profilePicture: (latestUser?.profilePicture as string) || "",
+        },
       });
     } catch (err) {
       console.error(err);
@@ -216,7 +335,10 @@ export default function NearbyScreen() {
     }
   };
 
-  if (loading) {
+  // Loading and error UI
+  const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
+
+  if (showInitialLoader) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#007BFF" />
@@ -229,7 +351,12 @@ export default function NearbyScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
-        <Button title="Try Again" onPress={requestAndLoad} />
+        <Button
+          title="Try Again"
+          onPress={() => {
+            void requestAndLoad({ silent: false });
+          }}
+        />
       </View>
     );
   }
@@ -244,14 +371,41 @@ export default function NearbyScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Visibility: {status}</Text>
-        <Button
-          title={status === "Visible" ? "Hide Me" : "Show Me"}
-          onPress={() => setStatus(status === "Visible" ? "Hidden" : "Visible")}
-        />
+        <TouchableOpacity
+          style={[
+            styles.visibilityToggle,
+            status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
+            isStatusUpdating && styles.visibilityToggleDisabled,
+          ]}
+          onPress={() => {
+            if (isStatusUpdating) return;
+            const newStatus = status === "Visible" ? "Hidden" : "Visible";
+            setStatus(newStatus);
+          }}
+          disabled={isStatusUpdating}
+          activeOpacity={0.85}
+        >
+          {isStatusUpdating ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.visibilityToggleText}>
+              {status === "Visible" ? "Hide Me" : "Show Me"}
+            </Text>
+          )}
+        </TouchableOpacity>
       </View>
 
+      {loading && hasLoadedOnceRef.current && (
+        <View style={styles.inlineLoader}>
+          <ActivityIndicator size="small" color="#007BFF" />
+          <Text style={styles.inlineLoaderText}>Updating nearby users…</Text>
+        </View>
+      )}
+
+      {/* User list */}
       <FlatList
         data={users}
         keyExtractor={(item) => item.id.toString()}
@@ -261,86 +415,103 @@ export default function NearbyScreen() {
             <Text style={styles.note}>No other users nearby right now.</Text>
           </View>
         }
-        renderItem={({ item, index }) => (
-          <View style={[styles.card, index === 0 && styles.closestCard]}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
-              
-            </View>
-            <Text style={styles.cardSubtitle}>
-              {item.email} • {Math.round(item.score * 100)}% match
-            </Text>
-            <Text style={styles.trustScoreName}>Trust Score: <Text style={styles.trustScoreNumber} >{item.trustScore}</Text></Text>
-            {item.interestTags.length > 0 && (
-              <View style={styles.cardTagsWrapper}>
-                {item.interestTags.map((tag) => (
-                  <View key={tag} style={styles.cardTagChip}>
-                    <Text style={styles.cardTagText}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+        renderItem={({ item, index }) => {
+          const imageUri =
+            item.profilePicture && item.profilePicture.startsWith("http")
+              ? item.profilePicture
+              : item.profilePicture
+              ? `${API_BASE_URL}${item.profilePicture}`
+              : null;
 
-            {/* 🔹 Start Chat Button */}
-            <Pressable
-              onPress={() => startChat(item.id, item.name || item.email)}
-              style={({ pressed }) => [
-                styles.chatButton,
-                pressed && { opacity: 0.8 },
-              ]}
-            >
-              <Ionicons name="chatbubble" size={10} color="white" />
-              {/* <Text style={styles.chatButtonText}>Start Chat</Text> */}
-            </Pressable>
-            {/* <View style={styles.cardActions}>
-              <ReportButton
-                reportedUserId={item.id}
-                reportedUserName={item.name}
-                size="small"
-                onReportSuccess={(updatedTrustScore) => {
-                  setUsers((prev) =>
-                    prev.map((user) =>
-                      user.id === item.id ? { ...user, trustScore: updatedTrustScore } : user
-                    )
-                  );
-                }}
-              />
-            </View> */}
-          </View>
-        )}
-        
+          // Dynamic color based on trust score
+          const scoreTS = item.trustScore ?? 0;
+          let trustColor = "#007BFF";
+          if (scoreTS >= 90) trustColor = "#28a745";
+          else if (scoreTS >= 70) trustColor = "#7ED957";
+          else if (scoreTS >= 51) trustColor = "#FFC107";
+          else trustColor = "#DC3545";
+
+          return (
+            <View style={[styles.card, index === 0 && styles.closestCard]}>
+              <View style={styles.cardHeader}>
+                <View style={styles.userInfo}>
+                  {imageUri ? (
+                    <ExpoImage
+                      source={{ uri: imageUri }}
+                      style={styles.avatar}
+                      cachePolicy="memory-disk"
+                      transition={0}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                      <Text style={styles.avatarInitial}>
+                        {item.name?.[0]?.toUpperCase() ?? "?"}
+                      </Text>
+                    </View>
+                  )}
+                  <View>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    {/* ✅ show score-only % match */}
+                    {typeof item.score === "number" && (
+                      <Text style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
+                        {Math.round(item.score * 100)}% match
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+              </View>
+
+              {item.interestTags.length > 0 && (
+                <View style={styles.cardTagsWrapper}>
+                  {item.interestTags.map((tag) => (
+                    <View key={tag} style={styles.cardTagChip}>
+                      <Text style={styles.cardTagText}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Bottom action bar */}
+              <View style={styles.cardFooter}>
+                {/* Chat button */}
+                <Pressable
+                  onPress={() => startChat(item.id, item.name || item.email)}
+                  style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
+                >
+                  <Ionicons name="chatbubble" size={18} color="white" />
+                </Pressable>
+
+                {/* Report + Trust score */}
+                <View style={styles.reportContainer}>
+                  <ReportButton
+                    reportedUserId={item.id}
+                    reportedUserName={item.name}
+                    size="small"
+                    onReportSuccess={() => {
+                      refreshTrustScore(item.id);
+                    }}
+                  />
+                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
+                    Trust Score: {scoreTS}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          );
+        }}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
       />
     </View>
   );
 }
 
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: "#f5f7fa",
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  note: {
-    marginTop: 12,
-    fontSize: 16,
-    textAlign: "center",
-    color: "#555",
-  },
-  error: {
-    marginBottom: 12,
-    fontSize: 16,
-    textAlign: "center",
-    color: "#c00",
-  },
+  container: { flex: 1, padding: 16, backgroundColor: "#f5f7fa" },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  note: { marginTop: 12, fontSize: 16, textAlign: "center", color: "#555" },
+  error: { marginBottom: 12, fontSize: 16, textAlign: "center", color: "#c00" },
   header: {
     marginBottom: 16,
     padding: 12,
@@ -355,10 +526,26 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+  headerTitle: { fontSize: 18, fontWeight: "600" },
+  visibilityToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+    minWidth: 120,
+    alignItems: "center",
+    backgroundColor: "#007BFF",
   },
+  visibilityShow: {},
+  visibilityHide: {},
+  visibilityToggleDisabled: { opacity: 0.6 },
+  visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  inlineLoader: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  inlineLoaderText: { marginLeft: 8, fontSize: 13, color: "#555" },
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -370,34 +557,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
   },
-  closestCard: {
-    borderWidth: 1,
-    borderColor: "#007BFF",
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  cardDistance: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#007BFF",
-  },
-  cardSubtitle: {
-    fontSize: 14,
-    color: "#666",
-  },
-  cardTagsWrapper: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 8,
-  },
+  closestCard: { borderWidth: 1, borderColor: "#007BFF" },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  userInfo: { flexDirection: "row", alignItems: "center" },
+  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  avatarPlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
+  avatarInitial: { fontSize: 18, fontWeight: "bold", color: "#555" },
+  cardTitle: { fontSize: 18, fontWeight: "600" },
+  cardDistance: { fontSize: 16, fontWeight: "500", color: "#007BFF" },
+  cardTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   cardTagChip: {
     backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
@@ -406,40 +574,29 @@ const styles = StyleSheet.create({
     marginRight: 6,
     marginBottom: 6,
   },
-  cardTagText: {
-    fontSize: 12,
-    color: "#1f5fbf",
-    fontWeight: "500",
+  cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
+
+  /* Bottom buttons layout */
+  cardFooter: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
   },
   chatButton: {
-    position: 'absolute',
-    bottom: 12,      // align bottom
-    right: 12,       // align right
-    width: 20,       // smaller square
-    height: 20,
-    backgroundColor: '#007BFF',
-    borderRadius: 18, // fully rounded
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',    // optional shadow for floating effect
+    width: 44,
+    height: 44,
+    backgroundColor: "#007BFF",
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 3,
+    elevation: 2,
   },
-  chatButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 15,
-  },
-  flexGrow: {
-    flexGrow: 1,
-  },
-  trustScoreName:{
-    textAlign: "right",
-    bottom: 25,
-    fontSize: 15
-  },
-  trustScoreNumber:{
-    color: "#007BFF"
-  }
+  reportContainer: { alignItems: "center" },
+  trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
+  flexGrow: { flexGrow: 1 },
 });

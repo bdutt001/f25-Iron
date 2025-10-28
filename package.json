@@ -4,5 +4,8 @@
   "scripts": {
     "start-stack": "node scripts/start-stack.js",
     "stop-stack": "node scripts/stop-stack.js"
+  },
+  "dependencies": {
+    "react-native-safe-area-context": "^5.6.1"
   }
 }

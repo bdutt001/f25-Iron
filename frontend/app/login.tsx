@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
+import type { ApiUser } from "@/utils/geo";
 
 type AuthSuccess = {
   tokenType?: string;
@@ -38,15 +39,35 @@ const toUserOrFallback = (value: unknown): CurrentUser => {
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { setCurrentUser, setTokens } = useUser();
+  const { setCurrentUser, setTokens, setPrefetchedUsers } = useUser();
+
+  const preloadVisibleUsers = async (accessToken: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to preload users (${response.status})`);
+      }
+
+      const data = (await response.json()) as ApiUser[];
+      setPrefetchedUsers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn("Failed to preload nearby users", error);
+      setPrefetchedUsers(null);
+    }
+  };
 
   const loadProfile = async (accessToken: string, fallback: Record<string, unknown>) => {
     try {
       const profile = await fetchProfile(accessToken);
       setCurrentUser(profile);
+      await preloadVisibleUsers(accessToken);
     } catch (error) {
       console.warn("Failed to load profile after login", error);
       setCurrentUser(toCurrentUser(fallback));
+      await preloadVisibleUsers(accessToken);
     }
   };
 
@@ -125,7 +146,7 @@ export default function LoginScreen() {
         setCurrentUser(toUserOrFallback(json));
       }
       Alert.alert("Account created", "You are now logged in.");
-      router.replace("/(tabs)/profile");
+      router.replace("/onboarding");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       Alert.alert("Signup failed", message);

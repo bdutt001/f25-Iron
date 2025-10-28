@@ -166,7 +166,7 @@ process.on("uncaughtException", (err) => {
 });
 
 (async function main() {
-  /* try {
+  try {
     log("Installing backend dependencies (npm install)...");
     runNpm(["install"], { cwd: backendDir });
 
@@ -177,7 +177,7 @@ process.on("uncaughtException", (err) => {
       fail(
         "backend/.env is missing and DATABASE_URL is not set. Create backend/.env with the remote connection string before running the stack."
       );
-    } */
+    }
 
     const dbUrl = readDatabaseUrl();
     const dbTarget = parseDatabaseTarget(dbUrl);
@@ -200,10 +200,10 @@ process.on("uncaughtException", (err) => {
         "DATABASE_URL could not be resolved. The backend will start but expect connection errors until it is set."
       );
     }
-  /*} catch (err) {
+  } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     fail(message);
-  } */
+  }
 
   const backendProc = spawn(
     "npm",

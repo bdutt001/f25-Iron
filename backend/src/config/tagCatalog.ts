@@ -78,6 +78,8 @@ export const DEFAULT_INTEREST_TAGS = [
   "Manga",
   "Art",
   "Coaching",
+  "Singing",
+  "Performing",
 ] as const;
 
 export type DefaultInterestTag = typeof DEFAULT_INTEREST_TAGS[number];

@@ -1,9 +1,8 @@
 /**
  * Authentication Service
  *
- * This file provides core authentication utilities for issuing and verifying JWT tokens,
- * building token payloads, converting user objects, and invalidating user sessions.
- * It interacts with the database and JWT utilities to manage user authentication state.
+ * Provides utilities for issuing and verifying JWT tokens,
+ * building payloads, converting user objects, and invalidating sessions.
  */
 import prisma from "../prisma";
 import { jwtConfig } from "../config/env";
@@ -34,8 +33,6 @@ type TokenUser = {
 
 /**
  * Builds the payload object for a JWT token from a user object.
- * @param user - The user object containing id, email, optional name, and tokenVersion.
- * @returns An object representing the payload for JWT.
  */
 export const buildTokenPayload = (user: TokenUser): Record<string, unknown> => ({
   email: user.email,
@@ -44,9 +41,7 @@ export const buildTokenPayload = (user: TokenUser): Record<string, unknown> => (
 });
 
 /**
- * Issues a pair of JWT tokens (access and refresh) for the given user.
- * @param user - The user object containing id, email, optional name, and tokenVersion.
- * @returns An object containing the access token, refresh token, their expirations, and token type.
+ * Issues a pair of JWT tokens (access + refresh) for the given user.
  */
 export const issueTokenPair = (user: TokenUser): TokenPair => {
   const payload = buildTokenPayload(user);
@@ -74,36 +69,40 @@ export const issueTokenPair = (user: TokenUser): TokenPair => {
 
 /**
  * Verifies a refresh token and returns its decoded payload.
- * @param token - The JWT refresh token string.
- * @returns The decoded AuthTokenPayload if the token is valid.
- * @throws If the token is invalid or expired.
  */
 export const verifyRefreshToken = (token: string): AuthTokenPayload =>
   verifyJwt<AuthTokenPayload>(token, jwtConfig.refreshSecret);
 
 /**
  * Converts a user object to an AuthenticatedUser object.
- * @param user - An object with id, email, and optional name properties.
- * @returns An AuthenticatedUser object.
+ * Includes support for profilePicture and interestTags.
  */
-export const toAuthenticatedUser = (
-  user: Pick<AuthenticatedUser, "id" | "email" | "name">
-): AuthenticatedUser => ({
+export const toAuthenticatedUser = (user: {
+  id: number;
+  email?: string | null;
+  name?: string | null;
+  profilePicture?: string | null;
+  interestTags?: { name: string }[];
+  visibility?: boolean;
+}): AuthenticatedUser => ({
   id: user.id,
-  email: user.email,
-  name: user.name,
+  email: user.email ?? null,
+  name: user.name ?? null,
+  profilePicture: user.profilePicture ?? null,
+  interestTags: Array.isArray(user.interestTags)
+    ? user.interestTags.map((t: any) =>
+        typeof t === "string" ? t : t.name
+      )
+    : [],
+  visibility: user.visibility ?? false,
 });
 
 /**
  * Invalidates all sessions for the specified user by incrementing their tokenVersion.
- * @param userId - The user's unique identifier.
- * @returns A promise that resolves when the operation is complete.
  */
 export const invalidateUserSessions = async (userId: number) => {
   await prisma.user.update({
     where: { id: userId },
-    data: {
-      tokenVersion: { increment: 1 },
-    },
+    data: { tokenVersion: { increment: 1 } },
   });
 };

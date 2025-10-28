@@ -6,16 +6,23 @@ export const userWithTagsSelect = {
   email: true,
   name: true,
   createdAt: true,
+  profilePicture: true,  // ✅ add this line
   interestTags: { select: { name: true } },
   trustScore: true,
+  visibility: true,
 } satisfies Prisma.UserSelect;
 
 export type PrismaUserWithTags = Prisma.UserGetPayload<{ select: typeof userWithTagsSelect }>;
-export type SerializedUser = Omit<PrismaUserWithTags, "interestTags"> & { interestTags: string[] };
+export type SerializedUser = Omit<PrismaUserWithTags, "interestTags"> & {
+  interestTags: string[];
+  visibility: boolean;
+};
 
 export const serializeUser = (user: PrismaUserWithTags): SerializedUser => ({
   ...user,
   interestTags: user.interestTags.map((tag) => tag.name),
+  profilePicture: user.profilePicture ?? null,  // ✅ ensure it passes through
+  visibility: user.visibility ?? false,
 });
 
 export const normalizeTagNames = (tags: string[]): string[] => {
@@ -43,10 +50,24 @@ export const buildConnectOrCreate = (tags: string[]) =>
 
 export const getAllUsers = async (): Promise<SerializedUser[]> => {
   const users = await prisma.user.findMany({
+    where: { visibility: true },
     select: userWithTagsSelect,
   });
 
   return users.map(serializeUser);
+};
+
+export const updateUserVisibility = async (
+  userId: number,
+  visibility: boolean
+): Promise<SerializedUser> => {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { visibility },
+    select: userWithTagsSelect,
+  });
+
+  return serializeUser(user);
 };
 
 export const addTagToUser = async (userId: number, tagName: string): Promise<SerializedUser> => {
@@ -79,6 +100,7 @@ export const findUsersByTag = async (tagName: string): Promise<SerializedUser[]>
       interestTags: {
         some: { name: normalized },
       },
+      visibility: true,
     },
     select: userWithTagsSelect,
   });

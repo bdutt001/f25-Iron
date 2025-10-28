@@ -21,10 +21,10 @@ export default function ReportButton({
   defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, accessToken } = useUser(); // Add accessToken
+  const { currentUser, isLoggedIn, accessToken } = useUser();
 
   const handleReport = async () => {
-    // Check if user is logged in
+    // ✅ Check if user is logged in
     if (!isLoggedIn || !currentUser || !accessToken) {
       Alert.alert("Error", "You must be logged in to report users.");
       return;
@@ -32,64 +32,36 @@ export default function ReportButton({
 
     const reporterId = currentUser.id;
 
-    // Prevent self-reporting
+    // ✅ Prevent self-reporting
     if (reporterId === reportedUserId) {
       Alert.alert("Error", "You cannot report yourself.");
       return;
     }
 
-    // Show confirmation dialog
+    // ✅ Confirm before reporting
     Alert.alert(
       "Report User",
       `Are you sure you want to report ${reportedUserName}?`,
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Report",
-          style: "destructive",
-          onPress: () => showReasonDialog(),
-        },
+        { text: "Cancel", style: "cancel" },
+        { text: "Report", style: "destructive", onPress: () => showReasonDialog() },
       ]
     );
   };
 
   const showReasonDialog = () => {
-    // For now, show predefined reasons. Later, this could be a modal with text input
-    Alert.alert(
-      "Reason for Report",
-      "Why are you reporting this user?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Inappropriate Behavior",
-          onPress: () => submitReport("Inappropriate Behavior"),
-        },
-        {
-          text: "Spam/Fake Profile",
-          onPress: () => submitReport("Spam/Fake Profile"),
-        },
-        {
-          text: "Harassment",
-          onPress: () => submitReport("Harassment"),
-        },
-        {
-          text: "Other",
-          onPress: () => submitReport("Other"),
-        },
-      ]
-    );
+    // ✅ Display predefined report reasons
+    Alert.alert("Reason for Report", "Why are you reporting this user?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Inappropriate Behavior", onPress: () => submitReport("Inappropriate Behavior") },
+      { text: "Spam/Fake Profile", onPress: () => submitReport("Spam/Fake Profile") },
+      { text: "Harassment", onPress: () => submitReport("Harassment") },
+      { text: "Other", onPress: () => submitReport("Other") },
+    ]);
   };
 
   const submitReport = async (reason: string, severityOverride?: number) => {
-    if (!currentUser || !accessToken) {
-      return;
-    }
+    if (!currentUser || !accessToken) return;
 
     setIsReporting(true);
 
@@ -99,6 +71,7 @@ export default function ReportButton({
           ? severityOverride
           : defaultSeverity;
 
+      // ✅ Send the report to the backend
       const response = await fetch(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
@@ -121,11 +94,10 @@ export default function ReportButton({
 
       let latestTrustScore = payload.trustScore;
 
+      // ✅ Refresh trust score from backend after report
       try {
         const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (trustResponse.ok) {
           const trustData = (await trustResponse.json()) as { trustScore?: number };
@@ -140,7 +112,8 @@ export default function ReportButton({
       Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to submit report";
+      const message =
+        error instanceof Error ? error.message : "Failed to submit report";
       Alert.alert("Error", message);
     } finally {
       setIsReporting(false);
@@ -167,9 +140,7 @@ export default function ReportButton({
       disabled={isReporting}
       activeOpacity={0.7}
     >
-      <Text style={textStyles}>
-        {isReporting ? "..." : "Report"}
-      </Text>
+      <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
     </TouchableOpacity>
   );
 }
@@ -185,8 +156,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "500",
   },
-  
-  // Size variants
   small: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -195,7 +164,6 @@ const styles = StyleSheet.create({
   smallText: {
     fontSize: 12,
   },
-  
   medium: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -204,7 +172,6 @@ const styles = StyleSheet.create({
   mediumText: {
     fontSize: 14,
   },
-  
   large: {
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -213,8 +180,6 @@ const styles = StyleSheet.create({
   largeText: {
     fontSize: 16,
   },
-  
-  // Disabled state
   disabled: {
     backgroundColor: "#6c757d",
     opacity: 0.6,

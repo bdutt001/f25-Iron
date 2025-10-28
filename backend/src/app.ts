@@ -1,4 +1,6 @@
 import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 import usersRouter from "./routes/users.routes";
 import authRouter from "./routes/auth.routes";
 import tagsRouter from "./routes/tags.routes";
@@ -6,47 +8,38 @@ import messagesRouter from "./routes/messages.routes";
 import reportsRouter from "./routes/reports.routes";
 import reportRouter from "./routes/report.routes";
 
-//import cors to enable cross-site origin requests outside of basic get post
-import cors from "cors";
-
-import dotenv from "dotenv";
+// ✅ Load environment variables before anything else
+dotenv.config();
 
 const app = express();
 
-// Add Cors to express for use
+// ✅ Enable CORS for all requests (frontend → backend)
 app.use(cors());
 
-// Middleware
+// ✅ Parse JSON bodies
 app.use(express.json());
-app.use('/auth', authRouter);
-// Back-compat for older clients that expect /api/auth
-app.use('/api/auth', authRouter);
 
-// Health checks: JSON for clients, text for quick CLI curl
-app.get("/api", (_req, res) => {
-  res.json({ status: "ok" });
-});
+// ✅ Health check endpoints
+app.get("/", (_req, res) => res.status(200).send("Hello from Express 🚀"));
+app.get("/api", (_req, res) => res.json({ status: "ok" }));
 
-app.get("/", (_req, res) => {
-  res.status(200).send("Hello from Express 🚀");
-});
+// ✅ Route mounts
+app.use("/auth", authRouter);
+app.use("/api/auth", authRouter); // backwards-compat
 
-// Mount user routes
 app.use("/api", usersRouter);
-app.use("/", usersRouter); // allow clients without /api prefix
+app.use("/", usersRouter); // allow legacy clients without /api prefix
 
-// Mount auth routes are above at /auth and /api/auth for compatibility
-
-// Mount tag routes
 app.use("/api", tagsRouter);
-app.use("/", tagsRouter); // allow clients without /api prefix
+app.use("/", tagsRouter);
 
-// Mount reports routes
 app.use("/api", reportsRouter);
 app.use("/api", reportRouter);
 
 // Mount messaging routes
 app.use("/api/messages", messagesRouter); 
 app.use("/messages", messagesRouter);
+
+// ✅ No /uploads folder served — Cloudinary handles media now
 
 export default app;

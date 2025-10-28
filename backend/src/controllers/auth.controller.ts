@@ -3,11 +3,13 @@ import prisma from "../prisma";
 
 const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || "Password123";
 
+// Unified select for returning safe user data
 const safeSelect = {
   id: true,
   email: true,
   name: true,
-  interestTags: { select: { name: true } },
+  profilePicture: true, // ✅ included
+  interestTags: { select: { name: true } }, // ✅ included
   createdAt: true,
 } as const;
 
@@ -15,15 +17,19 @@ type SafeUserRecord = {
   id: number;
   email: string | null;
   name: string | null;
+  profilePicture: string | null;
   interestTags?: { name: string }[];
   createdAt: Date;
 };
 
+// Helper to shape user data safely
 const toSafeUser = (user: SafeUserRecord) => ({
   ...user,
+  profilePicture: user.profilePicture ?? null,
   interestTags: (user.interestTags ?? []).map((tag) => tag.name),
 });
 
+// ---------- SIGNUP ----------
 export const signup = async (req: Request, res: Response) => {
   try {
     const emailRaw = (req.body?.email ?? "") as string;
@@ -48,13 +54,15 @@ export const signup = async (req: Request, res: Response) => {
   }
 };
 
+// ---------- LOGIN ----------
 export const login = async (req: Request, res: Response) => {
   try {
     const emailRaw = (req.body?.email ?? "") as string;
     const password = (req.body?.password ?? "") as string;
 
     const email = emailRaw.trim().toLowerCase();
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+    if (!email || !password)
+      return res.status(400).json({ error: "Email and password are required" });
 
     const userRecord = (await prisma.user.findUnique({
       where: { email },
