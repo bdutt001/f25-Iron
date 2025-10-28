@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Image, useColorScheme } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useUser } from "../../../context/UserContext";

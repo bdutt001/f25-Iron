@@ -27,7 +27,7 @@ const isAuthSuccess = (v: unknown): v is AuthSuccess =>
 const toUserOrFallback = (value: unknown): CurrentUser => {
   try {
     return toCurrentUser((value ?? {}) as Record<string, unknown>);
-  } catch (error) {
+  } catch {
     return {
       id: 0,
       email: "",

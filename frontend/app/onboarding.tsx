@@ -247,17 +247,16 @@ export default function OnboardingScreen() {
         accessToken
       );
 
-      setCurrentUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              ...updated,
-              interestTags: updated.interestTags ?? prev.interestTags,
-              profilePicture: updated.profilePicture ?? prev.profilePicture,
-              visibility: updated.visibility ?? prev.visibility,
-            }
-          : updated
-      );
+      const nextUser = currentUser
+        ? {
+            ...currentUser,
+            ...updated,
+            interestTags: updated.interestTags ?? currentUser.interestTags,
+            profilePicture: updated.profilePicture ?? currentUser.profilePicture,
+            visibility: updated.visibility ?? currentUser.visibility,
+          }
+        : updated;
+      setCurrentUser(nextUser);
 
       setPrefetchedUsers(null);
       router.replace("/(tabs)/profile");

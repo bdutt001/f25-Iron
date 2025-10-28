@@ -2,8 +2,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import { Alert, Image } from "react-native";
-import {
+import { Alert, Image ,
   ActivityIndicator,
   Button,
   ScrollView,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { useUser, type CurrentUser } from "../../context/UserContext";
 import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
 

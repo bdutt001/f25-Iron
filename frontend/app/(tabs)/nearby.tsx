@@ -19,6 +19,9 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
+  Platform,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
@@ -33,7 +36,6 @@ import {
   scatterUsersAround,
 } from "../../utils/geo";
 import { rankNearbyUsers } from "../../utils/rank";
-import ReportButton from "../../components/ReportButton";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -66,6 +68,16 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const [blockedVisible, setBlockedVisible] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
+  const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
+  
+
+  useEffect(() => {
+    // @ts-ignore
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      // @ts-ignore
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   const {
     status,
@@ -364,7 +376,7 @@ export default function NearbyScreen() {
         });
         if (!res.ok) throw new Error(`Failed to block (${res.status})`);
         setUsers((prev) => prev.filter((u) => u.id !== userId));
-        setPrefetchedUsers((prev) => (prev ? prev.filter((u) => u.id !== userId) : prev));
+        setPrefetchedUsers(prefetchedUsers ? prefetchedUsers.filter((u) => u.id !== userId) : null);
       } catch (err) {
         console.error(err);
         Alert.alert("Error", "Could not block user. Please try again.");
@@ -390,6 +402,50 @@ export default function NearbyScreen() {
       }
     },
     [accessToken, requestAndLoad]
+  );
+
+  const toggleInlineFor = useCallback((user: ApiUser) => {
+    setExpandedUserId((prev) => (prev === user.id ? null : user.id));
+  }, []);
+
+  const startReportFlow = useCallback(
+    (user: ApiUser) => {
+      if (!accessToken || !currentUser) {
+        Alert.alert("Error", "You must be logged in to report users.");
+        return;
+      }
+      if (currentUser.id === user.id) {
+        Alert.alert("Error", "You cannot report yourself.");
+        return;
+      }
+      const submitReport = async (reason: string, severity = 1) => {
+        try {
+          const resp = await fetch(`${API_BASE_URL}/api/report`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ reportedId: user.id, reason, severity }),
+          });
+          const payload = (await resp.json()) as { trustScore?: number; error?: string };
+          if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
+          Alert.alert("Report Submitted", "Thank you for your report.");
+          void refreshTrustScore(user.id);
+        } catch (e: any) {
+          Alert.alert("Error", e?.message || "Failed to submit report");
+        }
+      };
+      Alert.alert(
+        "Report User",
+        `Report ${user.name || user.email}?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Inappropriate", onPress: () => void submitReport("Inappropriate Behavior") },
+          { text: "Spam/Fake", onPress: () => void submitReport("Spam/Fake Profile") },
+          { text: "Harassment", onPress: () => void submitReport("Harassment") },
+          { text: "Other", onPress: () => void submitReport("Other") },
+        ]
+      );
+    },
+    [accessToken, currentUser, refreshTrustScore]
   );
 
   // Loading and error UI
@@ -526,7 +582,10 @@ export default function NearbyScreen() {
                     )}
                   </View>
                 </View>
-                <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+                <View style={styles.rightInfo}>
+                  <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+                  <Text style={[styles.rightTrustLabel, { color: trustColor }]}>Trust Score: {scoreTS}</Text>
+                </View>
               </View>
 
               {item.interestTags.length > 0 && (
@@ -541,7 +600,7 @@ export default function NearbyScreen() {
 
               {/* Bottom action bar */}
               <View style={styles.cardFooter}>
-                {/* Chat button */}
+                {/* Chat */}
                 <Pressable
                   onPress={() => startChat(item.id, item.name || item.email)}
                   style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
@@ -549,41 +608,53 @@ export default function NearbyScreen() {
                   <Ionicons name="chatbubble" size={18} color="white" />
                 </Pressable>
 
-                {/* Report + Trust score */}
-                <View style={styles.reportContainer}>
-                  <ReportButton
-                    reportedUserId={item.id}
-                    reportedUserName={item.name}
-                    size="small"
-                    onReportSuccess={() => {
-                      refreshTrustScore(item.id);
-                    }}
-                  />
-                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}> 
-                    Trust Score: {scoreTS}
-                  </Text>
-                </View>
-                {/* Block button */}
-                <Pressable
-                  onPress={() =>
-                    Alert.alert(
-                      "Block User",
-                      `Hide ${item.name || item.email} and prevent messages?`,
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Block",
-                          style: "destructive",
-                          onPress: () => void handleBlock(item.id),
-                        },
-                      ]
-                    )
-                  }
-                  style={({ pressed }) => [styles.blockButton, pressed && { opacity: 0.85 }]}
+                {/* spacer */}
+                <View style={{ flex: 1 }} />
+
+                {/* Inline expanding actions to the left of the icon */}
+                <View
+                  style={[
+                    styles.inlineActionsWrap,
+                    expandedUserId === (item as any).id
+                      ? styles.inlineActionsWrapOpen
+                      : styles.inlineActionsWrapClosed,
+                  ]}
                 >
-                  <Ionicons name="remove-circle" size={18} color="white" />
-                </Pressable>
+                  <TouchableOpacity
+                    onPress={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setExpandedUserId(null);
+                      startReportFlow(item as unknown as ApiUser);
+                    }}
+                  >
+                    <Text style={styles.inlineActionDanger}>Report</Text>
+                  </TouchableOpacity>
+                  <View style={{ width: 8 }} />
+                  <TouchableOpacity
+                    onPress={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setExpandedUserId(null);
+                      void handleBlock((item as any).id);
+                    }}
+                  >
+                    <Text style={styles.inlineActionDanger}>Block</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* More menu (Report/Block) */}
+                <TouchableOpacity
+                  onPressIn={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    toggleInlineFor(item as unknown as ApiUser);
+                  }}
+                  style={styles.moreButton}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#333" />
+                </TouchableOpacity>
               </View>
+
+              {/* Inline below actions removed; using same-line expansion next to icon */}
             </View>
           );
         }}
@@ -673,6 +744,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inlineLoaderText: { marginLeft: 8, fontSize: 13, color: "#555" },
+  inlineActionsWrap: { overflow: 'hidden', flexDirection: 'row', alignItems: 'center', marginRight: 6 },
+  inlineActionsWrapClosed: { width: 0, opacity: 0 },
+  inlineActionsWrapOpen: { width: 'auto', opacity: 1 },
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -686,6 +760,8 @@ const styles = StyleSheet.create({
   },
   closestCard: { borderWidth: 1, borderColor: "#007BFF" },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  rightInfo: { alignItems: "flex-end" },
+  rightTrustLabel: { fontSize: 13, marginTop: 4, fontWeight: "700" },
   userInfo: { flexDirection: "row", alignItems: "center" },
   avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
   avatarPlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
@@ -708,7 +784,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "center",
   },
   chatButton: {
     width: 44,
@@ -736,7 +812,8 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  reportContainer: { alignItems: "center" },
+  reportContainer: { alignItems: "center", minWidth: 20 },
+  moreButton: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
   trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
   flexGrow: { flexGrow: 1 },
   modalBackdrop: {
@@ -779,4 +856,19 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   closeBtnText: { color: "#fff", fontWeight: "700" },
+  
+  inlineActionDanger: {
+    color: "#dc3545",
+    fontWeight: "700",
+    paddingVertical: 6,
+    paddingHorizontal: 0,
+    fontSize: 15,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
 });
