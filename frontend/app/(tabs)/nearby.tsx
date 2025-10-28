@@ -30,6 +30,7 @@ import {
   haversineDistanceMeters,
   scatterUsersAround,
 } from "../../utils/geo";
+import { rankNearbyUsers } from "../../utils/rank";
 import ReportButton from "../../components/ReportButton";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
@@ -37,8 +38,15 @@ const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 
 // Types
 type NearbyWithDistance = NearbyUser & {
-  distanceMeters: number;
+  distanceMeters: number;   // for display only
+  score?: number;           // matchmaking score 0..1
 };
+
+// Defensive tags normalization
+const normalizeTags = (tags: unknown): string[] =>
+  Array.isArray(tags)
+    ? tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    : [];
 
 export default function NearbyScreen() {
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
@@ -54,6 +62,7 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const {
     status,
     setStatus,
@@ -65,7 +74,54 @@ export default function NearbyScreen() {
   } = useUser();
 
   /**
-   * Fetches users from the API and updates their distance relative to the current location.
+   * Build final ranked list:
+   * 1) filter (visibility, not current user)
+   * 2) scatter (demo coords)
+   * 3) rank by SCORE ONLY (tagSim weight 1.0, distance weight 0.0)
+   * 4) compute distance for display (does NOT affect order)
+   */
+  const buildRankedList = useCallback(
+    (rawUsers: ApiUser[], coords: Location.LocationObjectCoords): NearbyWithDistance[] => {
+      const filtered = Array.isArray(rawUsers)
+        ? rawUsers.filter(
+            (u) => (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
+          )
+        : [];
+
+      const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+
+      const ranked = rankNearbyUsers(
+        {
+          id: currentUser?.id ?? -1,
+          interestTags: normalizeTags(currentUser?.interestTags),
+          coords: { latitude: coords.latitude, longitude: coords.longitude },
+        },
+        scattered,
+        {
+          weights: { tagSim: 1.0, distance: 0.0 }, // 👈 rank strictly by tag similarity (score)
+          // halfLifeMeters still accepted but irrelevant with distance weight 0
+          halfLifeMeters: 1200,
+        }
+      );
+
+      // Preserve ranked order; enrich with distance for UI only
+      const rankedWithDistance: NearbyWithDistance[] = ranked.map((u) => ({
+        ...u,
+        distanceMeters: haversineDistanceMeters(
+          coords.latitude,
+          coords.longitude,
+          u.coords.latitude,
+          u.coords.longitude
+        ),
+      }));
+
+      return rankedWithDistance;
+    },
+    [currentUser]
+  );
+
+  /**
+   * Fetches users and sets ranked list (score-only ordering).
    */
   const loadUsers = useCallback(
     async (
@@ -74,51 +130,38 @@ export default function NearbyScreen() {
     ) => {
       try {
         if (!accessToken) {
-          console.log("No access token available, using demo users");
-          const demoUsers: NearbyWithDistance[] = [
+          // Demo users when not authenticated
+          const demoUsers: ApiUser[] = [
             {
               id: 1,
               name: "Alice Demo",
               email: "alice@example.com",
               interestTags: ["Coffee", "Reading"],
               profilePicture: null,
-              coords: {
-                latitude: ODU_CENTER.latitude + 0.001,
-                longitude: ODU_CENTER.longitude + 0.001,
-              },
-              distanceMeters: 100,
-              trustScore: 99,
-            },
+              visibility: true,
+            } as unknown as ApiUser,
             {
               id: 2,
               name: "Bob Demo",
               email: "bob@example.com",
               interestTags: ["Gaming", "Movies"],
               profilePicture: null,
-              coords: {
-                latitude: ODU_CENTER.latitude - 0.001,
-                longitude: ODU_CENTER.longitude - 0.001,
-              },
-              distanceMeters: 150,
-              trustScore: 65,
-            },
+              visibility: true,
+            } as unknown as ApiUser,
             {
               id: 3,
               name: "Charlie Demo",
               email: "charlie@example.com",
               interestTags: ["Running"],
               profilePicture: null,
-              coords: {
-                latitude: ODU_CENTER.latitude + 0.002,
-                longitude: ODU_CENTER.longitude - 0.002,
-              },
-              distanceMeters: 250,
-              trustScore: 45,
-            },
+              visibility: true,
+            } as unknown as ApiUser,
           ];
-          setUsers(demoUsers);
+
+          const rankedList = buildRankedList(demoUsers, coords);
+          setUsers(rankedList);
           setError(null);
-          setLoading(false);
+          if (!options?.silent) setLoading(false);
           return;
         }
 
@@ -128,44 +171,27 @@ export default function NearbyScreen() {
         if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
-        const filtered = Array.isArray(data)
-          ? data.filter(
-              (u) =>
-                (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
-            )
-          : [];
 
-        const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
-        const withDistance = scattered
-          .map<NearbyWithDistance>((user) => ({
-            ...user,
-            distanceMeters: haversineDistanceMeters(
-              coords.latitude,
-              coords.longitude,
-              user.coords.latitude,
-              user.coords.longitude
-            ),
-          }))
-          .sort((a, b) => a.distanceMeters - b.distanceMeters);
+        // Keep a warm cache of raw users
+        setPrefetchedUsers(data);
 
-        setPrefetchedUsers(filtered);
-        setUsers(withDistance);
+        // Build ranked output strictly by score
+        const rankedList = buildRankedList(data, coords);
+        setUsers(rankedList);
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
       } finally {
-        if (!options?.silent) {
-          setLoading(false);
-        }
+        if (!options?.silent) setLoading(false);
         setRefreshing(false);
       }
     },
-    [accessToken, currentUser, setPrefetchedUsers]
+    [accessToken, setPrefetchedUsers, buildRankedList]
   );
 
   /**
-   * Refreshes the trust score for a specific user after they have been reported.
+   * Refresh just one user's trust score after a report.
    */
   const refreshTrustScore = useCallback(
     async (userId: number) => {
@@ -179,11 +205,10 @@ export default function NearbyScreen() {
         setUsers((prevUsers) =>
           prevUsers.map((u) =>
             u.id === userId
-              ? { ...u, trustScore: updatedUser.trustScore ?? u.trustScore }
+              ? { ...u, trustScore: (updatedUser.trustScore ?? u.trustScore) as number }
               : u
           )
         );
-        console.log(`✅ Trust score refreshed for user ID ${userId}`);
       } catch (err) {
         console.error("Failed to refresh trust score:", err);
       }
@@ -192,7 +217,7 @@ export default function NearbyScreen() {
   );
 
   /**
-   * Requests location (simulated as ODU center for demo) and loads users nearby.
+   * Request (simulated) location and load users.
    */
   const hasLoadedOnceRef = useRef(false);
 
@@ -201,9 +226,7 @@ export default function NearbyScreen() {
       const silent = options?.silent ?? hasLoadedOnceRef.current;
 
       try {
-        if (!silent) {
-          setLoading(true);
-        }
+        if (!silent) setLoading(true);
 
         const coords = {
           latitude: ODU_CENTER.latitude,
@@ -220,56 +243,43 @@ export default function NearbyScreen() {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
-        if (!silent) {
-          setLoading(false);
-        }
+        if (!silent) setLoading(false);
       }
     },
     [loadUsers]
   );
 
+  /**
+   * Rebuild from warm cache when it changes.
+   * Still rank strictly by score; distance only displayed.
+   */
   useEffect(() => {
     if (!prefetchedUsers) return;
 
-    const coords = location ?? {
-      latitude: ODU_CENTER.latitude,
-      longitude: ODU_CENTER.longitude,
-      altitude: undefined as any,
-      accuracy: undefined as any,
-      altitudeAccuracy: undefined as any,
-      heading: undefined as any,
-      speed: undefined as any,
-    };
+    const coords =
+      location ?? {
+        latitude: ODU_CENTER.latitude,
+        longitude: ODU_CENTER.longitude,
+        altitude: undefined as any,
+        accuracy: undefined as any,
+        altitudeAccuracy: undefined as any,
+        heading: undefined as any,
+        speed: undefined as any,
+      };
 
-    const filtered = prefetchedUsers.filter((u) =>
-      (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
-    );
-
-    const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
-    const withDistance = scattered
-      .map<NearbyWithDistance>((user) => ({
-        ...user,
-        distanceMeters: haversineDistanceMeters(
-          coords.latitude,
-          coords.longitude,
-          user.coords.latitude,
-          user.coords.longitude
-        ),
-      }))
-      .sort((a, b) => a.distanceMeters - b.distanceMeters);
-
-    setUsers(withDistance);
+    const rankedList = buildRankedList(prefetchedUsers, coords);
+    setUsers(rankedList);
     setLoading(false);
     hasLoadedOnceRef.current = true;
-  }, [prefetchedUsers, location, currentUser]);
+  }, [prefetchedUsers, location, buildRankedList]);
 
-  // Load users initially and when profile picture or visibility changes
+  // Reload when profile picture or visibility changes
   useEffect(() => {
     void requestAndLoad({ silent: hasLoadedOnceRef.current });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.profilePicture, currentUser?.visibility]);
 
-  // Pull-to-refresh functionality
+  // Pull-to-refresh
   const onRefresh = useCallback(async () => {
     if (!location) {
       await requestAndLoad({ silent: false });
@@ -280,22 +290,20 @@ export default function NearbyScreen() {
   }, [loadUsers, location, requestAndLoad]);
 
   /**
-   * ✅ Start a new chat session with another user (always fetch latest info first)
+   * Start a new chat session (fetch latest receiver first).
    */
   const startChat = async (receiverId: number, receiverName: string) => {
     if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
 
     try {
-      // ✅ Step 1: Fetch the latest receiver data before starting chat
+      // Fetch latest receiver (for name/picture)
       const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      let latestUser = null;
-      if (userResponse.ok) {
-        latestUser = await userResponse.json();
-      }
+      let latestUser: ApiUser | null = null;
+      if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
-      // ✅ Step 2: Create or retrieve the chat session
+      // Create or get chat session
       const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
         method: "POST",
         headers: {
@@ -306,20 +314,19 @@ export default function NearbyScreen() {
           participants: [currentUser.id, receiverId],
         }),
       });
-
       if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
 
       const data = (await response.json()) as { chatId: number };
       const { chatId } = data;
 
-      // ✅ Step 3: Pass latest profile picture and name to the chat screen
+      // Navigate with latest user info
       router.push({
         pathname: "/(tabs)/messages/[chatId]",
         params: {
           chatId: String(chatId),
           name: latestUser?.name || receiverName,
           receiverId: String(receiverId),
-          profilePicture: latestUser?.profilePicture || "",
+          profilePicture: (latestUser?.profilePicture as string) || "",
         },
       });
     } catch (err) {
@@ -328,7 +335,7 @@ export default function NearbyScreen() {
     }
   };
 
-  // Loading and error handling UI
+  // Loading and error UI
   const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
 
   if (showInitialLoader) {
@@ -381,13 +388,13 @@ export default function NearbyScreen() {
           disabled={isStatusUpdating}
           activeOpacity={0.85}
         >
-            {isStatusUpdating ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.visibilityToggleText}>
-                {status === "Visible" ? "Hide Me" : "Show Me"}
-              </Text>
-            )}
+          {isStatusUpdating ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.visibilityToggleText}>
+              {status === "Visible" ? "Hide Me" : "Show Me"}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -416,13 +423,13 @@ export default function NearbyScreen() {
               ? `${API_BASE_URL}${item.profilePicture}`
               : null;
 
-          // ✅ Dynamic color based on trust score
-          const score = item.trustScore ?? 0;
-          let trustColor = "#007BFF"; // default blue
-          if (score >= 90) trustColor = "#28a745"; // dark green
-          else if (score >= 70) trustColor = "#7ED957"; // light green
-          else if (score >= 51) trustColor = "#FFC107"; // yellow
-          else trustColor = "#DC3545"; // red
+          // Dynamic color based on trust score
+          const scoreTS = item.trustScore ?? 0;
+          let trustColor = "#007BFF";
+          if (scoreTS >= 90) trustColor = "#28a745";
+          else if (scoreTS >= 70) trustColor = "#7ED957";
+          else if (scoreTS >= 51) trustColor = "#FFC107";
+          else trustColor = "#DC3545";
 
           return (
             <View style={[styles.card, index === 0 && styles.closestCard]}>
@@ -445,6 +452,12 @@ export default function NearbyScreen() {
                   )}
                   <View>
                     <Text style={styles.cardTitle}>{item.name}</Text>
+                    {/* ✅ show score-only % match */}
+                    {typeof item.score === "number" && (
+                      <Text style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
+                        {Math.round(item.score * 100)}% match
+                      </Text>
+                    )}
                   </View>
                 </View>
                 <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
@@ -460,9 +473,9 @@ export default function NearbyScreen() {
                 </View>
               )}
 
-              {/* ✅ Bottom action bar */}
+              {/* Bottom action bar */}
               <View style={styles.cardFooter}>
-                {/* Chat button (bottom-left) */}
+                {/* Chat button */}
                 <Pressable
                   onPress={() => startChat(item.id, item.name || item.email)}
                   style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
@@ -470,19 +483,18 @@ export default function NearbyScreen() {
                   <Ionicons name="chatbubble" size={18} color="white" />
                 </Pressable>
 
-                {/* Report button + trust score (bottom-right) */}
+                {/* Report + Trust score */}
                 <View style={styles.reportContainer}>
                   <ReportButton
                     reportedUserId={item.id}
                     reportedUserName={item.name}
                     size="small"
                     onReportSuccess={() => {
-                      console.log(`⚠️ Reported user ${item.name}`);
                       refreshTrustScore(item.id);
                     }}
                   />
                   <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
-                    Trust Score: {score}  
+                    Trust Score: {scoreTS}
                   </Text>
                 </View>
               </View>
@@ -564,7 +576,7 @@ const styles = StyleSheet.create({
   },
   cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
 
-  /* ✅ Bottom buttons layout */
+  /* Bottom buttons layout */
   cardFooter: {
     marginTop: 16,
     flexDirection: "row",
