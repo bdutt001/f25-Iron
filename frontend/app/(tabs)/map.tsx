@@ -1,30 +1,30 @@
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
-  Animated,
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   Platform,
   Alert,
-  LayoutAnimation,
   UIManager,
+  PixelRatio,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
 import MapView, { Marker } from "react-native-maps";
+import { Image as ExpoImage } from "expo-image";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import UserOverflowMenu from "../../components/UserOverflowMenu";
+// Overlay implementation removed in favor of native sprites
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 const IS_ANDROID = Platform.OS === "android";
-const MARKER_SIZE = IS_ANDROID ? 36 : 44;
-const MARKER_RADIUS = MARKER_SIZE / 2;
-const MARKER_BORDER = IS_ANDROID ? 2 : 3;
-const MarkerWrapper: any = IS_ANDROID ? View : Animated.View;
+// Density-aware sizing (used by overlay avatars)
+const DENSITY = PixelRatio.get();
+const MARKER_SIZE = DENSITY >= 3 ? 40 : 36;
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
@@ -37,9 +37,11 @@ export default function MapScreen() {
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
   const [zoomLevel, setZoomLevel] = useState(14);
+  const [regionTick, setRegionTick] = useState(0);
+  const [spriteUris, setSpriteUris] = useState<Record<string, string>>({});
   // Removed markerTracks; no longer needed
   const [markersVersion, setMarkersVersion] = useState(0);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   
   
   // Enable LayoutAnimation on Android
@@ -146,28 +148,10 @@ export default function MapScreen() {
     [accessToken, currentUser]
   );
 
-  // Block selected user
-  const blockUser = useCallback(
-    async (userId: number) => {
-      if (!accessToken) return;
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!res.ok) throw new Error(`Failed to block (${res.status})`);
-        // Remove from current nearby markers
-        setNearbyUsers(nearbyUsers.filter((u) => u.id !== userId));
-        setPrefetchedUsers(prefetchedUsers ? prefetchedUsers.filter((u) => u.id !== userId) : null);
-        setSelectedUser(null);
-      } catch (e) {
-        console.error(e);
-      }
-    },
-    [accessToken, setPrefetchedUsers, nearbyUsers]
-  );
+  // Actions handled by shared UserOverflowMenu
 
   // Report flow (inline) similar to ReportButton
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const startReportFlow = useCallback(() => {
     if (!selectedUser || !accessToken || !currentUser) {
       Alert.alert("Error", "You must be logged in to report users.");
@@ -246,17 +230,7 @@ useEffect(() => {
 
   // Removed markerTracks effect
 
-  // iOS marker size animation (disabled on Android)
-  const scale = IS_ANDROID ? 1 : Math.max(Math.min((zoomLevel - 10) / 4 + 0.6, 1.6), 0.8);
-  const animatedScale = useRef(new Animated.Value(scale)).current;
   const hasAnimatedRegion = useRef(false);
-  useEffect(() => {
-    Animated.timing(animatedScale, {
-      toValue: scale,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-  }, [animatedScale, scale]);
 
   // Helpers for UI coloring
   const trustColor = (score?: number) => {
@@ -266,6 +240,63 @@ useEffect(() => {
     if (s >= 51) return "#FFC107";
     return "#DC3545";
   };
+
+  // Sprite cache: download remote avatar PNGs to local file URIs for native marker images
+  const ensureSprite = useCallback(async (url: string): Promise<string | null> => {
+    try {
+      // expo-file-system dynamic import to keep bundle slim
+      const FileSystem = await import("expo-file-system");
+      const safe = url.replace(/[^a-zA-Z0-9\.]/g, "_");
+      const extMatch = safe.match(/\.(png|jpg|jpeg|webp)$/i);
+      const ext = extMatch ? extMatch[1].toLowerCase() : "png";
+      const fileName = `${safe.slice(0, 100)}.${ext}`;
+      const localUri = `${(FileSystem.cacheDirectory || FileSystem.documentDirectory) ?? ''}${fileName}`;
+      const info = await FileSystem.getInfoAsync(localUri);
+      if (!info.exists) {
+        const headers = url.startsWith(API_BASE_URL) && accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+        await FileSystem.downloadAsync(url, localUri, { headers });
+      }
+      return localUri;
+    } catch (e) {
+      return null;
+    }
+  }, [accessToken]);
+
+  // Prefetch all sprites when user list changes
+  useEffect(() => {
+    const urls: string[] = [];
+    if (selfUser?.profilePicture) {
+      const u = (selfUser.profilePicture as string).startsWith("http")
+        ? (selfUser.profilePicture as string)
+        : `${API_BASE_URL}${selfUser.profilePicture}`;
+      urls.push(u);
+    }
+    for (const u of nearbyUsers) {
+      const p = u.profilePicture as string | null;
+      if (!p) continue;
+      const uurl = p.startsWith("http") ? p : `${API_BASE_URL}${p}`;
+      urls.push(uurl);
+    }
+    if (urls.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        urls.map(async (u) => {
+          const local = await ensureSprite(u);
+          return [u, local] as const;
+        })
+      );
+      if (cancelled) return;
+      setSpriteUris((prev) => {
+        const next = { ...prev } as Record<string, string>;
+        for (const [u, local] of entries) if (local) next[u] = local;
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureSprite, selfUser?.profilePicture, nearbyUsers]);
 
   return (
     <View style={styles.container}>
@@ -281,86 +312,56 @@ useEffect(() => {
         onRegionChangeComplete={(region) => {
           const angle = region.longitudeDelta;
           setZoomLevel(Math.round(Math.log(360 / angle) / Math.LN2));
+          setRegionTick((t) => t + 1);
         }}
       >
         {/* 👤 Current user */}
         {status === "Visible" && selfUser && (
           <Marker
-            key={`self-${markersVersion}`}
+            key={`self-${markersVersion}-${(() => { const raw = selfUser.profilePicture as string | null; const remote = raw ? (raw.startsWith("http") ? raw : `${API_BASE_URL}${raw}`) : ""; const local = remote ? spriteUris[remote] : null; return local ?? 'nop'; })()}`}
             coordinate={myCoords}
             onPress={() => setSelectedUser(selfUser)}
             anchor={{ x: 0.5, y: 0.5 }}
             centerOffset={{ x: 0, y: 0 }}
-            tracksViewChanges={true}
-          >
-            <View style={styles.markerContainer} collapsable={false}>
-              <MarkerWrapper
-                style={[
-                  styles.markerImageWrapper,
-                  styles.markerSelfWrapper,
-                  !IS_ANDROID && { transform: [{ scale: animatedScale }] },
-                ]}
-              >
-                {selfUser.profilePicture ? (
-                  <ExpoImage
-                    source={{
-                      uri: selfUser.profilePicture.startsWith("http")
-                        ? selfUser.profilePicture
-                        : `${API_BASE_URL}${selfUser.profilePicture}`,
-                    }}
-                    style={styles.markerImageInner}
-                    cachePolicy="memory-disk"
-                    transition={0}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={styles.markerPlaceholderInner}>
-                    <Text style={styles.markerPlaceholderText}>
-                      {selfUser.name?.charAt(0)?.toUpperCase() || "U"}
-                    </Text>
-                  </View>
-                )}
-              </MarkerWrapper>
-            </View>
-          </Marker>
+            tracksViewChanges={false}
+            {...(() => {
+              const raw = selfUser.profilePicture as string | null;
+              if (!raw) return { pinColor: "#1f5fbf" };
+              const remote = raw.startsWith("http") ? raw : `${API_BASE_URL}${raw}`;
+              const local = spriteUris[remote];
+              return local ? { image: { uri: local }, icon: { uri: local } } : { pinColor: "#1f5fbf" };
+            })()}
+          />
         )}
 
         {/* 👥 Other users */}
-        {nearbyUsers.map((user) => (
-          <Marker
-            key={`${user.id}-${markersVersion}`}
-            coordinate={user.coords}
-            onPress={() => setSelectedUser(user)}
-            anchor={{ x: 0.5, y: 0.5 }}
-            centerOffset={{ x: 0, y: 0 }}
-            tracksViewChanges={true}
-          >
-            <View style={styles.markerContainer} collapsable={false}>
-              <View style={[styles.markerImageWrapper, styles.markerOtherWrapper]}>
-                {user.profilePicture ? (
-                  <ExpoImage
-                    source={{
-                      uri: user.profilePicture.startsWith("http")
-                        ? user.profilePicture
-                        : `${API_BASE_URL}${user.profilePicture}`,
-                    }}
-                    style={styles.markerImageInner}
-                    cachePolicy="memory-disk"
-                    transition={0}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={styles.markerPlaceholderInner}>
-                    <Text style={styles.markerPlaceholderText}>
-                      {user.name?.charAt(0)?.toUpperCase() || "?"}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </Marker>
-        ))}
+        {nearbyUsers.map((user) => {
+          const raw = user.profilePicture as string | null;
+          const remote = raw ? (raw.startsWith("http") ? raw : `${API_BASE_URL}${raw}`) : null;
+          const local = remote ? spriteUris[remote] : null;
+          return (
+            <Marker
+              key={`${user.id}-${markersVersion}-${local ?? 'nop'}`}
+              coordinate={user.coords}
+              onPress={() => setSelectedUser(user)}
+              anchor={{ x: 0.5, y: 0.5 }}
+              centerOffset={{ x: 0, y: 0 }}
+              tracksViewChanges={false}
+              {...(local ? { image: { uri: local }, icon: { uri: local } } : { pinColor: "#e63946" })}
+            />
+          );
+        })}
       </MapView>
+
+      <UserOverflowMenu
+        visible={!!menuTarget}
+        onClose={() => setMenuTarget(null)}
+        targetUser={menuTarget}
+        onBlocked={(uid) => {
+          setNearbyUsers((prev) => prev.filter((u) => u.id !== uid));
+          setSelectedUser(null);
+        }}
+      />
 
       {/* 🔍 Floating enlarged preview */}
       {selectedUser && (
@@ -477,35 +478,8 @@ useEffect(() => {
                   <Text style={{ color: "#fff", marginLeft: 8, fontWeight: "700" }}>Message</Text>
                 </TouchableOpacity>
 
-                {/* Inline expanding actions to the left of the icon */}
-                <View style={[styles.inlineActionsWrap, moreOpen ? styles.inlineActionsWrapOpen : styles.inlineActionsWrapClosed]}>
-                  <TouchableOpacity onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setMoreOpen(false); startReportFlow(); }}>
-                    <Text style={styles.inlineActionDanger}>Report</Text>
-                  </TouchableOpacity>
-                  <View style={{ width: 8 }} />
-                  <TouchableOpacity
-                    onPress={() => {
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                      setMoreOpen(false);
-                      Alert.alert(
-                        "Block User",
-                        `Hide ${selectedUser.name || selectedUser.email} and prevent messages?`,
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Block", style: "destructive", onPress: () => { void blockUser(selectedUser.id); } },
-                        ]
-                      );
-                    }}
-                  >
-                    <Text style={styles.inlineActionDanger}>Block</Text>
-                  </TouchableOpacity>
-                </View>
-
                 <TouchableOpacity
-                  onPressIn={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setMoreOpen((v) => !v);
-                  }}
+                  onPress={() => setMenuTarget(selectedUser)}
                   hitSlop={{ left: 8, right: 8, top: 6, bottom: 6 }}
                   style={{ paddingHorizontal: 2, paddingVertical: 6 }}
                 >
@@ -576,30 +550,6 @@ const styles = StyleSheet.create({
   },
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-
-  markerContainer: { alignItems: "center", justifyContent: "center" },
-  markerImageWrapper: {
-    width: MARKER_SIZE,
-    height: MARKER_SIZE,
-    borderRadius: MARKER_RADIUS,
-    borderWidth: MARKER_BORDER,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "visible",
-  },
-  markerSelfWrapper: { borderColor: "#1f5fbf" },
-  markerOtherWrapper: { borderColor: "#e63946" },
-  markerImageInner: { width: "100%", height: "100%", borderRadius: MARKER_RADIUS },
-  markerPlaceholderInner: {
-    width: "100%",
-    height: "100%",
-    borderRadius: MARKER_RADIUS,
-    backgroundColor: "#f1f1f1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  markerPlaceholderText: { fontSize: 18, fontWeight: "600", color: "#555" },
 
   // Floating preview
   floatingMarker: {
@@ -699,3 +649,4 @@ const styles = StyleSheet.create({
   },
   
 });
+

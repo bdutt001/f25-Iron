@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -15,6 +16,7 @@ import { Alert, Image ,
 
 import { useUser, type CurrentUser } from "../../context/UserContext";
 import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
+import type { ApiUser } from "../../utils/geo";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
@@ -79,6 +81,8 @@ export default function ProfileScreen() {
   const [loadingTags, setLoadingTags] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
 
   // ✅ Profile Picture State
   const [profilePicture, setProfilePicture] = useState<string | null>(
@@ -162,6 +166,47 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [accessToken]);
+
+  // Load blocked users for this profile tab (also on focus)
+  const loadBlocked = React.useCallback(async () => {
+    if (!accessToken) { setBlockedUsers([]); return; }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/me/blocks`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const data = (await res.json()) as ApiUser[] | { error?: string };
+      setBlockedUsers(Array.isArray(data) ? data : []);
+    } catch {
+      setBlockedUsers([]);
+    }
+  }, [accessToken]);
+
+  useEffect(() => { if (accessToken) { setBlockedLoading(true); loadBlocked().finally(() => setBlockedLoading(false)); } }, [accessToken, loadBlocked]);
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      (async () => { if (active) await loadBlocked(); })();
+      return () => { active = false; };
+    }, [loadBlocked])
+  );
+
+  const handleUnblock = async (userId: number) => {
+    if (!accessToken) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.ok || res.status === 204) {
+        setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const onRefreshBlocked = async () => {
+    setBlockedLoading(true);
+    try { await loadBlocked(); } finally { setBlockedLoading(false); }
+  };
 
   const handleNameInputChange = (value: string) => {
     if (nameError) setNameError(null);
@@ -546,8 +591,52 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* Blocked accounts */}
+      <View style={styles.blockedSection}>
+        <View style={styles.blockedHeaderRow}>
+          <Text style={styles.sectionTitle}>Blocked Accounts</Text>
+          <TouchableOpacity onPress={onRefreshBlocked} disabled={blockedLoading} accessibilityRole="button">
+            <Text style={[styles.link, blockedLoading && styles.linkDisabled]}>{blockedLoading ? "Refreshing..." : "Refresh"}</Text>
+          </TouchableOpacity>
+        </View>
+        {blockedLoading && blockedUsers.length === 0 ? (
+          <ActivityIndicator size="small" color="#007BFF" />
+        ) : blockedUsers.length === 0 ? (
+          <Text style={styles.helperText}>You haven’t blocked anyone.</Text>
+        ) : (
+          blockedUsers.map((u) => {
+            const pp = (u as any).profilePicture as string | null | undefined;
+            const uri = pp ? (pp.startsWith("http") ? pp : `${API_BASE_URL}${pp}`) : null;
+            const initial = (u.name || u.email || "?").charAt(0).toUpperCase();
+            return (
+              <View key={u.id} style={styles.blockedRowItem}>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.blockedAvatar} />
+                ) : (
+                  <View style={[styles.blockedAvatar, styles.blockedAvatarPlaceholder]}>
+                    <Text style={styles.blockedAvatarInitial}>{initial}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.blockedNameText}>{u.name || u.email}</Text>
+                </View>
+                <TouchableOpacity onPress={() => void handleUnblock(u.id)} accessibilityRole="button">
+                  <Text style={styles.unblockLink}>Unblock</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
+      </View>
+
       <View style={styles.logout}>
-        <Button title="Logout" onPress={handleLogout} color="#d9534f" />
+        <TouchableOpacity
+          style={styles.logoutPill}
+          onPress={handleLogout}
+          accessibilityRole="button"
+        >
+          <Text style={styles.logoutPillText}>Logout</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -593,10 +682,50 @@ const styles = StyleSheet.create({
   tagOptionTextSelected: { color: "#1f5fbf", fontWeight: "600" },
   catalogLoading: { flexDirection: "row", alignItems: "center" },
   catalogLoadingText: { marginLeft: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
   helperText: { marginTop: 12, fontSize: 13, color: "#666" },
   errorText: { marginTop: 12, fontSize: 13, color: "#c00" },
-  logout: { width: "100%", maxWidth: 580 },
+  logout: { width: "100%", maxWidth: 580, marginTop: 24, marginBottom: 36 },
+  logoutPill: {
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#eee",
+  },
+  logoutPillText: { color: "#d9534f", fontWeight: "700", fontSize: 16 },
   profilePictureSection: { alignItems: "center", marginBottom: 20 },
   profilePicture: { width: 120, height: 120, borderRadius: 60, marginBottom: 10 },
   profilePlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
+  blockedSection: {
+    marginTop: 24,
+    width: "100%",
+    maxWidth: 580,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e6e6e6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  blockedHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  blockedRowItem: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#e5e5e5" },
+  blockedAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
+  blockedAvatarPlaceholder: { backgroundColor: "#eee", justifyContent: "center", alignItems: "center" },
+  blockedAvatarInitial: { fontSize: 14, fontWeight: "700", color: "#555" },
+  blockedNameText: { fontSize: 16 },
+  unblockLink: { color: "#dc3545", fontWeight: "700" },
+  link: { color: "#007BFF", fontWeight: "600" },
+  linkDisabled: { opacity: 0.5 },
 });

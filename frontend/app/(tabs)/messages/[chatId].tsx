@@ -10,11 +10,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; // ✅ modern SafeAreaView
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useUser } from "../../../context/UserContext";
-import ReportButton from "../../../components/ReportButton";
+import { Ionicons } from "@expo/vector-icons";
+import UserOverflowMenu from "../../../components/UserOverflowMenu";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -39,6 +41,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // ✅ Add FlatList ref for auto-scroll
   const flatListRef = useRef<FlatList<Message>>(null);
@@ -49,12 +52,9 @@ export default function ChatScreen() {
       navigation.setOptions({
         title: name,
         headerRight: () => (
-          <ReportButton
-            reportedUserId={Number(receiverId)} // Using receiverId instead of chatId — chatId represents the conversation, not the actual user being reported
-            reportedUserName={name ?? "Unknown"}
-            size="small"
-            onReportSuccess={() => console.log(`Reported user ${name}`)}
-          />
+          <TouchableOpacity onPress={() => setMenuOpen(true)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
+            <Ionicons name="ellipsis-vertical" size={20} color="#333" />
+          </TouchableOpacity>
         ),
       });
     }
@@ -124,6 +124,7 @@ export default function ChatScreen() {
 
   // ✅ Fixed layout so input bar moves above keyboard (especially on iPhone 14 Pro / iOS 18)
   return (
+    <>
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["bottom", "left", "right"]}>
       <KeyboardAvoidingView
         style={styles.container}
@@ -221,6 +222,15 @@ export default function ChatScreen() {
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    <UserOverflowMenu
+      visible={menuOpen}
+      onClose={() => setMenuOpen(false)}
+      targetUser={{ id: Number(receiverId), name: name ?? "" }}
+      onBlocked={() => {
+        try { (navigation as any).goBack?.(); } catch {}
+      }}
+    />
+    </>
   );
 }
 

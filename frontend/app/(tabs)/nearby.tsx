@@ -18,7 +18,6 @@ import {
   Alert,
   TouchableOpacity,
   Modal,
-  ScrollView,
   Platform,
   LayoutAnimation,
   UIManager,
@@ -26,6 +25,7 @@ import {
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import {
@@ -66,9 +66,10 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Blocked UI moved to Profile
   const [blockedVisible, setBlockedVisible] = useState(false);
-  const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
+  const [menuTarget, setMenuTarget] = useState<ApiUser | null>(null);
   
 
   useEffect(() => {
@@ -351,20 +352,7 @@ export default function NearbyScreen() {
     }
   };
 
-  const loadBlockedUsers = useCallback(async () => {
-    if (!accessToken) return setBlockedUsers([]);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/users/me/blocks`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!response.ok) throw new Error(`Failed to load blocked users (${response.status})`);
-      const data = (await response.json()) as ApiUser[];
-      setBlockedUsers(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Failed to load blocked users", err);
-      setBlockedUsers([]);
-    }
-  }, [accessToken]);
+  // Blocked list now shown in Profile tab; local loader removed
 
   const handleBlock = useCallback(
     async (userId: number) => {
@@ -382,31 +370,12 @@ export default function NearbyScreen() {
         Alert.alert("Error", "Could not block user. Please try again.");
       }
     },
-    [accessToken, setPrefetchedUsers]
+    [accessToken, setPrefetchedUsers, prefetchedUsers]
   );
 
-  const handleUnblock = useCallback(
-    async (userId: number) => {
-      if (!accessToken) return Alert.alert("Not logged in", "Please log in to unblock users.");
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!res.ok && res.status !== 204) throw new Error(`Failed to unblock (${res.status})`);
-        setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
-        void requestAndLoad({ silent: true });
-      } catch (err) {
-        console.error(err);
-        Alert.alert("Error", "Could not unblock user. Please try again.");
-      }
-    },
-    [accessToken, requestAndLoad]
-  );
+  // Unblock flow moved to Profile tab
 
-  const toggleInlineFor = useCallback((user: ApiUser) => {
-    setExpandedUserId((prev) => (prev === user.id ? null : user.id));
-  }, []);
+  // Removed old inline toggle; actions now in overflow menu
 
   const startReportFlow = useCallback(
     (user: ApiUser) => {
@@ -509,15 +478,7 @@ export default function NearbyScreen() {
             </Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.blockedBtn}
-          onPress={() => {
-            setBlockedVisible(true);
-            void loadBlockedUsers();
-          }}
-        >
-          <Text style={styles.blockedBtnText}>Blocked</Text>
-        </TouchableOpacity>
+        {/* Blocked list moved to Profile tab */}
       </View>
 
       {loading && hasLoadedOnceRef.current && (
@@ -605,7 +566,12 @@ export default function NearbyScreen() {
                   onPress={() => startChat(item.id, item.name || item.email)}
                   style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
                 >
-                  <Ionicons name="chatbubble" size={18} color="white" />
+                  <Ionicons
+                    name="chatbubble"
+                    size={18}
+                    color="white"
+                    style={Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center', lineHeight: 18 } : undefined}
+                  />
                 </Pressable>
 
                 {/* spacer */}
@@ -641,16 +607,18 @@ export default function NearbyScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* More menu (Report/Block) */}
+                {/* Three-dot menu (modern) */}
                 <TouchableOpacity
-                  onPressIn={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    toggleInlineFor(item as unknown as ApiUser);
-                  }}
+                  onPress={() => setMenuTarget(item as unknown as ApiUser)}
                   style={styles.moreButton}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="ellipsis-vertical" size={18} color="#333" />
+                  <Ionicons
+                    name="ellipsis-vertical"
+                    size={18}
+                    color="#333"
+                    style={Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center', lineHeight: 18 } : undefined}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -667,32 +635,16 @@ export default function NearbyScreen() {
         onRequestClose={() => setBlockedVisible(false)}
         transparent={true}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Blocked Users</Text>
-            <ScrollView style={{ maxHeight: 380 }}>
-              {blockedUsers.length === 0 ? (
-                <Text style={styles.note}>No blocked users.</Text>
-              ) : (
-                blockedUsers.map((u) => (
-                  <View key={u.id} style={styles.blockedRow}>
-                    <Text style={styles.blockedName}>{u.name || u.email}</Text>
-                    <TouchableOpacity
-                      style={styles.unblockBtn}
-                      onPress={() => void handleUnblock(u.id)}
-                    >
-                      <Text style={styles.unblockBtnText}>Unblock</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setBlockedVisible(false)}>
-              <Text style={styles.closeBtnText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <View />
       </Modal>
+      <UserOverflowMenu
+        visible={!!menuTarget}
+        onClose={() => setMenuTarget(null)}
+        targetUser={menuTarget}
+        onBlocked={(uid) => {
+          setUsers((prev) => prev.filter((u) => u.id !== uid));
+        }}
+      />
     </View>
   );
 }
