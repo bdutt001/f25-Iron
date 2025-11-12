@@ -1,0 +1,8 @@
+.labs_container{
+    display: flex;
+    /* margin: auto; */
+    min-width: fit-content;
+    min-height: 80vh;
+    margin: 1vh 0;
+    margin-bottom: 8vh;
+}

@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+.presentation_container{
+    display: block;
+    margin: auto;
+    min-width: fit-content;
+    min-height: fit-content;
+    margin: 1vh 0;
+    margin-bottom: 8vh;
+}
+#presentation_title{
+    width: 25%;
+    font-size: 1.5rem;
+    min-height: 2rem;
+    margin: auto;
+    text-align: center;
+}
+.inactiveSlide{
+    display: none;
+}
+.slideshow{
+    display: flex;
+    justify-content: center;
+    max-width: 100vw;
+    
+}
+.slide_buttons{
+    display: flex;
+    justify-content: center;
+    margin-bottom: 4vh;
+    gap: 2rem;
+}
+.slide_buttons button{
+    background-color: #007BFF;
+    color: white;
+    text-align: center;
+    font-size: 1.5rem;
+    padding: 0.5vh 0.5vw;
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.4);
+    margin-top: 2%;
+}
+.slide_buttons button:hover{
+    background-color: #e9ecef;
+    color: #007BFF; 
+}
+footer{
+    min-height: 20vh;
+    min-width: 100vw;
+}
+.document_container{
+    display: flex;
+    justify-content: center;
+    margin: auto;
+    max-width: 100%;
+
+}

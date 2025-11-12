@@ -3,19 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sample Page</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="script.js" defer></script>
+    <title>Team Iron - MingleMap</title>
+    <link rel="stylesheet" href="Stylesheets/mainpage_stylesheet.css">
+    <link rel="stylesheet" href="MediaQueries/Mobile_mainpage.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+
 </head>
-<body>
-    <header>
-        <h1>Welcome to the Sample Page</h1>
-    </header>
-    <main>
-        <p>This is a simple HTML page structure with linked CSS and JavaScript files.</p>
-    </main>
+<body class="home_page">
+    <!-- <div class="home_page"> -->
+        <div id="header">
+            <div class="logo_banner">
+                <h1>MingleMap</h1>
+                <h4>Explore, Chat, Connect - A New Way To Socialize</h4>
+            </div>
+
+        </div>
+        <span class="material-icons" id="hamburger" onclick="toggleMenu()">menu</span>
+     <div class="nav_bar">
+             <ul class="nav_list">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="The_Team.html">The Team</a></li>
+                <li><a href="Presentations.html">Presentations</a></li>
+                <li><a href="Labs.html">Labs</a></li>
+                <li><a href="Deliverables.html">Deliverables</a></li>
+                <li><a href="References.html">References</a></li>
+            </ul>
+        </div>
+        <div class="mobile_navbar" id="mobile_nav_container">
+            <ul class="mobile_navlist">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="The_Team.html">The Team</a></li>
+                <li><a href="Presentations.html">Presentations</a></li>
+                <li><a href="Labs.html">Labs</a></li>
+                <li><a href="Deliverables.html">Deliverables</a></li>
+                <li><a href="References.html">References</a></li>
+            </ul>
+        </div>
+        
+    
+        <div class="main_page_grid">
+            <div id="grid_problem" class="grid_text">
+                <h2>The Problem</h2>
+                <p>
+                    Making new friends feels harder than ever. Social media keeps us connected but lacks the authenticity of real life interactions.
+                    Many people struggle to start conversations in public spaces, unsure if others are open to socializing. 
+                    Fear of rejection, social anxiety, and the performative nature of social media only add to the challenge. 
+                    As a result, people remain isolated even when surrounded by potential friendships. 
+                    It's time for a better way to meet and connect.
+                </p>
+            </div>
+            <div id="grid_solution" class="grid_text">
+                <h2>Our Solution</h2>
+                <p>
+                    MingleMap is a smartphone application designed to bridge the gap between individuals who wish to form real-life 
+                    social connections in public spaces. It will leverage real-time location-based technology and allow users to see 
+                    others who are open to interaction within a shared environment. Unlike traditional social media apps, 
+                    MingleMap facilitates immediate, 
+                    in-person connections by displaying a curated list of nearby individuals engaging in similar activities.
+                </p>
+            </div>
+
+            <div id="image_container_1">
+                <img src="main_assets/Mainpage_photos/mainpagePhoto1.webp" alt="">
+            </div>
+            <div id="image_container_2">
+                <img src="main_assets/Mainpage_photos/mainpagePhoto2.webp" alt="">
+                <p>
+                    Explore, Chat, Connect - A New Way To Socialize
+                </p>
+            </div>
+
+            <div class="user_stories">
+
+                <div class="story">
+                    <h2>As a MingleMap User, I Want To</h2>
+                    <ul>
+                        <li>- <strong>Manage My Presence & Safety:</strong> Update my socializing status and visibility, block or report others, and delete my account when desired.</li>
+                        <li>- <strong>Discover people & places:</strong> View nearby users, their locations, and local spots—with live counts of active MingleMap users.</li>
+                        <li>- <strong>Assess Trust & Compatibility Scores:</strong> See each user’s trust score and shared interest tags to find good matches.</li>
+                        <li>- <strong>Connect & Refine Suggestions:</strong> Receive nearby user recommendations, send waves or messages, and give feedback to improve future suggestions.</li>
+                    </ul>
+                </div>
+                <div class="story">
+                    <h2>As a Business Owner, I want to</h2>
+                    <ul>
+                        <li>- <strong>Control visibility:</strong> As a business owner, opt in or out of appearing to MingleMap users at any time.</li>
+                        <li>- <strong>Earn a partnership badge:</strong> Apply for exclusive partner status so your business is highlighted and recommended first.</li>
+                        <li>- <strong>Engage visitors:</strong> Showcase live user counts, special discounts, and amenities (seating, live music, coffee, etc.) to attract customers.</li>
+                        <li>- <strong>Measure impact:</strong> View detailed analytics on user visits and discount redemptions to track ROI.</li>
+                    </ul>
+                </div>
+            </div>
+    
+        </div>
+    <!-- </div> -->
     <footer>
-        <p>&copy; 2024 Sample Page</p>
+        <p class="copyright_tag">
+            Copyright Team Iron
+        </p>
+        <p>
+            <a href="http://www.odu.edu/">Old Dominion University</a>
+        </p>
+        <p>
+            <a href="http://www.cs.odu.edu/">CS Department</a>
+        </p>
     </footer>
+    <script src="scripts/navScript.js"></script>
 </body>
 </html>

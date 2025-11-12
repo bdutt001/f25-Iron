@@ -1,0 +1,44 @@
+.references_container{
+    display: flex;
+    
+    align-content: center;
+    margin-top: 10vh;
+    margin-bottom: 10vh;
+    min-height: 84vh;
+    min-width: fit-content;
+    
+    flex-wrap: wrap;
+    flex-direction: column;
+}
+.reference_item {
+    margin: 1%;
+    list-style: none;
+    max-width: 70%;
+    
+    max-height: fit-content;
+    
+}
+.reference_title::before {
+    content: "➤ "; /* You can use →, ⇒, ➜, ➤, etc. */
+    color: #007acc;  /* Customize the arrow color */
+    font-size: 1.2em;
+    margin-right: 8px;
+  }
+
+.reference_title{
+    font-size: 1.5rem;
+}
+
+.reference_link{
+    padding-left: 7%;
+    font-size: 1.2rem;
+}
+.glossary{
+    max-width: 100%;
+    overflow: hidden;
+}
+.glossary img{
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}

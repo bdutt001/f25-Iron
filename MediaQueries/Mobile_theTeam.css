@@ -1,0 +1,15 @@
+@media only screen and (max-width: 980px){
+    .nav_bar{
+        display: none;
+    }
+    .mobile_navbar.active{
+        left: 0;
+    }
+    #hamburger{
+        display: block;
+    }
+    #image_container_2 p{
+        display: none;
+    }
+
+}

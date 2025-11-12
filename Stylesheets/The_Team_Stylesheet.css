@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+
+
+/* Team cards */
+.team_info_container{
+    display: flex;
+    min-height: 50vh;
+    min-width: 100vw;
+   
+    flex-wrap: wrap;
+}
+.team_card{
+    display: flex; 
+    flex-wrap: wrap;
+    margin: 6px auto;
+    width: 350px;
+    min-height: 500px;
+    
+    /* border-width: 1px; */
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+    border-radius: 15px;
+    background-color: rgb(240, 243, 246);
+    justify-content: center;
+    
+}
+.team_card h3{
+    margin-right: auto;
+    padding-left: 1em;
+    padding-top: 0.5em;
+    max-height: fit-content;
+    color: #1E90FF;
+}
+.team_card_name{
+    font-size: 2rem;
+    margin: 20px 0;
+}
+.team_card_description{
+    text-align: left;
+    line-height: 1.6;
+    letter-spacing: 0.5px;
+    margin: 5px 10px;
+    min-height: 250px;
+}
+.team_photo{
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    object-fit: cover;
+    justify-self: center;
+    padding-top: 0.5em;   
+}
+
