@@ -178,3 +178,18 @@ export const updateUserVisibility = async (
   const data = (await response.json()) as JsonRecord;
   return toCurrentUser(data);
 };
+
+// ✅ Fetch any user by id (sanitized view for others)
+export const fetchUserById = async (userId: number, accessToken?: string) => {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+  // Reuse your robust normalizer:
+  return toCurrentUser(data);
+};
