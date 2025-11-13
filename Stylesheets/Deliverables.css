@@ -13,98 +13,67 @@
 .report_menu{
     overflow: auto;
     white-space: nowrap;
-    background-color: #e9ecef; 
-    border: 1px solid #e9ecef; 
-    border-radius: 10px; 
+    /* Use a light frosted background to avoid dark/black appearance */
+    background: rgba(255,255,255,0.85);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
 }
 .weekly_container h2{
     margin-bottom: 0.5vh;
     margin-left: 2vw;
-    color: blue;
+    color: var(--brand);
 }
 .report_menu a {
     display: inline-block;
-    color: black;
+    color: var(--text);
     text-align: center;
     padding: 14px;
     text-decoration: none;
     /* border-radius: 50px; */
   }
   .report_menu a:hover {
-    background-color: white;
-    color: #FF2400;
+    background-color: var(--bg);
+    color: var(--accent);
   }
 
 .deliverable_pictures{
-    min-width: 100%;
-    max-width: 100%;
-    min-height: 500px;
-    max-height: fit-content;
+    /* Constrain overall width so tiles don't touch the screen edges */
+    width: min(1200px, 94vw);
+    margin: 0 auto;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1%;
-    grid-template-rows: 1fr;
-    grid-auto-rows: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
 }
 .picture_container{
     display: flex;
     /* min-width: fit-content; */
     max-width: 100%;
-    background-color: white;
+    background-color: var(--bg);
     /* flex-wrap: wrap; */
     justify-content: center;
     flex-direction: column;
     transition: transform 0.3s ease-in-out ;
     transform-origin: center center;
-    overflow: none;
-    border: 1px solid #ccc;
-    box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.3); /* Soft shadow */
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
 }
 .picture_container h3{
     width: 100%;
     
     text-align: center;
 }
-.picture_container:hover{
-    /* cursor: pointer; */
-}
 .picture_container img{
-    
-    overflow: none;
-    max-width: 100%;
-    height: auto;
-    max-height: 100%;
+    display: block;
+    width: 100%;
+    height: 320px; /* larger previews */
+    object-fit: cover; /* crop to fit */
     margin-top: 0.5vh;
-    
 }
-.left_pic{
-    grid-column: 1;
-    margin-left: 1%;
-}
-.left_pic:hover{
-    transition-delay: 0.75s;
-    transform: scale(1.2) translateX(10%);
-    z-index: 1002;
-}
-.left_pic:not(:hover){
-    transition-delay: 0;
-}
-.right_pic{
-    grid-column: 2;
-    margin-right: 1%;
-}
-.right_pic:hover{
-    transition-delay: 0.75s;
-    transform: scale(1.2) translateX(-10%);
-    z-index: 1002;
-}
-.right_pic:not(:hover){
-    transition-delay: 0;
-}
-.center_pic{
-    grid-column: 1/3;
-    margin: 1% 1%;
-}
-.center_pic:hover{
-    
-}
+.left_pic, .right_pic, .center_pic{ grid-column: auto; margin: 0.25rem; }
+.picture_container:hover{ transform: scale(1.02); }
+
+/* Thumbnails are cropped uniformly via object-fit: cover above */

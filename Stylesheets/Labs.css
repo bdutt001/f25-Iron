@@ -1,8 +1,9 @@
 .labs_container{
     display: flex;
-    /* margin: auto; */
-    min-width: fit-content;
+    flex-direction: column;
+    align-items: center; /* center children horizontally */
+    justify-content: flex-start;
+    width: min(1100px, 92vw); /* don't span full screen width */
     min-height: 80vh;
-    margin: 1vh 0;
-    margin-bottom: 8vh;
+    margin: 1vh auto 8vh; /* center the container itself */
 }

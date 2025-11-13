@@ -7,22 +7,51 @@
     min-height: fit-content;
     margin: 1vh 0;
     margin-bottom: 8vh;
+    text-align: center; /* Center inline-flex title pills inside each container */
 }
-#presentation_title{
-    width: 25%;
-    font-size: 1.5rem;
+.pill-title, #presentation_title{
+    width: fit-content;
+    font-size: 1.25rem;
     min-height: 2rem;
-    margin: auto;
+    margin: 0.5rem auto 1.5rem;
     text-align: center;
+    padding: 0.35rem 0.6rem 0.35rem 1rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.7);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.pill-title .download-link, #presentation_title .download-link{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brand);
+    text-decoration: none;
+    margin-left: 0.25rem;
+    padding: 2px 6px;
+    border-radius: 8px;
+}
+.pill-title .download-link:hover, #presentation_title .download-link:hover{
+    color: var(--accent);
+    background: rgba(0,0,0,0.04);
+}
+.pill-title .material-icons, #presentation_title .material-icons{
+    font-size: 22px;
+    line-height: 1;
 }
 .inactiveSlide{
     display: none;
 }
 .slideshow{
-    display: flex;
-    justify-content: center;
-    max-width: 100vw;
-    
+    display: block;
+    margin: 0 auto;
+    width: min(1100px, 92vw);
 }
 .slide_buttons{
     display: flex;
@@ -31,8 +60,8 @@
     gap: 2rem;
 }
 .slide_buttons button{
-    background-color: #007BFF;
-    color: white;
+    background-color: var(--brand);
+    color: var(--brand-contrast);
     text-align: center;
     font-size: 1.5rem;
     padding: 0.5vh 0.5vw;
@@ -43,8 +72,8 @@
     margin-top: 2%;
 }
 .slide_buttons button:hover{
-    background-color: #e9ecef;
-    color: #007BFF; 
+    background-color: var(--bg-muted);
+    color: var(--brand); 
 }
 footer{
     min-height: 20vh;

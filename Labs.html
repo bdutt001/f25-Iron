@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Team Iron - MingleMap</title>
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="stylesheet" href="Stylesheets/modern.css">
     <link rel="stylesheet" href="Stylesheets/Presentations.css">
     <link rel="stylesheet" href="Stylesheets/nav_stylesheet.css">
     <link rel="stylesheet" href="MediaQueries/Mobile_presentation.css">
@@ -11,38 +13,39 @@
     <link rel="stylesheet" href="Stylesheets/Labs.css">
 </head>
 <body>
-    <header id="header">
-        <div class="logo_banner">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header id="header" class="site-header">
+        <div class="logo_banner site-branding">
             <h1>MingleMap</h1>
             <h4>Explore, Chat, Connect - A New Way To Socialize</h4>
         </div>
         
     </header>
-    <div class="nav_bar">
+    <div class="nav_bar" role="navigation" aria-label="Primary">
         <ul class="nav_list">
             <li><a href="index.html">Home</a></li>
             <li><a href="The_Team.html">The Team</a></li>
             <li><a href="Presentations.html">Presentations</a></li>
-            <li><a href="Labs.html">Labs</a></li>
+            <li><a href="Labs.html" aria-current="page">Labs</a></li>
             <li><a href="Deliverables.html">Deliverables</a></li>
             <li><a href="References.html">References</a></li>
 
         </ul>
     </div>
     
-    <span class="material-icons" id="hamburger" onclick="toggleMenu()">menu</span>
+    <button id="menuToggleButton" class="menu-toggle" aria-label="Open menu" aria-controls="mobile_nav_container" aria-expanded="false" onclick="toggleMenu()"><span class="material-icons">menu</span></button>
     <div class="mobile_navbar" id="mobile_nav_container">
         <ul class="mobile_navlist">
             <li><a href="index.html">Home</a></li>
             <li><a href="The_Team.html">The Team</a></li>
             <li><a href="Presentations.html">Presentations</a></li>
-            <li><a href="Labs.html">Labs</a></li>
+            <li><a href="Labs.html" aria-current="page">Labs</a></li>
             <li><a href="Deliverables.html">Deliverables</a></li>
             <li><a href="References.html">References</a></li>
         </ul>
     </div>
     
-    <section class="main_content_header">
+    <section class="main_content_header" id="main">
         <p class="main_content_title">
             Our Team's Labs
         </p>
@@ -51,7 +54,14 @@
        
        
     <div class="labs_container">
-        
+        <div class="presentation_container">
+            <p id="presentation_title">
+                Lab 1 Outline Final
+            </p>
+            <div class="document_container">
+                <iframe src="https://docs.google.com/document/d/e/2PACX-1vRH5z4Mb5ibQfQUSEirzjYVHyybVmkv7mxq7v1mUV92bXQD0223UplZbTtaQu9nhSBN6TLOPK10E78H/pub?embedded=true" width="980" height="600"></iframe>
+            </div>
+        </div>
 
     </div>
     <footer>

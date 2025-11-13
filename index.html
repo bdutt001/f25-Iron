@@ -4,24 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Team Iron - MingleMap</title>
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="stylesheet" href="Stylesheets/modern.css">
     <link rel="stylesheet" href="Stylesheets/mainpage_stylesheet.css">
     <link rel="stylesheet" href="MediaQueries/Mobile_mainpage.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 
 </head>
 <body class="home_page">
+    <a class="skip-link" href="#main">Skip to content</a>
     <!-- <div class="home_page"> -->
-        <div id="header">
-            <div class="logo_banner">
+        <div id="header" class="site-header">
+            <div class="logo_banner site-branding">
                 <h1>MingleMap</h1>
                 <h4>Explore, Chat, Connect - A New Way To Socialize</h4>
             </div>
 
         </div>
-        <span class="material-icons" id="hamburger" onclick="toggleMenu()">menu</span>
-     <div class="nav_bar">
+        <button id="menuToggleButton" class="menu-toggle" aria-label="Open menu" aria-controls="mobile_nav_container" aria-expanded="false" onclick="toggleMenu()"><span class="material-icons">menu</span></button>
+     <div class="nav_bar" role="navigation" aria-label="Primary">
              <ul class="nav_list">
-                <li><a href="index.html">Home</a></li>
+                <li><a href="index.html" aria-current="page">Home</a></li>
                 <li><a href="The_Team.html">The Team</a></li>
                 <li><a href="Presentations.html">Presentations</a></li>
                 <li><a href="Labs.html">Labs</a></li>
@@ -31,7 +34,7 @@
         </div>
         <div class="mobile_navbar" id="mobile_nav_container">
             <ul class="mobile_navlist">
-                <li><a href="index.html">Home</a></li>
+                <li><a href="index.html" aria-current="page">Home</a></li>
                 <li><a href="The_Team.html">The Team</a></li>
                 <li><a href="Presentations.html">Presentations</a></li>
                 <li><a href="Labs.html">Labs</a></li>
@@ -41,7 +44,7 @@
         </div>
         
     
-        <div class="main_page_grid">
+        <div id="main" class="main_page_grid">
             <div id="grid_problem" class="grid_text">
                 <h2>The Problem</h2>
                 <p>
