@@ -432,7 +432,16 @@ export default function NearbyScreen() {
           else trustColor = "#DC3545";
 
           return (
-            <View style={[styles.card, index === 0 && styles.closestCard]}>
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: "/user/[id]", params: { id: String(item.id) } })
+              }
+              style={({ pressed }) => [
+                styles.card,
+                index === 0 && styles.closestCard,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
               <View style={styles.cardHeader}>
                 <View style={styles.userInfo}>
                   {imageUri ? (
@@ -498,7 +507,7 @@ export default function NearbyScreen() {
                   </Text>
                 </View>
               </View>
-            </View>
+            </Pressable>
           );
         }}
         contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}

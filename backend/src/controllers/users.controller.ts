@@ -106,6 +106,15 @@ export const getUserById = async (req: Request, res: Response) => {
       select: userWithTagsSelect,
     });
     if (!user) return res.status(404).json({ error: "User not found" });
+
+
+    // ✅ Enforce visibility for non-owners
+    const viewerId = req.user?.id ?? null;  // set by authenticate middleware
+    const isSelf = viewerId === user.id;
+    if (!isSelf && user.visibility === false) {
+      return res.status(404).json({ error: "User not found" }); // or 403 if you prefer
+    }
+
     res.json(serializeUser(user));
   } catch (err) {
     console.error("Failed to fetch user", err);
