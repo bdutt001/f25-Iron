@@ -34,22 +34,15 @@ Step-by-step notes so any teammate can spin up the backend API, connect to the s
    ```bash
    npm run start-stack
    ```
-   The script now assumes a remote database (Railway by default) and performs the following:
+   The script performs the following:
    - Ensures `backend` and `frontend` dependencies are installed.
-   - Verifies the database host/port is reachable.
    - Starts the backend API with `npm run dev`.
-   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine (no `/api` suffix) (`npm run start -- --lan`).
-   No migrations run automatically—your data stays untouched unless you run them manually.
+   - Detects your LAN IP and launches Expo with `EXPO_PUBLIC_API_URL` pointing to your machine (no `/api` suffix) via `npm run start -- --lan`.
+   It does **not** verify the database or run migrations; use `npm test db` if you need a connectivity check.
 
    Keep the terminal open while developing. Logs from both backend and Expo stream to the same session.
 
-2. **One-command stop**
-   ```bash
-   npm run stop-stack
-   ```
-   This script kills the Expo and backend dev servers and removes the PID file. If the PID file is missing, it falls back to killing matching processes.
-
-3. **Try the API** (optional sanity check):
+2. **Try the API** (optional sanity check):
    ```bash
    curl http://localhost:8000/api
    ```
