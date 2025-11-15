@@ -6,7 +6,8 @@
   "scripts": {
     "generate": "prisma generate",
     "test": "node scripts/run-tests.js",
-    "test:unit": "jest",
+    "test:unit": "node scripts/run-tests.js unit",
+    "test:integration": "node scripts/run-tests.js integration",
     "dev": "ts-node --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js"

@@ -12,8 +12,6 @@ This repository contains the MingleMap Expo front end and the Express/Prisma bac
 | **Expo Go mobile app** | Install from the App Store (optional but handy) | Install from Google Play (optional but handy) |
 | **Railway access** | Ensure you have the Railway Postgres URL and credentials | same |
 
-> Tip: Keep your Railway URL handy—`npm run start-stack` verifies the database is reachable before launching the dev servers.
-
 ## 2. Clone the Repository and Install Dependencies
 
 ```bash
@@ -43,7 +41,7 @@ DATABASE_URL="postgresql://postgres:BCYsAkrLYMqaViwdQLKWCbOaxjAfWpLV@interchange
 JWT_ACCESS_SECRET="replace-with-a-long-random-string"
 JWT_REFRESH_SECRET="replace-with-a-different-long-random-string"
 # Optional overrides; defaults are 15m and 7d
-JWT_ACCESS_TTL="15m"
+JWT_ACCESS_TTL="24h"
 JWT_REFRESH_TTL="7d"
 ```
 
@@ -73,23 +71,16 @@ From the repository root:
 npm run start-stack
 ```
 
-The script now targets Railway and runs the Windows-friendly flow we standardized on. Each time you execute it, it performs the commands below **in order**:
+The script now runs the same on macOS and Windows. Each time you execute it, it performs the commands below **in order**:
 
 1. `npm install` inside `backend/`
 2. `npm install` inside `frontend/`
-3. Load `DATABASE_URL` from `backend/.env` (or the shell) and verify the host:port is reachable
-4. `npm run dev` inside `backend/` (API on port `8000`)
-5. Detect your LAN address and run `npm run start -- --lan` inside `frontend/`, exporting `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000`
+3. `npm run dev` inside `backend/` (API on port `8000`)
+4. Detect your LAN address and run `npm run start -- --lan` inside `frontend/`, exporting `EXPO_PUBLIC_API_URL=http://<LAN-IP>:8000`
 
-Because installs now run every time, expect the first minute of output to be dependency resolution—helpful on Windows where `npm run build` was failing, and harmless on macOS/Linux when everything is already cached.
+That’s it—no automatic database checks or migrations. If you’d rather handle installs manually, run `npm install` in each package first; subsequent `start-stack` runs will breeze through steps 1–2 because everything is already cached.
 
-No migrations or seed scripts run automatically—your data stays untouched unless you run the commands below yourself. To shut everything down:
-
-```bash
-npm run stop-stack
-```
-
-The stop script reads `.stack-pids.json`, kills the backend and Expo processes if they are still around, and falls back to a simple name match if the PID file is missing.
+No migrations or seed scripts run automatically—your data stays untouched unless you run the commands below yourself. When you’re done, press `Ctrl+C` in that terminal to stop both the backend and Expo processes.
 
 ### Updating the shared database
 
@@ -115,21 +106,27 @@ Successful output shows the host (e.g. `interchange.proxy.rlwy.net:22481`) and t
 
 ## 6. Troubleshooting `npm run start-stack`
 
-If the start script fails, it prints actionable guidance. Use these checks to get unstuck fast:
+If the start script fails, use these checks to get unstuck fast:
 
-- **`npm install` errors** – the script now installs every run; if you see permission or network issues, run `npm install` manually inside `backend/` and `frontend/` to inspect the full error log, then re-run `npm run start-stack`.
-- **Wrong or missing `.env`** – confirm `backend/.env` contains the correct `DATABASE_URL` and your front-end `.env` (if used) points to a reachable host for your simulator or device.
-- **Railway unreachable** – verify VPN/firewall rules, run `npm test db` from `backend/`, and confirm the host/port printed by the script matches Railway’s latest assignment.
-- **Expo cannot reach the API** – double-check the `EXPO_PUBLIC_API_URL` you set for Android/iOS. Android emulators need `http://10.0.2.2:8000`; physical devices must be on the same Wi-Fi and use your LAN IP.
+- **`npm install` errors** – the script installs dependencies every run. If you see permission or network errors, run `npm install` manually inside `backend/` and `frontend/` to read the full logs, fix the issue, then re-run `npm run start-stack`.
+- **Backend cannot connect to Postgres** – the script no longer validates `DATABASE_URL` for you. If the API process crashes immediately, re-check `backend/.env` and run `npm test db` to confirm the database is reachable from your machine.
+- **Expo cannot reach the API** – confirm the `EXPO_PUBLIC_API_URL` the script printed works for your platform. Android emulators need `http://10.0.2.2:8000`; iOS simulator can use `http://127.0.0.1:8000`; physical devices must be on the same Wi-Fi and use your LAN IP.
 
 For more context, see `docs/local-setup.md` or drop the exact console output in team chat.
 
 ## Useful Commands
 
 - `npm test db` (from `backend/`) – quick connectivity test to the configured database.
-- `npm run test:unit` (from `backend/`) – Jest test suite.
+- `npm run test:unit` (from `backend/`) – backend unit tests (Prisma mocked; safe to run anytime).
+- `npm run test:integration` (from `backend/`) – full API tests against whatever `DATABASE_URL` points to. Use a disposable Postgres database before running.
+- `npm run test` (from `frontend/`) – Expo/Jest component + helper tests (purely local, relies on mocks).
+- `npm run test` (repo root) – runs backend unit tests then frontend Jest tests; this is what CI executes.
 - `npm --prefix backend exec prisma migrate deploy` – apply Prisma migrations to Railway.
 - `npm --prefix backend run seed` – rebuild demo data (destructive; coordinate before running).
+
+## Continuous Integration
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs on every push/PR to `main`. It installs dependencies for the repo root, backend, and frontend, then executes `npm run test` (backend unit suite) followed by `npm run test:frontend`. Keep both suites green before opening a PR—fails will block merges.
 
 ## Team Members
 

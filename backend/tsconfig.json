@@ -4,7 +4,7 @@
     "module": "nodenext",
     "target": "esnext",
     "types": ["node", "jest"],
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "dist",
     "sourceMap": true,
     "declaration": true,
@@ -19,6 +19,6 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src","src/types/**/*.d.ts"],
+  "include": ["src","src/types/**/*.d.ts","tests/**/*.ts","tests/**/*.tsx"],
   "exclude": ["node_modules", "dist"]
 }

@@ -8,7 +8,7 @@
     },
     "jsx": "react-native",
     "moduleResolution": "node",
-    "types": ["react-native"],
+    "types": ["react-native", "jest"],
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
