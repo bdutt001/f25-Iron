@@ -217,9 +217,49 @@ export default function NearbyScreen() {
   );
 
   /**
-   * Request (simulated) location and load users.
+   * Request device location (with graceful fallback).
    */
   const hasLoadedOnceRef = useRef(false);
+
+  const fetchDeviceLocation = useCallback(async (): Promise<Location.LocationObjectCoords | null> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setError("Location permission not granted. Showing demo data.");
+        return null;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      return position.coords;
+    } catch (err) {
+      console.warn("Unable to fetch device location, falling back to demo coords:", err);
+      setError("Could not fetch current location. Showing demo data.");
+      return null;
+    }
+  }, []);
+
+  const saveLocationToBackend = useCallback(
+    async (coords: { latitude: number; longitude: number }) => {
+      if (!accessToken) return;
+      try {
+        await fetch(`${API_BASE_URL}/users/me/location`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          }),
+        });
+      } catch (err) {
+        console.warn("Failed to send location to backend:", err);
+      }
+    },
+    [accessToken]
+  );
 
   const requestAndLoad = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -228,16 +268,19 @@ export default function NearbyScreen() {
       try {
         if (!silent) setLoading(true);
 
-        const coords = {
-          latitude: ODU_CENTER.latitude,
-          longitude: ODU_CENTER.longitude,
-          altitude: undefined as any,
-          accuracy: undefined as any,
-          altitudeAccuracy: undefined as any,
-          heading: undefined as any,
-          speed: undefined as any,
-        };
+        const deviceCoords = await fetchDeviceLocation();
+        const coords =
+          deviceCoords ?? {
+            latitude: ODU_CENTER.latitude,
+            longitude: ODU_CENTER.longitude,
+            altitude: undefined as any,
+            accuracy: undefined as any,
+            altitudeAccuracy: undefined as any,
+            heading: undefined as any,
+            speed: undefined as any,
+          };
         setLocation(coords);
+        void saveLocationToBackend(coords);
         await loadUsers(coords, { silent });
         hasLoadedOnceRef.current = true;
       } catch (err) {
@@ -246,7 +289,7 @@ export default function NearbyScreen() {
         if (!silent) setLoading(false);
       }
     },
-    [loadUsers]
+    [fetchDeviceLocation, loadUsers, saveLocationToBackend]
   );
 
   /**

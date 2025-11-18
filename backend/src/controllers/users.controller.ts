@@ -39,6 +39,15 @@ const toNumberId = (value: string | undefined) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const toCoord = (value: unknown): number => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "") return Number(value);
+  return NaN;
+};
+
+const isValidLatitude = (value: number) => Number.isFinite(value) && value >= -90 && value <= 90;
+const isValidLongitude = (value: number) => Number.isFinite(value) && value >= -180 && value <= 180;
+
 // ---------- Create User ----------
 export const createUser = async (req: Request, res: Response) => {
   const emailRaw =
@@ -247,6 +256,52 @@ export const getUsersByTag = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error finding users by tag:", error);
     res.status(500).json({ error: "Failed to find users by tag" });
+  }
+};
+
+// ---------- User Location (self) ----------
+export const setMyLocation = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const latitude = toCoord(req.body?.latitude);
+  const longitude = toCoord(req.body?.longitude);
+
+  if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) {
+    return res.status(400).json({
+      error: "latitude must be between -90 and 90 and longitude between -180 and 180",
+    });
+  }
+
+  try {
+    const location = await prisma.userLocation.create({
+      data: { userId, latitude, longitude },
+      select: { userId: true, latitude: true, longitude: true, updatedAt: true },
+    });
+
+    return res.status(201).json(location);
+  } catch (error) {
+    console.error("Failed to save user location", error);
+    return res.status(500).json({ error: "Failed to save location" });
+  }
+};
+
+export const getMyLocation = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const location = await prisma.userLocation.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      select: { userId: true, latitude: true, longitude: true, updatedAt: true },
+    });
+
+    if (!location) return res.status(404).json({ error: "Location not found" });
+    return res.json(location);
+  } catch (error) {
+    console.error("Failed to fetch user location", error);
+    return res.status(500).json({ error: "Failed to fetch location" });
   }
 };
 
