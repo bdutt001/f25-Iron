@@ -84,7 +84,12 @@ export default function MessagesScreen() {
       if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
 
       const data = (await response.json()) as Conversation[];
-      setConversations(data);
+      const sorted = [...data].sort((a, b) => {
+        const aTime = a.lastTimestamp ? new Date(a.lastTimestamp).getTime() : 0;
+        const bTime = b.lastTimestamp ? new Date(b.lastTimestamp).getTime() : 0;
+        return bTime - aTime;
+      });
+      setConversations(sorted);
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -99,6 +104,27 @@ export default function MessagesScreen() {
       loadConversations();
     }, [loadConversations])
   );
+
+  const formatTimestamp = useCallback((timestamp?: string | null) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+    if (diffDays === 1) {
+      return "Yesterday";
+    }
+    if (diffDays < 7) {
+      return date.toLocaleDateString([], { weekday: "long" });
+    }
+    return date.toLocaleDateString([], { month: "numeric", day: "numeric", year: "2-digit" });
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -130,6 +156,7 @@ export default function MessagesScreen() {
                 ? item.receiverProfilePicture
                 : `${API_BASE_URL}${item.receiverProfilePicture}`
               : null;
+            const timestampLabel = formatTimestamp(item.lastTimestamp);
 
             return (
               <Pressable
@@ -162,14 +189,7 @@ export default function MessagesScreen() {
                       <Text style={styles.name} numberOfLines={1}>
                         {item.name}
                       </Text>
-                      {item.lastTimestamp && (
-                        <Text style={styles.time}>
-                          {new Date(item.lastTimestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      )}
+                      {timestampLabel ? <Text style={styles.time}>{timestampLabel}</Text> : null}
                     </View>
                     <Text style={styles.preview} numberOfLines={1}>
                       {item.lastMessage || "Tap to chat"}

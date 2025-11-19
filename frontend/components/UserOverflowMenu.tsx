@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import OverflowMenu, { type OverflowAction } from "./ui/OverflowMenu";
 import { Alert } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
+import { useAppTheme } from "../context/ThemeContext";
 
 type Props = {
   visible: boolean;
@@ -15,6 +16,8 @@ type Props = {
 export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported }: Props) {
   const { currentUser, accessToken } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
+  const { isDark } = useAppTheme();
+  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
 
   // Persist user details while the menu is visible to avoid flicker to generic labels
   useEffect(() => {
@@ -28,11 +31,11 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective) return;
     if (!targetUser || !accessToken || !currentUser) {
-      Alert.alert("Error", "You must be logged in to report.");
+      Alert.alert("Error", "You must be logged in to report.", undefined, alertAppearance);
       return;
     }
     if (currentUser.id === effective.id) {
-      Alert.alert("Error", "You cannot report yourself.");
+      Alert.alert("Error", "You cannot report yourself.", undefined, alertAppearance);
       return;
     }
     const pickReason = (reason: string) => submitReport(reason);
@@ -45,7 +48,8 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
         { text: "Spam/Fake", onPress: () => pickReason("Spam/Fake Profile") },
         { text: "Harassment", onPress: () => pickReason("Harassment") },
         { text: "Other", onPress: () => pickReason("Other") },
-      ]
+      ],
+      alertAppearance
     );
   };
 
@@ -60,17 +64,17 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
       });
       const payload = (await resp.json()) as { error?: string };
       if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
-      Alert.alert("Report Submitted", "Thank you for your report.");
+      Alert.alert("Report Submitted", "Thank you for your report.", undefined, alertAppearance);
       onReported?.(effective.id);
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "Failed to submit report");
+      Alert.alert("Error", e?.message || "Failed to submit report", undefined, alertAppearance);
     }
   };
 
   const doBlock = async () => {
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective || !accessToken) {
-      Alert.alert("Error", "You must be logged in to block.");
+      Alert.alert("Error", "You must be logged in to block.", undefined, alertAppearance);
       return;
     }
     try {
@@ -81,7 +85,7 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
       if (!res.ok) throw new Error(`Failed to block (${res.status})`);
       onBlocked?.(effective.id);
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "Could not block user.");
+      Alert.alert("Error", e?.message || "Could not block user.", undefined, alertAppearance);
     }
   };
 

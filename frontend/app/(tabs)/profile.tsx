@@ -76,6 +76,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers } = useUser();
   const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
+  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
 
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -256,7 +257,7 @@ export default function ProfileScreen() {
       applyUserUpdate(updated);
       setNameInput(updated.name ?? trimmed);
       setIsEditingName(false);
-      Alert.alert("Success", "Name updated!");
+      Alert.alert("Success", "Name updated!", undefined, alertAppearance);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to update name";
@@ -277,7 +278,7 @@ export default function ProfileScreen() {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert("Permission required", "You must grant photo access to upload a profile picture.");
+        Alert.alert("Permission required", "You must grant photo access to upload a profile picture.", undefined, alertAppearance);
         return;
       }
 
@@ -296,7 +297,7 @@ export default function ProfileScreen() {
       console.log("📸 Selected image URI:", uri);
 
       if (!currentUser || !accessToken) {
-        Alert.alert("Error", "You must be logged in to upload a profile picture.");
+        Alert.alert("Error", "You must be logged in to upload a profile picture.", undefined, alertAppearance);
         return;
       }
 
@@ -331,10 +332,10 @@ export default function ProfileScreen() {
         setCurrentUser({ ...currentUser, profilePicture: newUrl });
       }
 
-      Alert.alert("Success", "Profile picture updated!");
+      Alert.alert("Success", "Profile picture updated!", undefined, alertAppearance);
     } catch (error) {
       console.error("Error uploading image:", error);
-      Alert.alert("Upload failed", "Please try again later.");
+      Alert.alert("Upload failed", "Please try again later.", undefined, alertAppearance);
     }
   };
 
@@ -541,14 +542,15 @@ export default function ProfileScreen() {
               </View>
             ) : (
               <View style={styles.inlineNameReadRow}>
-                <Text style={[styles.displayNameText, primaryText]} numberOfLines={1}>
+                <View style={styles.inlineNameIconGhost} pointerEvents="none" />
+                <Text style={[styles.displayNameText, styles.displayNameTextFull, primaryText]} numberOfLines={1}>
                   {displayName}
                 </Text>
                 <TouchableOpacity
                   onPress={startNameEdit}
                   accessibilityRole="button"
                   accessibilityLabel="Edit display name"
-                  style={styles.inlineNameIcon}
+                  style={[styles.inlineNameIcon, styles.inlineNameEditButton]}
                 >
                   <Ionicons name="pencil" size={18} color={colors.accent} />
                 </TouchableOpacity>
@@ -570,7 +572,7 @@ export default function ProfileScreen() {
           <Text style={[styles.label, primaryText]}>
             Interest Tags
             {expanded && (
-              <Text style={styles.labelCount}>{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
+              <Text style={[styles.labelCount, { color: colors.accent }]}>{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
             )}
           </Text>
           <View style={styles.tagHeaderActions}>
@@ -591,17 +593,17 @@ export default function ProfileScreen() {
           <Text style={[styles.emptyTags, mutedText]}>{collapsedMessage}</Text>
         ) : (
           <View style={styles.selectedTagsWrapper}>
-            {displayedSelectedTags.map((tag) => (
-              <View
-                key={tag}
-                style={[
-                  styles.selectedChip,
-                  { backgroundColor: isDark ? colors.background : "#e6f0ff", borderColor: colors.border },
-                ]}
-              >
-                <Text style={styles.selectedChipText}>{tag}</Text>
-              </View>
-            ))}
+              {displayedSelectedTags.map((tag) => (
+                <View
+                  key={tag}
+                  style={[
+                    styles.selectedChip,
+                    { backgroundColor: isDark ? colors.background : "#e6f0ff", borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.selectedChipText, { color: colors.accent }]}>{tag}</Text>
+                </View>
+              ))}
           </View>
         )}
 
@@ -761,7 +763,7 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginBottom: 8 },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
   label: { fontSize: 16, fontWeight: "600", marginTop: 10 },
-  labelCount: { fontSize: 13, color: "#1f5fbf", fontWeight: "500" },
+  labelCount: { fontSize: 13, color: "#66a8ff", fontWeight: "500" },
   value: { fontSize: 16, color: "#333" },
   valueRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
   nameValue: { flex: 1, marginRight: 12 },
@@ -780,7 +782,7 @@ const styles = StyleSheet.create({
   emptyTags: { marginTop: 8, fontSize: 14, color: "#666" },
   selectedTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   selectedChip: { backgroundColor: "#e6f0ff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth },
-  selectedChipText: { color: "#1f5fbf", fontSize: 14, fontWeight: "500" },
+  selectedChipText: { color: "#66a8ff", fontSize: 14, fontWeight: "500" },
   catalogSection: { marginTop: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, padding: 12, backgroundColor: "#fafafa" },
   tagSearchWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12, backgroundColor: "#fff" },
   tagSearchInput: { flex: 1, paddingVertical: 8, fontSize: 14, color: "#333" },
@@ -791,7 +793,7 @@ const styles = StyleSheet.create({
   tagOptionSelected: { borderColor: "#007BFF", backgroundColor: "#e6f0ff" },
   tagOptionDisabled: { opacity: 0.6 },
   tagOptionText: { fontSize: 14, color: "#333" },
-  tagOptionTextSelected: { color: "#1f5fbf", fontWeight: "600" },
+  tagOptionTextSelected: { color: "#66a8ff", fontWeight: "600" },
   catalogLoading: { flexDirection: "row", alignItems: "center" },
   catalogLoadingText: { marginLeft: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
@@ -808,7 +810,7 @@ const styles = StyleSheet.create({
   },
   themeChipActive: { borderColor: "#2563eb", backgroundColor: "#e6f0ff" },
   themeChipText: { fontWeight: "700", color: "#111827" },
-  themeChipTextActive: { color: "#1f5fbf" },
+  themeChipTextActive: { color: "#66a8ff" },
   themeNote: { marginTop: 6, fontSize: 13, color: "#666", textAlign: "left" },
   helperText: { marginTop: 12, fontSize: 13, color: "#666" },
   errorText: { marginTop: 12, fontSize: 13, color: "#c00" },
@@ -834,10 +836,13 @@ const styles = StyleSheet.create({
   profilePlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
   profileUploadFab: { position: "absolute", bottom: 6, right: 6, width: 40, height: 40, borderRadius: 20, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3, elevation: 4 },
   displayNameText: { fontSize: 22, fontWeight: "700", marginTop: 6, marginBottom: 4, textAlign: "center" },
+  displayNameTextFull: { flexShrink: 1 },
   displayNameRow: { marginTop: 4, width: "100%", alignItems: "center" },
-  inlineNameReadRow: { flexDirection: "row", alignItems: "center" },
-  inlineNameEditRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", maxWidth: 320 },
+  inlineNameReadRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", alignSelf: "center", maxWidth: 360, width: "100%" },
+  inlineNameEditRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: 360 },
   inlineNameIcon: { marginLeft: 8, padding: 6 },
+  inlineNameEditButton: {},
+  inlineNameIconGhost: { width: 30, height: 30, marginRight: 8 },
   inlineNameInput: { flex: 1, minWidth: 180, maxWidth: 260, marginRight: 4 },
   blockedSection: {
     marginTop: 24,

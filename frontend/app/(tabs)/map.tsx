@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -42,6 +42,7 @@ export default function MapScreen() {
   const [freezeMarkers, setFreezeMarkers] = useState(false);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
   const { colors, isDark } = useAppTheme();
+  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
   const {
     status,
     setStatus,
@@ -128,6 +129,7 @@ export default function MapScreen() {
             name: latestUser?.name || receiverName,
             receiverId: String(receiverId),
             profilePicture: (latestUser?.profilePicture as string) || "",
+            returnToMessages: "1",
           },
         });
       } catch (e) {
@@ -143,11 +145,11 @@ export default function MapScreen() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const startReportFlow = useCallback(() => {
     if (!selectedUser || !accessToken || !currentUser) {
-      Alert.alert("Error", "You must be logged in to report users.");
+      Alert.alert("Error", "You must be logged in to report users.", undefined, alertAppearance);
       return;
     }
     if (currentUser.id === selectedUser.id) {
-      Alert.alert("Error", "You cannot report yourself.");
+      Alert.alert("Error", "You cannot report yourself.", undefined, alertAppearance);
       return;
     }
     const submitReport = async (reason: string, severity = 1) => {
@@ -159,9 +161,9 @@ export default function MapScreen() {
         });
         const payload = (await resp.json()) as { error?: string };
         if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
-        Alert.alert("Report Submitted", "Thank you for your report.");
+        Alert.alert("Report Submitted", "Thank you for your report.", undefined, alertAppearance);
       } catch (e: any) {
-        Alert.alert("Error", e?.message || "Failed to submit report");
+        Alert.alert("Error", e?.message || "Failed to submit report", undefined, alertAppearance);
       }
     };
     Alert.alert(
@@ -173,9 +175,10 @@ export default function MapScreen() {
         { text: "Spam/Fake", onPress: () => { void submitReport("Spam/Fake Profile"); } },
         { text: "Harassment", onPress: () => { void submitReport("Harassment"); } },
         { text: "Other", onPress: () => { void submitReport("Other"); } },
-      ]
+      ],
+      alertAppearance
     );
-  }, [accessToken, currentUser, selectedUser]);
+  }, [accessToken, alertAppearance, currentUser, selectedUser]);
 
 useEffect(() => {
   if (prefetchedUsers && prefetchedUsers.length > 0) {
@@ -244,7 +247,7 @@ useEffect(() => {
   const renderAvatarMarker = useCallback(
     (user: NearbyUser | SelectedUser, isSelf = false) => {
       const uri = avatarUri(user.profilePicture as string | null);
-      const ringColor = isSelf ? "#1f5fbf" : "#e63946";
+      const ringColor = isSelf ? colors.accent : "#e63946";
       const fallbackBg = isDark ? colors.card : "#f0f0f0";
       const initials = userInitial(user);
 
@@ -266,7 +269,7 @@ useEffect(() => {
         </View>
       );
     },
-    [avatarUri, userInitial, colors.card, colors.text, isDark]
+    [avatarUri, userInitial, colors.accent, colors.card, colors.text, isDark]
   );
 
   const selectedUserAvatarUri = selectedUser
@@ -367,7 +370,7 @@ useEffect(() => {
               source={{ uri: selectedUserAvatarUri }}
               style={[
                 styles.floatingImage,
-                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946", backgroundColor: colors.card },
+                { borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946", backgroundColor: colors.card },
               ]}
               cachePolicy="memory-disk"
               transition={0}
@@ -377,7 +380,7 @@ useEffect(() => {
             <View
               style={[
                 styles.floatingPlaceholder,
-                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946", backgroundColor: colors.card },
+                { borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946", backgroundColor: colors.card },
               ]}
             >
               <Text style={[styles.floatingInitials, { color: isDark ? colors.text : "#555" }]}>{userInitial(selectedUser)}</Text>
@@ -403,13 +406,13 @@ useEffect(() => {
             <View style={styles.sheetHeader}>
               <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
               <TouchableOpacity onPress={() => setSelectedUser(null)}>
-                <Text style={styles.sheetClose}>Close</Text>
+                <Text style={[styles.sheetClose, { color: colors.accent }]}>Close</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.calloutHeaderRow}>
               <Text style={[styles.calloutTitle, textColor]}>{selectedUser.name || selectedUser.email}</Text>
-              {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
+              {selectedUser.isCurrentUser && <Text style={[styles.calloutBadge, { backgroundColor: colors.accent }]}>You</Text>}
             </View>
 
             <Text style={[styles.calloutSubtitle, mutedText]}>{selectedUser.email}</Text>
@@ -436,7 +439,7 @@ useEffect(() => {
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
                   <View key={tag} style={[styles.calloutTagChip, { backgroundColor: isDark ? colors.background : "#e6f0ff" }]}>
-                    <Text style={styles.calloutTagText}>{tag}</Text>
+                    <Text style={[styles.calloutTagText, { color: colors.accent }]}>{tag}</Text>
                   </View>
                 ))}
               </View>
@@ -622,13 +625,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd" },
-  sheetClose: { color: "#1f5fbf", fontWeight: "600" },
+  sheetClose: { color: "#66a8ff", fontWeight: "600" },
 
   calloutHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   calloutTitle: { fontSize: 16, fontWeight: "600" },
   calloutSubtitle: { fontSize: 13, color: "#666", marginTop: 2 },
   calloutBadge: {
-    backgroundColor: "#1f5fbf",
+    backgroundColor: "#66a8ff",
     color: "#fff",
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -646,7 +649,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
     marginBottom: 6,
   },
-  calloutTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
+  calloutTagText: { fontSize: 12, color: "#66a8ff", fontWeight: "500" },
   calloutEmptyTags: { marginTop: 8, fontSize: 12, color: "#999" },
 
   trustScoreName: { textAlign: "right", fontSize: 15, marginTop: 6 },

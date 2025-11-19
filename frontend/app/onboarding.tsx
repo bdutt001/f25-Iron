@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   },
   tagCount: {
     fontSize: 13,
-    color: "#1f5fbf",
+    color: "#66a8ff",
   },
   tagSearchWrapper: {
     flexDirection: "row",
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   tagOptionTextSelected: {
-    color: "#1f5fbf",
+    color: "#66a8ff",
     fontWeight: "600",
   },
   selectedTagsWrapper: {
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   selectedChipText: {
-    color: "#1f5fbf",
+    color: "#66a8ff",
     fontSize: 14,
     fontWeight: "500",
   },

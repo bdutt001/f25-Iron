@@ -63,7 +63,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
       text: isDark ? "#ffffff" : "#0f172a",
       muted: isDark ? "#b8b9c9" : "#6b7280",
       border: isDark ? "#1f2937" : "#e5e7eb",
-      accent: "#2563eb",
+      accent: isDark ? "#66a8ff" : "#2563eb",
     }),
     [isDark]
   );

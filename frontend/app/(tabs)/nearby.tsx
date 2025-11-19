@@ -5,7 +5,7 @@
  */
 
 import * as Location from "expo-location";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Button,
@@ -55,6 +55,7 @@ const normalizeTags = (tags: unknown): string[] =>
 
 export default function NearbyScreen() {
   const { colors, isDark } = useAppTheme();
+  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -312,7 +313,7 @@ export default function NearbyScreen() {
    * Start a new chat session (fetch latest receiver first).
    */
   const startChat = async (receiverId: number, receiverName: string) => {
-    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
+    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.", undefined, alertAppearance);
 
     try {
       // Fetch latest receiver (for name/picture)
@@ -346,11 +347,12 @@ export default function NearbyScreen() {
           name: latestUser?.name || receiverName,
           receiverId: String(receiverId),
           profilePicture: (latestUser?.profilePicture as string) || "",
+          returnToMessages: "1",
         },
       });
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Failed to start chat. Please try again.");
+      Alert.alert("Error", "Failed to start chat. Please try again.", undefined, alertAppearance);
     }
   };
 
@@ -358,7 +360,7 @@ export default function NearbyScreen() {
 
   const handleBlock = useCallback(
     async (userId: number) => {
-      if (!accessToken) return Alert.alert("Not logged in", "Please log in to block users.");
+      if (!accessToken) return Alert.alert("Not logged in", "Please log in to block users.", undefined, alertAppearance);
       try {
         const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
           method: "POST",
@@ -369,10 +371,10 @@ export default function NearbyScreen() {
         setPrefetchedUsers(prefetchedUsers ? prefetchedUsers.filter((u) => u.id !== userId) : null);
       } catch (err) {
         console.error(err);
-        Alert.alert("Error", "Could not block user. Please try again.");
+        Alert.alert("Error", "Could not block user. Please try again.", undefined, alertAppearance);
       }
     },
-    [accessToken, setPrefetchedUsers, prefetchedUsers]
+    [accessToken, alertAppearance, setPrefetchedUsers, prefetchedUsers]
   );
 
   // Unblock flow moved to Profile tab
@@ -382,11 +384,11 @@ export default function NearbyScreen() {
   const startReportFlow = useCallback(
     (user: ApiUser) => {
       if (!accessToken || !currentUser) {
-        Alert.alert("Error", "You must be logged in to report users.");
+        Alert.alert("Error", "You must be logged in to report users.", undefined, alertAppearance);
         return;
       }
       if (currentUser.id === user.id) {
-        Alert.alert("Error", "You cannot report yourself.");
+        Alert.alert("Error", "You cannot report yourself.", undefined, alertAppearance);
         return;
       }
       const submitReport = async (reason: string, severity = 1) => {
@@ -398,10 +400,10 @@ export default function NearbyScreen() {
           });
           const payload = (await resp.json()) as { trustScore?: number; error?: string };
           if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
-          Alert.alert("Report Submitted", "Thank you for your report.");
+          Alert.alert("Report Submitted", "Thank you for your report.", undefined, alertAppearance);
           void refreshTrustScore(user.id);
         } catch (e: any) {
-          Alert.alert("Error", e?.message || "Failed to submit report");
+          Alert.alert("Error", e?.message || "Failed to submit report", undefined, alertAppearance);
         }
       };
       Alert.alert(
@@ -413,10 +415,11 @@ export default function NearbyScreen() {
           { text: "Spam/Fake", onPress: () => void submitReport("Spam/Fake Profile") },
           { text: "Harassment", onPress: () => void submitReport("Harassment") },
           { text: "Other", onPress: () => void submitReport("Other") },
-        ]
+        ],
+        alertAppearance
       );
     },
-    [accessToken, currentUser, refreshTrustScore]
+    [accessToken, alertAppearance, currentUser, refreshTrustScore]
   );
 
   // Loading and error UI
@@ -735,20 +738,20 @@ const styles = StyleSheet.create({
     marginRight: 6,
     marginBottom: 6,
   },
-  cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
+  cardTagText: { fontSize: 12, color: "#66a8ff", fontWeight: "500" },
 
   /* Bottom buttons layout */
   cardFooter: {
-    marginTop: 16,
+    marginTop: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   chatButton: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     backgroundColor: "#007BFF",
-    borderRadius: 22,
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -771,7 +774,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   reportContainer: { alignItems: "center", minWidth: 20 },
-  moreButton: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
+  moreButton: { width: 32, height: 32, justifyContent: "center", alignItems: "center" },
   trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
   flexGrow: { flexGrow: 1 },
   modalBackdrop: {
