@@ -7,8 +7,6 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
-  UIManager,
-  PixelRatio,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { Image as ExpoImage } from "expo-image";
@@ -16,15 +14,16 @@ import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 // Overlay implementation removed in favor of native sprites
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-const IS_ANDROID = Platform.OS === "android";
-// Density-aware sizing (used by overlay avatars)
-const DENSITY = PixelRatio.get();
-const MARKER_SIZE = DENSITY >= 3 ? 40 : 36;
+// Density-aware avatar sizing (Android smaller to reduce DPI clipping)
+const AVATAR_SIZE = Platform.OS === "android" ? 38 : 46;
+const AVATAR_BORDER = 3;
+const AVATAR_IMAGE_SIZE = AVATAR_SIZE - AVATAR_BORDER * 2;
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
@@ -36,23 +35,11 @@ export default function MapScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(14);
-  const [regionTick, setRegionTick] = useState(0);
-  const [spriteUris, setSpriteUris] = useState<Record<string, string>>({});
   // Removed markerTracks; no longer needed
   const [markersVersion, setMarkersVersion] = useState(0);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
-  
-  
-  // Enable LayoutAnimation on Android
-  useEffect(() => {
-    // @ts-ignore
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      // @ts-ignore
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
+  const [freezeMarkers, setFreezeMarkers] = useState(false);
+  const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
   const {
     status,
     setStatus,
@@ -241,62 +228,64 @@ useEffect(() => {
     return "#DC3545";
   };
 
-  // Sprite cache: download remote avatar PNGs to local file URIs for native marker images
-  const ensureSprite = useCallback(async (url: string): Promise<string | null> => {
-    try {
-      // expo-file-system dynamic import to keep bundle slim
-      const FileSystem = await import("expo-file-system");
-      const safe = url.replace(/[^a-zA-Z0-9\.]/g, "_");
-      const extMatch = safe.match(/\.(png|jpg|jpeg|webp)$/i);
-      const ext = extMatch ? extMatch[1].toLowerCase() : "png";
-      const fileName = `${safe.slice(0, 100)}.${ext}`;
-      const localUri = `${(FileSystem.cacheDirectory || FileSystem.documentDirectory) ?? ''}${fileName}`;
-      const info = await FileSystem.getInfoAsync(localUri);
-      if (!info.exists) {
-        const headers = url.startsWith(API_BASE_URL) && accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
-        await FileSystem.downloadAsync(url, localUri, { headers });
-      }
-      return localUri;
-    } catch (e) {
-      return null;
-    }
-  }, [accessToken]);
+  const avatarUri = useCallback((profilePicture?: string | null): string | null => {
+    if (!profilePicture) return null;
+    return profilePicture.startsWith("http") ? profilePicture : `${API_BASE_URL}${profilePicture}`;
+  }, []);
 
-  // Prefetch all sprites when user list changes
-  useEffect(() => {
-    const urls: string[] = [];
-    if (selfUser?.profilePicture) {
-      const u = (selfUser.profilePicture as string).startsWith("http")
-        ? (selfUser.profilePicture as string)
-        : `${API_BASE_URL}${selfUser.profilePicture}`;
-      urls.push(u);
-    }
-    for (const u of nearbyUsers) {
-      const p = u.profilePicture as string | null;
-      if (!p) continue;
-      const uurl = p.startsWith("http") ? p : `${API_BASE_URL}${p}`;
-      urls.push(uurl);
-    }
-    if (urls.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        urls.map(async (u) => {
-          const local = await ensureSprite(u);
-          return [u, local] as const;
-        })
+  const userInitial = useCallback((user: { name?: string | null; email?: string | null }) => {
+    const letter = user.name?.trim()?.[0] || user.email?.trim()?.[0];
+    return (letter || "?").toUpperCase();
+  }, []);
+
+  // Use a View-based marker (instead of marker image assets) to avoid Android DPI clipping
+  const renderAvatarMarker = useCallback(
+    (user: NearbyUser | SelectedUser, isSelf = false) => {
+      const uri = avatarUri(user.profilePicture as string | null);
+      const ringColor = isSelf ? "#1f5fbf" : "#e63946";
+      const fallbackBg = "#f0f0f0";
+      const initials = userInitial(user);
+
+      return (
+        <View style={[styles.avatarMarker, { borderColor: ringColor, shadowColor: ringColor }]}>
+          {uri ? (
+            <ExpoImage
+              source={{ uri }}
+              style={styles.avatarImage}
+              contentFit="cover"
+              transition={0}
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={[styles.avatarFallback, { backgroundColor: fallbackBg }]}>
+              <Text style={[styles.avatarInitial, { color: "#4a4a4a" }]}>{initials}</Text>
+            </View>
+          )}
+        </View>
       );
-      if (cancelled) return;
-      setSpriteUris((prev) => {
-        const next = { ...prev } as Record<string, string>;
-        for (const [u, local] of entries) if (local) next[u] = local;
-        return next;
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [ensureSprite, selfUser?.profilePicture, nearbyUsers]);
+    },
+    [avatarUri, userInitial]
+  );
+
+  const selectedUserAvatarUri = selectedUser
+    ? avatarUri(selectedUser.profilePicture as string | null)
+    : null;
+
+  // On Android custom view markers sometimes don't appear when tracksViewChanges is false immediately.
+  // Keep tracksViewChanges=true briefly, then freeze to avoid flicker.
+  useEffect(() => {
+    setFreezeMarkers(false);
+    const timer = setTimeout(() => setFreezeMarkers(true), 750);
+    return () => clearTimeout(timer);
+  }, [markersVersion, nearbyUsers.length]);
+
+  // Always refresh user list when the map tab gains focus (covers block/unblock changes)
+  useFocusEffect(
+    useCallback(() => {
+      if (!accessToken) return;
+      void loadUsers();
+    }, [accessToken, loadUsers])
+  );
 
   return (
     <View style={styles.container}>
@@ -309,46 +298,34 @@ useEffect(() => {
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
-        onRegionChangeComplete={(region) => {
-          const angle = region.longitudeDelta;
-          setZoomLevel(Math.round(Math.log(360 / angle) / Math.LN2));
-          setRegionTick((t) => t + 1);
-        }}
       >
         {/* 👤 Current user */}
         {status === "Visible" && selfUser && (
           <Marker
-            key={`self-${markersVersion}-${(() => { const raw = selfUser.profilePicture as string | null; const remote = raw ? (raw.startsWith("http") ? raw : `${API_BASE_URL}${raw}`) : ""; const local = remote ? spriteUris[remote] : null; return local ?? 'nop'; })()}`}
+            key={`self-${markersVersion}-${selfUser.profilePicture ?? "nop"}`}
             coordinate={myCoords}
             onPress={() => setSelectedUser(selfUser)}
             anchor={{ x: 0.5, y: 0.5 }}
             centerOffset={{ x: 0, y: 0 }}
-            tracksViewChanges={false}
-            {...(() => {
-              const raw = selfUser.profilePicture as string | null;
-              if (!raw) return { pinColor: "#1f5fbf" };
-              const remote = raw.startsWith("http") ? raw : `${API_BASE_URL}${raw}`;
-              const local = spriteUris[remote];
-              return local ? { image: { uri: local }, icon: { uri: local } } : { pinColor: "#1f5fbf" };
-            })()}
-          />
+            tracksViewChanges={!freezeMarkers}
+          >
+            {renderAvatarMarker(selfUser, true)}
+          </Marker>
         )}
 
         {/* 👥 Other users */}
         {nearbyUsers.map((user) => {
-          const raw = user.profilePicture as string | null;
-          const remote = raw ? (raw.startsWith("http") ? raw : `${API_BASE_URL}${raw}`) : null;
-          const local = remote ? spriteUris[remote] : null;
           return (
             <Marker
-              key={`${user.id}-${markersVersion}-${local ?? 'nop'}`}
+              key={`${user.id}-${markersVersion}-${user.profilePicture ?? 'nop'}`}
               coordinate={user.coords}
               onPress={() => setSelectedUser(user)}
               anchor={{ x: 0.5, y: 0.5 }}
               centerOffset={{ x: 0, y: 0 }}
-              tracksViewChanges={false}
-              {...(local ? { image: { uri: local }, icon: { uri: local } } : { pinColor: "#e63946" })}
-            />
+              tracksViewChanges={!freezeMarkers}
+            >
+              {renderAvatarMarker(user)}
+            </Marker>
           );
         })}
       </MapView>
@@ -359,6 +336,9 @@ useEffect(() => {
         targetUser={menuTarget}
         onBlocked={(uid) => {
           setNearbyUsers((prev) => prev.filter((u) => u.id !== uid));
+          setPrefetchedUsers((prev) => (prev ? prev.filter((u) => u.id !== uid) : prev));
+          setMarkersVersion((v) => v + 1);
+          void loadUsers();
           setSelectedUser(null);
         }}
       />
@@ -372,13 +352,9 @@ useEffect(() => {
             { top: "42%", left: "50%", transform: [{ translateX: -75 }, { translateY: -75 }] },
           ]}
         >
-          {selectedUser.profilePicture ? (
+          {selectedUserAvatarUri ? (
             <ExpoImage
-              source={{
-                uri: selectedUser.profilePicture.startsWith("http")
-                  ? selectedUser.profilePicture
-                  : `${API_BASE_URL}${selectedUser.profilePicture}`,
-              }}
+              source={{ uri: selectedUserAvatarUri }}
               style={[
                 styles.floatingImage,
                 { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
@@ -394,9 +370,7 @@ useEffect(() => {
                 { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
               ]}
             >
-              <Text style={styles.floatingInitials}>
-                {selectedUser.name?.charAt(0)?.toUpperCase() || "?"}
-              </Text>
+              <Text style={styles.floatingInitials}>{userInitial(selectedUser)}</Text>
             </View>
           )}
         </View>
@@ -528,6 +502,33 @@ useEffect(() => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
+  avatarMarker: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: AVATAR_BORDER,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3.5,
+    elevation: 6,
+  },
+  avatarImage: {
+    width: AVATAR_IMAGE_SIZE,
+    height: AVATAR_IMAGE_SIZE,
+    borderRadius: AVATAR_IMAGE_SIZE / 2,
+  },
+  avatarFallback: {
+    width: AVATAR_IMAGE_SIZE,
+    height: AVATAR_IMAGE_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitial: { fontSize: 18, fontWeight: "700" },
 
   controls: {
     position: "absolute",
