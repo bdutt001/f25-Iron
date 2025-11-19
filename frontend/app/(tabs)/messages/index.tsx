@@ -3,6 +3,7 @@ import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Image }
 import { router, useFocusEffect } from "expo-router";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
+import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -20,6 +21,7 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRead, setLastRead] = useState<Record<string, string>>({});
   const { isDark, colors } = useAppTheme();
 
   const styles = useMemo(
@@ -47,7 +49,11 @@ export default function MessagesScreen() {
         chatRow: { flexDirection: "row", alignItems: "center" },
         chatHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
         name: { fontWeight: "700", fontSize: 16, color: colors.text },
+        nameUnread: { fontWeight: "800" },
         preview: { color: colors.muted, marginTop: 4 },
+        previewUnread: { color: colors.text, fontWeight: "600" },
+        timeRow: { flexDirection: "row", alignItems: "center" },
+        unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent, marginRight: 6 },
         time: { color: isDark ? "#8b8ca0" : "#6b7280", fontSize: 12 },
         avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 12 },
         avatarPlaceholder: {
@@ -69,39 +75,54 @@ export default function MessagesScreen() {
     [isDark, colors]
   );
 
-  const loadConversations = useCallback(async () => {
-    if (!currentUser || !accessToken) return;
+  const loadConversations = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!currentUser || !accessToken) return;
 
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const showLoading = !options?.silent;
+      if (showLoading) setLoading(true);
 
-      if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
 
-      const data = (await response.json()) as Conversation[];
-      const sorted = [...data].sort((a, b) => {
-        const aTime = a.lastTimestamp ? new Date(a.lastTimestamp).getTime() : 0;
-        const bTime = b.lastTimestamp ? new Date(b.lastTimestamp).getTime() : 0;
-        return bTime - aTime;
-      });
-      setConversations(sorted);
-      setError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, accessToken]);
+        if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
+
+        const data = (await response.json()) as Conversation[];
+        const sorted = [...data].sort((a, b) => {
+          const aTime = a.lastTimestamp ? new Date(a.lastTimestamp).getTime() : 0;
+          const bTime = b.lastTimestamp ? new Date(b.lastTimestamp).getTime() : 0;
+          return bTime - aTime;
+        });
+        setConversations(sorted);
+        const readMap = await getChatLastReadMap(sorted.map((c) => c.id));
+        setLastRead(readMap);
+        setError(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (showLoading) {
+          setError(message);
+        } else {
+          console.warn("Background conversation refresh failed:", message);
+        }
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [currentUser, accessToken]
+  );
 
   useFocusEffect(
     useCallback(() => {
       loadConversations();
+      const interval = setInterval(() => {
+        loadConversations({ silent: true });
+      }, 5000);
+      return () => clearInterval(interval);
     }, [loadConversations])
   );
 
@@ -124,6 +145,13 @@ export default function MessagesScreen() {
       return date.toLocaleDateString([], { weekday: "long" });
     }
     return date.toLocaleDateString([], { month: "numeric", day: "numeric", year: "2-digit" });
+  }, []);
+
+  const markConversationRead = useCallback(async (chatId: string, timestamp?: string) => {
+    if (!chatId) return;
+    const iso = timestamp && !Number.isNaN(Date.parse(timestamp)) ? timestamp : new Date().toISOString();
+    setLastRead((prev) => ({ ...prev, [chatId]: iso }));
+    await saveChatLastRead(chatId, iso);
   }, []);
 
   return (
@@ -157,6 +185,24 @@ export default function MessagesScreen() {
                 : `${API_BASE_URL}${item.receiverProfilePicture}`
               : null;
             const timestampLabel = formatTimestamp(item.lastTimestamp);
+            const lastReadTimestamp = lastRead[item.id];
+            const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
+            const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
+            const isUnread =
+              Number.isFinite(lastMsgTime) && (!Number.isFinite(lastReadTime) || lastMsgTime > lastReadTime);
+
+            const handleOpenChat = () => {
+              void markConversationRead(item.id, item.lastTimestamp || undefined);
+              router.push({
+                pathname: "/(tabs)/messages/[chatId]",
+                params: {
+                  chatId: item.id,
+                  name: item.name,
+                  receiverId: item.receiverId.toString(),
+                  profilePicture: item.receiverProfilePicture || "",
+                },
+              });
+            };
 
             return (
               <Pressable
@@ -164,17 +210,7 @@ export default function MessagesScreen() {
                   styles.chatItem,
                   pressed ? { transform: [{ translateY: 1 }], opacity: 0.96 } : null,
                 ]}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(tabs)/messages/[chatId]",
-                    params: {
-                      chatId: item.id,
-                      name: item.name,
-                      receiverId: item.receiverId.toString(),
-                      profilePicture: item.receiverProfilePicture || "",
-                    },
-                  })
-                }
+                onPress={handleOpenChat}
               >
                 <View style={styles.chatRow}>
                   {imageUri ? (
@@ -186,12 +222,17 @@ export default function MessagesScreen() {
                   )}
                   <View style={{ flex: 1 }}>
                     <View style={styles.chatHeaderRow}>
-                      <Text style={styles.name} numberOfLines={1}>
+                      <Text style={[styles.name, isUnread ? styles.nameUnread : null]} numberOfLines={1}>
                         {item.name}
                       </Text>
-                      {timestampLabel ? <Text style={styles.time}>{timestampLabel}</Text> : null}
+                      {timestampLabel || isUnread ? (
+                        <View style={styles.timeRow}>
+                          {isUnread ? <View style={styles.unreadDot} /> : null}
+                          {timestampLabel ? <Text style={styles.time}>{timestampLabel}</Text> : null}
+                        </View>
+                      ) : null}
                     </View>
-                    <Text style={styles.preview} numberOfLines={1}>
+                    <Text style={[styles.preview, isUnread ? styles.previewUnread : null]} numberOfLines={1}>
                       {item.lastMessage || "Tap to chat"}
                     </Text>
                   </View>

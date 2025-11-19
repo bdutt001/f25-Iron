@@ -1,6 +1,7 @@
 import React, { useState, useLayoutEffect, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   View,
   FlatList,
@@ -14,10 +15,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"; // ✅ modern SafeAreaView
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "@react-navigation/elements";
+import { useFocusEffect } from "@react-navigation/native";
 import { useUser } from "../../../context/UserContext";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../../components/UserOverflowMenu";
 import { useAppTheme } from "../../../context/ThemeContext";
+import { saveChatLastRead } from "@/utils/chatReadStorage";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -47,41 +50,103 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   // ✅ Add FlatList ref for auto-scroll
   const flatListRef = useRef<FlatList<Message>>(null);
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
-  const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight : 0;
+  const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + insets.top : 0;
   const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
   const goToMessagesList = useCallback(() => {
     router.replace("/(tabs)/messages");
   }, []);
+  const resolvedProfileImage = useMemo(() => {
+    if (!profilePicture) return null;
+    return profilePicture.startsWith("http") ? profilePicture : `${API_BASE_URL}${profilePicture}`;
+  }, [profilePicture]);
+  const receiverInitial = useMemo(() => name?.[0]?.toUpperCase() || "?", [name]);
+  const headerTitleStyles = useMemo(
+    () => ({
+      container: { alignItems: "center", justifyContent: "center" },
+      avatar: { width: 44, height: 44, borderRadius: 22, marginBottom: 4 },
+      avatarPlaceholder: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: colors.card,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.border,
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 4,
+      },
+      initial: { fontWeight: "700", color: colors.text },
+      name: { fontSize: 16, fontWeight: "600", color: colors.text },
+    }),
+    [colors]
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
+      setAndroidKeyboardHeight(event.endCoordinates.height || 0);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setAndroidKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // ✅ Simplify header — just show title + Report button
   useLayoutEffect(() => {
-    if (name) {
-      navigation.setOptions({
-        title: name,
-        headerLeft: shouldReturnToMessages
-          ? () => (
-              <TouchableOpacity
-                onPress={goToMessagesList}
-                style={{ paddingHorizontal: 8, paddingVertical: 6, flexDirection: "row", alignItems: "center" }}
-              >
-                <Ionicons name="chevron-back" size={20} color={colors.text} />
-                <Text style={{ color: colors.text, fontWeight: "600", marginLeft: 4 }}>Chats</Text>
-              </TouchableOpacity>
-            )
-          : undefined,
-        headerRight: () => (
-          <TouchableOpacity onPress={() => setMenuOpen(true)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
-            <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
-          </TouchableOpacity>
-        ),
-      });
-    }
-  }, [navigation, name, chatId, receiverId, colors.text, shouldReturnToMessages, goToMessagesList]);
+    if (!name) return;
+    navigation.setOptions({
+      headerTitleAlign: "center",
+      headerTitle: () => (
+        <View style={headerTitleStyles.container}>
+          {resolvedProfileImage ? (
+            <Image source={{ uri: resolvedProfileImage }} style={headerTitleStyles.avatar} />
+          ) : (
+            <View style={headerTitleStyles.avatarPlaceholder}>
+              <Text style={headerTitleStyles.initial}>{receiverInitial}</Text>
+            </View>
+          )}
+          <Text style={headerTitleStyles.name} numberOfLines={1}>
+            {name}
+          </Text>
+        </View>
+      ),
+      headerLeft: shouldReturnToMessages
+        ? () => (
+            <TouchableOpacity
+              onPress={goToMessagesList}
+              style={{ paddingHorizontal: 8, paddingVertical: 6, flexDirection: "row", alignItems: "center" }}
+            >
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
+              <Text style={{ color: colors.text, fontWeight: "600", marginLeft: 4 }}>Chats</Text>
+            </TouchableOpacity>
+          )
+        : undefined,
+      headerRight: () => (
+        <TouchableOpacity onPress={() => setMenuOpen(true)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
+          <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [
+    navigation,
+    name,
+    colors.text,
+    shouldReturnToMessages,
+    goToMessagesList,
+    headerTitleStyles,
+    resolvedProfileImage,
+    receiverInitial,
+  ]);
 
   useEffect(() => {
     if (!shouldReturnToMessages) return;
@@ -93,37 +158,54 @@ export default function ChatScreen() {
   }, [navigation, shouldReturnToMessages, goToMessagesList]);
 
   // Fetch messages
-  const fetchMessages = useCallback(async () => {
-    if (!accessToken) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/messages/${chatId}`, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
-      const data = (await response.json()) as Message[];
-      setMessages(data);
+  const fetchMessages = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!accessToken) return;
+      const showLoading = !options?.silent;
+      if (showLoading) setLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/messages/${chatId}`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
+        const data = (await response.json()) as Message[];
+        setMessages(data);
 
-      // ✅ Scroll to bottom after fetching messages
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
-    } catch (err) {
-      console.error("Fetch messages error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [chatId, accessToken]);
+        // ✅ Scroll to bottom after fetching messages
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+      } catch (err) {
+        console.error("Fetch messages error:", err);
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [chatId, accessToken]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchMessages();
+      const interval = setInterval(() => {
+        fetchMessages({ silent: true });
+      }, 4000);
+      return () => clearInterval(interval);
+    }, [fetchMessages])
+  );
 
   useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
+    if (!chatId || messages.length === 0) return;
+    const latest = messages[messages.length - 1];
+    if (!latest?.createdAt) return;
+    void saveChatLastRead(String(chatId), latest.createdAt);
+  }, [chatId, messages]);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         container: { flex: 1, backgroundColor: colors.background },
-        avoidingContent: { flexGrow: 1 },
         chatBody: { flex: 1 },
         messagesList: { flex: 1 },
         messagesContainer: { padding: 10, flexGrow: 1 },
@@ -178,34 +260,6 @@ export default function ChatScreen() {
           justifyContent: "center",
         },
         sendButtonDisabled: { opacity: 0.4 },
-        /* ? New profile section inside chat */
-        chatHeader: { alignItems: "center", marginVertical: 12 },
-        chatHeaderAvatar: {
-          width: 72,
-          height: 72,
-          borderRadius: 36,
-          marginBottom: 6,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.25,
-          shadowRadius: 3,
-          elevation: 5,
-        },
-        chatHeaderAvatarPlaceholder: {
-          width: 72,
-          height: 72,
-          borderRadius: 36,
-          backgroundColor: colors.border,
-          justifyContent: "center",
-          alignItems: "center",
-          marginBottom: 6,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.25,
-          shadowRadius: 3,
-          elevation: 5,
-        },
-        chatHeaderAvatarInitial: { fontSize: 20, fontWeight: "bold", color: colors.text },
         centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background },
         note: { color: colors.muted, fontSize: 16 },
       }),
@@ -254,30 +308,9 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        contentContainerStyle={styles.avoidingContent}
         keyboardVerticalOffset={keyboardVerticalOffset} // ✅ calibrated offset for stack header
       >
         <View style={styles.chatBody}>
-          {/* ✅ Profile section at top of chat */}
-          <View style={styles.chatHeader}>
-            {profilePicture ? (
-              <Image
-                source={{
-                  uri: profilePicture.startsWith("http")
-                    ? profilePicture
-                    : `${API_BASE_URL}${profilePicture}`,
-                }}
-                style={styles.chatHeaderAvatar}
-              />
-            ) : (
-              <View style={styles.chatHeaderAvatarPlaceholder}>
-                <Text style={styles.chatHeaderAvatarInitial}>
-                  {name?.[0]?.toUpperCase() || "?"}
-                </Text>
-              </View>
-            )}
-          </View>
-
           {messages.length === 0 && (
             <View style={styles.centered}>
               <Text style={styles.note}>No prior messages.</Text>
@@ -294,20 +327,11 @@ export default function ChatScreen() {
                 <View style={[styles.messageRow, isMine ? { justifyContent: "flex-end" } : {}]}>
                   {!isMine && (
                     <>
-                      {profilePicture ? (
-                        <Image
-                          source={{
-                            uri: profilePicture.startsWith("http")
-                              ? profilePicture
-                              : `${API_BASE_URL}${profilePicture}`,
-                          }}
-                          style={styles.messageAvatarPlaceholder} // ✅ use placeholder style
-                        />
+                      {resolvedProfileImage ? (
+                        <Image source={{ uri: resolvedProfileImage }} style={styles.messageAvatarPlaceholder} />
                       ) : (
                         <View style={styles.messageAvatarPlaceholder}>
-                          <Text style={styles.messageAvatarInitial}>
-                            {name?.[0]?.toUpperCase() || "?"}
-                          </Text>
+                          <Text style={styles.messageAvatarInitial}>{receiverInitial}</Text>
                         </View>
                       )}
                     </>
