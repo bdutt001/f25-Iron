@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -6,7 +6,6 @@ import {
   View,
   TouchableOpacity,
   Platform,
-  Alert,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { Image as ExpoImage } from "expo-image";
@@ -36,13 +35,15 @@ export default function MapScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
+  const isMountedRef = useRef(true);
+  const userFetchAbortRef = useRef<AbortController | null>(null);
+  const hasAnimatedRegion = useRef(false);
   // Removed markerTracks; no longer needed
   const [markersVersion, setMarkersVersion] = useState(0);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   const [freezeMarkers, setFreezeMarkers] = useState(false);
-  const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+  const [, setIsRefreshingUsers] = useState(false);
   const { colors, isDark } = useAppTheme();
-  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
   const {
     status,
     setStatus,
@@ -53,6 +54,13 @@ export default function MapScreen() {
     isStatusUpdating,
   } = useUser();
   const currentUserId = currentUser?.id;
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      userFetchAbortRef.current?.abort();
+    };
+  }, []);
 
   const selfUser: SelectedUser | null = currentUser
     ? {
@@ -68,20 +76,35 @@ export default function MapScreen() {
     : null;
 
   const loadUsers = useCallback(async () => {
+    userFetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    userFetchAbortRef.current = controller;
+    setIsRefreshingUsers(true);
     try {
       const response = await fetch(`${API_BASE_URL}/users`, {
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       const data = (await response.json()) as ApiUser[];
       const filtered = data.filter(
         (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
       );
+      if (!isMountedRef.current || controller.signal.aborted) return;
       setPrefetchedUsers(filtered);
       setErrorMsg(null);
     } catch (err) {
-      console.error("❌ Unable to load users:", err);
+      if ((err as Error)?.name === "AbortError") return;
+      console.error("? Unable to load users:", err);
+      if (!isMountedRef.current) return;
       setErrorMsg("Unable to load users from the server");
+    } finally {
+      if (userFetchAbortRef.current?.signal === controller.signal) {
+        userFetchAbortRef.current = null;
+      }
+      if (isMountedRef.current) {
+        setIsRefreshingUsers(false);
+      }
     }
   }, [accessToken, currentUserId, setPrefetchedUsers]);
 
@@ -141,74 +164,35 @@ export default function MapScreen() {
 
   // Actions handled by shared UserOverflowMenu
 
-  // Report flow (inline) similar to ReportButton
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const startReportFlow = useCallback(() => {
-    if (!selectedUser || !accessToken || !currentUser) {
-      Alert.alert("Error", "You must be logged in to report users.", undefined, alertAppearance);
-      return;
-    }
-    if (currentUser.id === selectedUser.id) {
-      Alert.alert("Error", "You cannot report yourself.", undefined, alertAppearance);
-      return;
-    }
-    const submitReport = async (reason: string, severity = 1) => {
-      try {
-        const resp = await fetch(`${API_BASE_URL}/api/report`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ reportedId: selectedUser.id, reason, severity }),
-        });
-        const payload = (await resp.json()) as { error?: string };
-        if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
-        Alert.alert("Report Submitted", "Thank you for your report.", undefined, alertAppearance);
-      } catch (e: any) {
-        Alert.alert("Error", e?.message || "Failed to submit report", undefined, alertAppearance);
-      }
-    };
-    Alert.alert(
-      "Report User",
-      `Report ${selectedUser.name || selectedUser.email}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Inappropriate", onPress: () => { void submitReport("Inappropriate Behavior"); } },
-        { text: "Spam/Fake", onPress: () => { void submitReport("Spam/Fake Profile"); } },
-        { text: "Harassment", onPress: () => { void submitReport("Harassment"); } },
-        { text: "Other", onPress: () => { void submitReport("Other"); } },
-      ],
-      alertAppearance
-    );
-  }, [accessToken, alertAppearance, currentUser, selectedUser]);
-
-useEffect(() => {
-  if (prefetchedUsers && prefetchedUsers.length > 0) {
-    const filtered = prefetchedUsers.filter(
-      (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
-    );
-    const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
-    setNearbyUsers(scattered);
-
-    // ✅ Only animate/zoom once on initial mount
-    if (!hasAnimatedRegion.current && mapRef.current && scattered.length > 0) {
-      const first = scattered[0].coords;
-      mapRef.current.animateToRegion(
-        {
-          latitude: first.latitude,
-          longitude: first.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        },
-        400
+  useEffect(() => {
+    if (prefetchedUsers && prefetchedUsers.length > 0) {
+      const filtered = prefetchedUsers.filter(
+        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
       );
-      hasAnimatedRegion.current = true;
-      setTimeout(() => setMarkersVersion((v) => v + 1), 600);
-    }
-    return;
-  }
+      const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
+      setNearbyUsers(scattered);
 
-  if (!accessToken || !currentUser) return;
-  void loadUsers();
-}, [prefetchedUsers, accessToken, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
+      // ? Only animate/zoom once on initial mount
+      if (!hasAnimatedRegion.current && mapRef.current && scattered.length > 0) {
+        const first = scattered[0].coords;
+        mapRef.current.animateToRegion(
+          {
+            latitude: first.latitude,
+            longitude: first.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          },
+          400
+        );
+        hasAnimatedRegion.current = true;
+        setTimeout(() => setMarkersVersion((v) => v + 1), 600);
+      }
+      return;
+    }
+
+    if (!accessToken || !currentUser) return;
+    void loadUsers();
+  }, [prefetchedUsers, accessToken, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
 
   // 🧠 Bridge effect for late prefetched users
   useEffect(() => {
@@ -221,8 +205,6 @@ useEffect(() => {
   }, [prefetchedUsers, nearbyUsers.length, currentUserId, center.latitude, center.longitude]);
 
   // Removed markerTracks effect
-
-  const hasAnimatedRegion = useRef(false);
 
   // Helpers for UI coloring
   const trustColor = (score?: number) => {
@@ -275,6 +257,7 @@ useEffect(() => {
   const selectedUserAvatarUri = selectedUser
     ? avatarUri(selectedUser.profilePicture as string | null)
     : null;
+  const previousStatusRef = useRef(status);
 
   // On Android custom view markers sometimes don't appear when tracksViewChanges is false immediately.
   // Keep tracksViewChanges=true briefly, then freeze to avoid flicker.
@@ -288,6 +271,19 @@ useEffect(() => {
   useEffect(() => {
     setMarkersVersion((v) => v + 1);
   }, [status]);
+
+  useEffect(() => {
+    if (previousStatusRef.current === status) return;
+    previousStatusRef.current = status;
+
+    if (status === "Hidden") {
+      setSelectedUser(null);
+      setMenuTarget(null);
+      return;
+    }
+
+    void loadUsers();
+  }, [status, loadUsers]);
 
   // Always refresh user list when the map tab gains focus (covers block/unblock changes)
   useFocusEffect(
@@ -348,8 +344,8 @@ useEffect(() => {
         onClose={() => setMenuTarget(null)}
         targetUser={menuTarget}
         onBlocked={(uid) => {
-          setNearbyUsers((prev) => prev.filter((u) => u.id !== uid));
-          setPrefetchedUsers((prev) => (prev ? prev.filter((u) => u.id !== uid) : prev));
+          setNearbyUsers((prevUsers: NearbyUser[]) => prevUsers.filter((user) => user.id !== uid));
+          setPrefetchedUsers((prevUsers) => (prevUsers ? prevUsers.filter((user) => user.id !== uid) : prevUsers));
           setMarkersVersion((v) => v + 1);
           void loadUsers();
           setSelectedUser(null);
@@ -495,6 +491,7 @@ useEffect(() => {
         <TouchableOpacity
           style={[
             styles.visibilityToggle,
+            { backgroundColor: colors.accent },
             isStatusUpdating && styles.visibilityToggleDisabled,
           ]}
           onPress={() => {
@@ -566,7 +563,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     minWidth: 120,
     alignItems: "center",
-    backgroundColor: "#007BFF",
   },
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
@@ -691,4 +687,6 @@ const styles = StyleSheet.create({
   },
   
 });
+
+
 

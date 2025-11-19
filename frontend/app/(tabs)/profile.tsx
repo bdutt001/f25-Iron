@@ -3,9 +3,10 @@ import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import { Alert, Image ,
+import {
+  Alert,
+  Image,
   ActivityIndicator,
-  Button,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +14,7 @@ import { Alert, Image ,
   TouchableOpacity,
   View,
 } from "react-native";
+import type { AlertOptions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useUser, type CurrentUser } from "../../context/UserContext";
@@ -76,7 +78,10 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers } = useUser();
   const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
-  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
+  const alertAppearance = useMemo<AlertOptions>(
+    () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
+    [isDark]
+  );
 
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -715,7 +720,7 @@ export default function ProfileScreen() {
         {blockedLoading && blockedUsers.length === 0 ? (
           <ActivityIndicator size="small" color="#007BFF" />
         ) : blockedUsers.length === 0 ? (
-          <Text style={[styles.helperText, mutedText]}>You haven't blocked anyone.</Text>
+          <Text style={[styles.helperText, mutedText]}>You haven&apos;t blocked anyone.</Text>
         ) : (
           blockedUsers.map((u) => {
             const pp = (u as any).profilePicture as string | null | undefined;

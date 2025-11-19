@@ -10,8 +10,10 @@ import {
   ActivityIndicator,
   Image,
   TouchableOpacity,
+  Keyboard,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"; // ✅ modern SafeAreaView
+import type { ImageStyle, TextStyle, ViewStyle } from "react-native";
+import { SafeAreaView, useSafeAreaInsets, Edge } from "react-native-safe-area-context"; // ✅ modern SafeAreaView
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect } from "@react-navigation/native";
@@ -29,6 +31,15 @@ type Message = {
   senderId: number;
   chatSessionId: number;
   createdAt: string;
+};
+
+type HeaderTitleStyles = {
+  container: ViewStyle;
+  avatar: ImageStyle;
+  avatarPlaceholder: ViewStyle;
+  initial: TextStyle;
+  name: TextStyle;
+  menuButton: ViewStyle;
 };
 
 export default function ChatScreen() {
@@ -49,6 +60,7 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   // ✅ Add FlatList ref for auto-scroll
   const flatListRef = useRef<FlatList<Message>>(null);
@@ -56,6 +68,8 @@ export default function ChatScreen() {
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
   const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + insets.top : 0;
+  const safeAreaEdges: Edge[] =
+    Platform.OS === "ios" ? ["bottom", "left", "right", "top"] : ["bottom", "left", "right"];
   const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
   const goToMessagesList = useCallback(() => {
     if (hasNavigatedAwayRef.current) return;
@@ -67,7 +81,7 @@ export default function ChatScreen() {
     return profilePicture.startsWith("http") ? profilePicture : `${API_BASE_URL}${profilePicture}`;
   }, [profilePicture]);
   const receiverInitial = useMemo(() => name?.[0]?.toUpperCase() || "?", [name]);
-  const headerTitleStyles = useMemo(
+  const headerTitleStyles = useMemo<HeaderTitleStyles>(
     () => ({
       container: { flexDirection: "row", alignItems: "center" },
       avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
@@ -96,6 +110,11 @@ export default function ChatScreen() {
       headerStyle: { backgroundColor: colors.background },
       headerTitleAlign: "center",
       headerBackTitleVisible: false,
+      headerStatusBarHeight: Platform.OS === "android" ? 0 : undefined,
+      headerTitleContainerStyle:
+        Platform.OS === "android" ? { alignItems: "center", paddingTop: 0 } : undefined,
+      headerRightContainerStyle: Platform.OS === "android" ? { paddingTop: 0 } : undefined,
+      headerLeftContainerStyle: Platform.OS === "android" ? { paddingTop: 0 } : undefined,
       headerTitle: () => (
         <View style={headerTitleStyles.container}>
           {resolvedProfileImage ? (
@@ -262,8 +281,22 @@ export default function ChatScreen() {
     [colors, isDark]
   );
 
-  const composerBottomInset = Math.max(insets.bottom, 8) + 8;
-  const keyboardBehavior = Platform.OS === "ios" ? "padding" : "height";
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const showSubscription = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(Math.max(event.endCoordinates.height - insets.bottom, 0));
+    });
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [insets.bottom]);
+
+  const keyboardBehavior = Platform.OS === "ios" ? "padding" : undefined;
+  const keyboardInset = Platform.OS === "android" ? keyboardHeight : 0;
+  const composerBottomInset = Math.max(insets.bottom, 8) + 8 + keyboardInset;
+  const listBottomPadding = 16 + keyboardInset;
 
   // Send a message
   const handleSend = async () => {
@@ -303,7 +336,7 @@ export default function ChatScreen() {
   // ✅ Fixed layout so input bar moves above the keyboard on all devices
   return (
     <>
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["bottom", "left", "right", "top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={safeAreaEdges}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={keyboardBehavior}
@@ -354,7 +387,7 @@ export default function ChatScreen() {
               );
             }}
             style={styles.messagesList}
-            contentContainerStyle={[styles.messagesContainer, { paddingBottom: 16 }]} // ✅ breathing room
+            contentContainerStyle={[styles.messagesContainer, { paddingBottom: listBottomPadding }]} // ✅ breathing room
             keyboardShouldPersistTaps="handled" // ✅ keeps taps working while keyboard is open
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })} // ✅ auto-scroll when new content added
           />
@@ -398,3 +431,4 @@ export default function ChatScreen() {
     </>
   );
 }
+

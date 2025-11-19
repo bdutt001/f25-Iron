@@ -191,13 +191,14 @@ export default function MessagesScreen() {
             const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
             const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
             const lastIncomingTime = item.lastIncomingTimestamp ? Date.parse(item.lastIncomingTimestamp) : NaN;
-            const hasUnreadFromOthers = Number.isFinite(lastIncomingTime)
-              ? Number.isFinite(lastReadTime)
-                ? lastIncomingTime > lastReadTime
-                : item.lastSenderId !== currentUser?.id &&
-                  Number.isFinite(lastMsgTime) &&
-                  lastIncomingTime === lastMsgTime
-              : false;
+            const latestIncomingTimestamp = Number.isFinite(lastIncomingTime)
+              ? lastIncomingTime
+              : item.lastSenderId !== currentUser?.id && Number.isFinite(lastMsgTime)
+              ? lastMsgTime
+              : NaN;
+            const hasUnreadFromOthers =
+              Number.isFinite(latestIncomingTimestamp) &&
+              (!Number.isFinite(lastReadTime) || latestIncomingTimestamp > lastReadTime);
             const isUnread = hasUnreadFromOthers;
 
             const handleOpenChat = () => {

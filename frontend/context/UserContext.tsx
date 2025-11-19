@@ -41,7 +41,7 @@ type UserContextType = {
   isLoggedIn: boolean;
   isStatusUpdating: boolean;
   prefetchedUsers: ApiUser[] | null;
-  setPrefetchedUsers: (users: ApiUser[] | null) => void;
+  setPrefetchedUsers: React.Dispatch<React.SetStateAction<ApiUser[] | null>>;
   isInitialized: boolean; // ✅ ensures tokens are restored before loading
 };
 

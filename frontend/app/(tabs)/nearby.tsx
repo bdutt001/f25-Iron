@@ -22,6 +22,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from "react-native";
+import type { AlertOptions } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -55,7 +56,10 @@ const normalizeTags = (tags: unknown): string[] =>
 
 export default function NearbyScreen() {
   const { colors, isDark } = useAppTheme();
-  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
+  const alertAppearance = useMemo<AlertOptions>(
+    () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
+    [isDark]
+  );
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -466,6 +470,7 @@ export default function NearbyScreen() {
         <TouchableOpacity
           style={[
             styles.visibilityToggle,
+            { backgroundColor: colors.accent },
             status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
             isStatusUpdating && styles.visibilityToggleDisabled,
           ]}
@@ -693,7 +698,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     minWidth: 120,
     alignItems: "center",
-    backgroundColor: "#007BFF",
   },
   visibilityShow: {},
   visibilityHide: {},
@@ -720,7 +724,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === "android" ? 10 : 16,
     marginBottom: 12,
     elevation: 1,
     shadowColor: "#000",
@@ -751,11 +757,12 @@ const styles = StyleSheet.create({
 
   /* Bottom buttons layout */
   cardFooter: {
-    marginTop: 12,
+    marginTop: Platform.OS === "android" ? 8 : 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: Platform.OS === "ios" ? 2 : 0,
+    marginBottom: Platform.OS === "android" ? -2 : 0,
   },
   chatButton: {
     width: 40,

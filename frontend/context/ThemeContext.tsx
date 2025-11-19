@@ -26,10 +26,12 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "themeModePreference";
+const ACCENT_BLUE = "#007BFF";
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [mode, setMode] = useState<ThemeMode>("system");
   const [hydrated, setHydrated] = useState(false);
+  const [systemScheme, setSystemScheme] = useState<"light" | "dark">(() => Appearance.getColorScheme() ?? "light");
 
   // Load persisted preference
   useEffect(() => {
@@ -53,7 +55,13 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     void AsyncStorage.setItem(STORAGE_KEY, mode);
   }, [hydrated, mode]);
 
-  const systemScheme = Appearance.getColorScheme() ?? "light";
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setSystemScheme(colorScheme === "dark" ? "dark" : "light");
+    });
+    return () => subscription.remove();
+  }, []);
+
   const effective = mode === "system" ? systemScheme : mode;
   const isDark = effective === "dark";
 
@@ -64,7 +72,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
       text: isDark ? "#f6f7ff" : "#0f172a",
       muted: isDark ? "#c8cbe0" : "#6b7280",
       border: isDark ? "#2c3653" : "#e5e7eb",
-      accent: isDark ? "#66a8ff" : "#2563eb",
+      accent: ACCENT_BLUE,
       icon: isDark ? "#d6dbf5" : "#475569",
     }),
     [isDark]

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import OverflowMenu, { type OverflowAction } from "./ui/OverflowMenu";
 import { Alert } from "react-native";
+import type { AlertOptions } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useAppTheme } from "../context/ThemeContext";
@@ -17,7 +18,10 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
   const { currentUser, accessToken } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
   const { isDark } = useAppTheme();
-  const alertAppearance = useMemo(() => ({ userInterfaceStyle: isDark ? "dark" : "light" as const }), [isDark]);
+  const alertAppearance = useMemo<AlertOptions>(
+    () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
+    [isDark]
+  );
 
   // Persist user details while the menu is visible to avoid flicker to generic labels
   useEffect(() => {
