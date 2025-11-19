@@ -269,14 +269,21 @@ export default function MapScreen() {
 
   // Use a View-based marker (instead of marker image assets) to avoid Android DPI clipping
   const renderAvatarMarker = useCallback(
-    (user: NearbyUser | SelectedUser, isSelf = false) => {
+    (user: NearbyUser | SelectedUser, isSelf = false, options?: { dimmed?: boolean }) => {
       const uri = avatarUri(user.profilePicture as string | null);
       const ringColor = isSelf ? colors.accent : "#e63946";
       const fallbackBg = isDark ? colors.card : "#f0f0f0";
       const initials = userInitial(user);
+      const dimmed = options?.dimmed;
 
       return (
-        <View style={[styles.avatarMarker, { borderColor: ringColor, shadowColor: ringColor }]}>
+        <View
+          style={[
+            styles.avatarMarker,
+            { borderColor: ringColor, shadowColor: ringColor },
+            dimmed && { opacity: 0.35 },
+          ]}
+        >
           {uri ? (
             <ExpoImage
               source={{ uri }}
@@ -351,7 +358,7 @@ export default function MapScreen() {
         }}
       >
         {/* 👤 Current user */}
-        {status === "Visible" && selfUser && (
+        {selfUser && (
           <Marker
             key={`self-${markersVersion}-${selfUser.profilePicture ?? "nop"}`}
             coordinate={myCoords}
@@ -360,7 +367,7 @@ export default function MapScreen() {
             centerOffset={{ x: 0, y: 0 }}
             tracksViewChanges={!freezeMarkers}
           >
-            {renderAvatarMarker(selfUser, true)}
+            {renderAvatarMarker(selfUser, true, { dimmed: status !== "Visible" })}
           </Marker>
         )}
 
