@@ -121,6 +121,7 @@ export type UpdateUserProfilePayload = {
   name?: string | null;
   interestTags?: string[];
   visibility?: boolean;
+  profilePicture?: string | null;
 };
 
 // ✅ Update user profile details (name, tags, etc.)
@@ -134,6 +135,7 @@ export const updateUserProfile = async (
   if ("name" in payload) body.name = payload.name;
   if ("interestTags" in payload) body.interestTags = payload.interestTags;
   if ("visibility" in payload) body.visibility = payload.visibility;
+  if ("profilePicture" in payload) body.profilePicture = payload.profilePicture;
 
   if (Object.keys(body).length === 0) {
     throw new Error("No profile fields provided.");

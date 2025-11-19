@@ -144,6 +144,7 @@ export const updateUser = async (req: Request, res: Response) => {
     : null;
   const visibilityRaw =
     typeof req.body.visibility === "boolean" ? req.body.visibility : undefined;
+  const profilePictureRaw = req.body.profilePicture;
 
   try {
     const data: Prisma.UserUpdateInput = {};
@@ -168,6 +169,13 @@ export const updateUser = async (req: Request, res: Response) => {
 
     if (typeof visibilityRaw === "boolean") {
       data.visibility = visibilityRaw;
+    }
+
+    if (profilePictureRaw === null) {
+      data.profilePicture = null;
+    } else if (typeof profilePictureRaw === "string") {
+      const trimmed = profilePictureRaw.trim();
+      if (trimmed) data.profilePicture = trimmed;
     }
 
     const user = await prisma.user.update({

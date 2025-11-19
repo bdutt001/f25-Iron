@@ -95,8 +95,8 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
   const name = (persisted?.name ?? targetUser?.name ?? targetUser?.email) || "User";
 
   const actions: OverflowAction[] = [
-    { key: "report", label: `Report ${name}`, destructive: true, onPress: doReport },
-    { key: "block", label: `Block ${name}`, destructive: true, onPress: doBlock },
+    { key: "report", label: `Report ${name}`, destructive: true, onPress: doReport, icon: "flag-outline" },
+    { key: "block", label: `Block ${name}`, destructive: true, onPress: doBlock, icon: "hand-left-outline" },
   ];
 
   return <OverflowMenu visible={visible} onClose={onClose} title={name} actions={actions} />;

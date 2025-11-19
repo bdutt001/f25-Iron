@@ -6,6 +6,7 @@ import {
   View,
   TouchableOpacity,
   Platform,
+  PixelRatio,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { Image as ExpoImage } from "expo-image";
@@ -20,10 +21,51 @@ import UserOverflowMenu from "../../components/UserOverflowMenu";
 // Overlay implementation removed in favor of native sprites
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-// Density-aware avatar sizing (Android smaller to reduce DPI clipping)
-const AVATAR_SIZE = Platform.OS === "android" ? 38 : 46;
-const AVATAR_BORDER = 3;
-const AVATAR_IMAGE_SIZE = AVATAR_SIZE - AVATAR_BORDER * 2;
+const BASE_AVATAR_SIZE = 46;
+const BASE_AVATAR_BORDER = 3;
+const MAX_ANDROID_MARKER_PX = 100;
+
+type AvatarMetrics = {
+  size: number;
+  border: number;
+  image: number;
+  font: number;
+};
+
+const computeAvatarMetrics = (): AvatarMetrics => {
+  const imageFrom = (size: number, border: number) => Math.max(size - border * 2, 0);
+  if (Platform.OS !== "android") {
+    const image = imageFrom(BASE_AVATAR_SIZE, BASE_AVATAR_BORDER);
+    return {
+      size: BASE_AVATAR_SIZE,
+      border: BASE_AVATAR_BORDER,
+      image,
+      font: Math.round(image * 0.42),
+    };
+  }
+
+  const density = PixelRatio.get();
+  const desiredPx = PixelRatio.getPixelSizeForLayoutSize(BASE_AVATAR_SIZE);
+  const safePx = Math.min(desiredPx, MAX_ANDROID_MARKER_PX);
+  const adjustedSize = PixelRatio.roundToNearestPixel(safePx / density);
+  const proportionalBorder = (BASE_AVATAR_BORDER / BASE_AVATAR_SIZE) * adjustedSize;
+  const adjustedBorder = Math.max(2, PixelRatio.roundToNearestPixel(proportionalBorder));
+  const adjustedImage = imageFrom(adjustedSize, adjustedBorder);
+
+  return {
+    size: adjustedSize,
+    border: adjustedBorder,
+    image: adjustedImage,
+    font: Math.max(14, Math.round(adjustedImage * 0.42)),
+  };
+};
+
+const {
+  size: AVATAR_SIZE,
+  border: AVATAR_BORDER,
+  image: AVATAR_IMAGE_SIZE,
+  font: AVATAR_INITIAL_FONT,
+} = computeAvatarMetrics();
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
@@ -544,7 +586,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarInitial: { fontSize: 18, fontWeight: "700" },
+  avatarInitial: { fontSize: AVATAR_INITIAL_FONT, fontWeight: "700" },
 
   controls: {
     position: "absolute",

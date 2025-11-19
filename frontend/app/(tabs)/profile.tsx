@@ -1,5 +1,5 @@
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import {
@@ -20,6 +20,7 @@ import { useUser, type CurrentUser } from "../../context/UserContext";
 import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
 import type { ApiUser } from "../../utils/geo";
 import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
+import OverflowMenu, { type OverflowAction } from "../../components/ui/OverflowMenu";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
@@ -100,6 +101,8 @@ export default function ProfileScreen() {
         : `${API_BASE_URL}${currentUser.profilePicture}`
       : null
   );
+  const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const hasProfilePhoto = Boolean(profilePicture);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser?.name ?? "");
@@ -118,7 +121,9 @@ export default function ProfileScreen() {
       interestTags:
         updated.interestTags ?? currentUser.interestTags,
       profilePicture:
-        updated.profilePicture ?? currentUser.profilePicture,
+        updated.profilePicture !== undefined
+          ? updated.profilePicture
+          : currentUser.profilePicture,
       visibility:
         typeof updated.visibility === "boolean"
           ? updated.visibility
@@ -277,11 +282,67 @@ export default function ProfileScreen() {
   };
 
   // ✅ Stable version for Android + iOS
-  const uploadImage = async () => {
+  const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!asset?.uri) return;
+    try {
+      const uri = asset.uri;
+      const mimeType = asset.mimeType || "image/jpeg";
+
+      if (!currentUser || !accessToken) {
+        Alert.alert(
+          "Error",
+          "You must be logged in to upload a profile picture.",
+          undefined,
+          alertAppearance
+        );
+        return;
+      }
+
+      const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
+
+      const res = await FileSystem.uploadAsync(uploadUrl, uri, {
+        httpMethod: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: "image",
+        mimeType,
+      });
+
+      if (res.status < 200 || res.status >= 300) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+
+      const data = JSON.parse(res.body || "{}");
+      if (data.profilePicture) {
+        const newUrl = data.profilePicture.startsWith("http")
+          ? `${data.profilePicture}?t=${Date.now()}`
+          : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
+
+        setProfilePicture(newUrl);
+        if (currentUser) {
+          setCurrentUser({ ...currentUser, profilePicture: newUrl });
+        }
+      }
+
+      Alert.alert("Success", "Profile picture updated!", undefined, alertAppearance);
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      Alert.alert("Upload failed", "Please try again later.", undefined, alertAppearance);
+    }
+  };
+
+  const pickImageFromLibrary = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert("Permission required", "You must grant photo access to upload a profile picture.", undefined, alertAppearance);
+        Alert.alert(
+          "Permission required",
+          "You must grant photo access to upload a profile picture.",
+          undefined,
+          alertAppearance
+        );
         return;
       }
 
@@ -292,55 +353,98 @@ export default function ProfileScreen() {
         quality: 0.8,
       });
 
-      if (result.canceled) return;
+      if (result.canceled || !result.assets?.[0]) return;
+      await uploadSelectedAsset(result.assets[0]);
+    } catch (error) {
+      console.error("Error picking image from library:", error);
+      Alert.alert("Unable to open library", "Please try again.", undefined, alertAppearance);
+    }
+  };
 
-      const asset = result.assets[0];
-      const uri = asset.uri;
-      const mimeType = asset.mimeType || "image/jpeg";
-      console.log("📸 Selected image URI:", uri);
-
-      if (!currentUser || !accessToken) {
-        Alert.alert("Error", "You must be logged in to upload a profile picture.", undefined, alertAppearance);
+  const takePhoto = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          "Permission required",
+          "Camera access is needed to take a profile picture.",
+          undefined,
+          alertAppearance
+        );
         return;
       }
 
-      const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
-      console.log("🌐 Uploading to:", uploadUrl);
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-      const res = await FileSystem.uploadAsync(uploadUrl, uri, {
-        httpMethod: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART, // legacy enum again
-        fieldName: "image", // field expected by our backend (matches multer)
-        mimeType,
-    });
-
-      console.log("📤 Upload response:", res.status, res.body);
-
-      if (res.status < 200 || res.status >= 300) {
-        throw new Error(`Upload failed (${res.status})`);
-    }
-      
-      const data = JSON.parse(res.body || "{}");
-      if (data.profilePicture) {
-        // ✅ Use the full Cloudinary URL directly, with a cache-buster
-        const newUrl = data.profilePicture.startsWith("http")
-        ? `${data.profilePicture}?t=${Date.now()}`
-        : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
-
-        // Update local and global state so the UI refreshes instantly
-        setProfilePicture(newUrl);
-        setCurrentUser({ ...currentUser, profilePicture: newUrl });
-      }
-
-      Alert.alert("Success", "Profile picture updated!", undefined, alertAppearance);
+      if (result.canceled || !result.assets?.[0]) return;
+      await uploadSelectedAsset(result.assets[0]);
     } catch (error) {
-      console.error("Error uploading image:", error);
-      Alert.alert("Upload failed", "Please try again later.", undefined, alertAppearance);
+      console.error("Error capturing photo:", error);
+      Alert.alert("Unable to open camera", "Please try again.", undefined, alertAppearance);
     }
   };
+
+  const removeProfilePicture = async () => {
+    if (!currentUser) return;
+    try {
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { profilePicture: null },
+        fetchWithAuth
+      );
+      applyUserUpdate(updated);
+      setProfilePicture(null);
+      Alert.alert("Removed", "Profile picture removed.", undefined, alertAppearance);
+    } catch (error) {
+      console.error("Error removing profile picture:", error);
+      Alert.alert("Unable to remove picture", "Please try again later.", undefined, alertAppearance);
+    }
+  };
+
+  const confirmRemoveProfilePicture = useCallback(() => {
+    if (!hasProfilePhoto) return;
+    Alert.alert(
+      "Remove profile picture?",
+      "This will revert to your initials across the app.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => void removeProfilePicture() },
+      ],
+      alertAppearance
+    );
+  }, [alertAppearance, hasProfilePhoto, removeProfilePicture]);
+
+  const handleProfilePicturePress = () => {
+    setPhotoMenuVisible(true);
+  };
+
+  const profilePictureActions = useMemo<OverflowAction[]>(() => {
+    const actions: OverflowAction[] = [
+      { key: "camera", label: "Take Photo", icon: "camera-outline", onPress: () => void takePhoto() },
+      {
+        key: "library",
+        label: "Choose From Library",
+        icon: "images-outline",
+        onPress: () => void pickImageFromLibrary(),
+      },
+    ];
+
+    if (hasProfilePhoto) {
+      actions.push({
+        key: "remove",
+        label: "Remove Photo",
+        icon: "trash-outline",
+        destructive: true,
+        onPress: confirmRemoveProfilePicture,
+      });
+    }
+
+    return actions;
+  }, [confirmRemoveProfilePicture, hasProfilePhoto, pickImageFromLibrary, takePhoto]);
 
   const handleToggleTag = async (tag: string) => {
     if (!currentUser) return;
@@ -427,6 +531,7 @@ export default function ProfileScreen() {
   const primaryText = { color: colors.text };
 
   return (
+    <>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.scrollContent}
@@ -496,7 +601,7 @@ export default function ProfileScreen() {
               </View>
             )}
             <TouchableOpacity
-              onPress={uploadImage}
+              onPress={handleProfilePicturePress}
               style={[styles.profileUploadFab, { backgroundColor: colors.accent }]}
               accessibilityRole="button"
               accessibilityLabel="Upload profile picture"
@@ -751,6 +856,13 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    <OverflowMenu
+      visible={photoMenuVisible}
+      onClose={() => setPhotoMenuVisible(false)}
+      title="Profile picture"
+      actions={profilePictureActions}
+    />
+    </>
   );
 }
 
@@ -868,3 +980,5 @@ const styles = StyleSheet.create({
   link: { color: "#007BFF", fontWeight: "600" },
   linkDisabled: { opacity: 0.5 },
 });
+
+
