@@ -13,10 +13,12 @@ import { Alert, Image ,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useUser, type CurrentUser } from "../../context/UserContext";
 import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
 import type { ApiUser } from "../../utils/geo";
+import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
@@ -73,6 +75,7 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 export default function ProfileScreen() {
   const router = useRouter();
   const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers } = useUser();
+  const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
 
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -83,6 +86,7 @@ export default function ProfileScreen() {
   const [tagError, setTagError] = useState<string | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
   const [blockedLoading, setBlockedLoading] = useState(false);
+  const [showThemeOptions, setShowThemeOptions] = useState(false);
 
   // ✅ Profile Picture State
   const [profilePicture, setProfilePicture] = useState<string | null>(
@@ -396,88 +400,174 @@ export default function ProfileScreen() {
       ? "No tags selected yet. Tap Edit to choose your interests."
       : undefined;
 
+  const themeOptions: { key: ThemeMode; label: string }[] = [
+    { key: "system", label: "System" },
+    { key: "light", label: "Light" },
+    { key: "dark", label: "Dark" },
+  ];
+
   const displayName =
     currentUser?.name && currentUser.name.trim().length > 0
       ? currentUser.name
       : currentUser?.email || "Anonymous";
 
+  const cardSurface = {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    shadowColor: isDark ? "#000" : "#000",
+  };
+
+  const inputSurface = {
+    backgroundColor: isDark ? colors.background : "#fff",
+    borderColor: colors.border,
+    color: colors.text,
+  };
+
+  const mutedText = { color: colors.muted };
+  const primaryText = { color: colors.text };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.card}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.scrollContent}
+    >
+      <View style={[styles.card, cardSurface]}>
+        <View style={styles.cardHeader}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => setShowThemeOptions((v) => !v)}
+            accessibilityRole="button"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Ionicons
+              name={isDark ? "moon" : "sunny"}
+              size={24}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {showThemeOptions && (
+          <>
+            <Text style={[styles.themeNote, mutedText]}>
+              Choose Light or Dark, or follow your device setting.
+            </Text>
+            <View style={styles.themeRow}>
+              {themeOptions.map((opt) => {
+                const active = themeMode === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[
+                      styles.themeChip,
+                      active && styles.themeChipActive,
+                      { borderColor: colors.border, backgroundColor: isDark ? colors.background : "#fff" },
+                      active && { backgroundColor: isDark ? "#0f172a" : "#e6f0ff" },
+                    ]}
+                    onPress={() => setThemeMode(opt.key)}
+                    accessibilityRole="button"
+                  >
+                    <Text
+                      style={[
+                        styles.themeChipText,
+                        active && styles.themeChipTextActive,
+                        { color: active ? colors.accent : colors.text },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          </>
+        )}
+
 
         {/* ✅ Profile Picture Section */}
         <View style={styles.profilePictureSection}>
-          {profilePicture ? (
-            <Image source={{ uri: profilePicture }} style={styles.profilePicture} />
-          ) : (
-            <View style={[styles.profilePicture, styles.profilePlaceholder]}>
-              <Text>No Picture</Text>
-            </View>
-          )}
-          <Button title="Upload Profile Picture" onPress={uploadImage} />
-        </View>
-
-        <Text style={styles.label}>Name:</Text>
-        {isEditingName ? (
-          <View style={styles.nameEditContainer}>
-            <TextInput
-              value={nameInput}
-              onChangeText={handleNameInputChange}
-              placeholder="Enter your name"
-              autoCapitalize="words"
-              returnKeyType="done"
-              editable={!savingName}
-              onSubmitEditing={() => {
-                if (!savingName) void handleSaveName();
-              }}
-              style={styles.nameInput}
-              accessibilityLabel="Name input"
-            />
-            {nameError && (
-              <Text style={[styles.errorText, styles.nameError]}>{nameError}</Text>
+          <View style={styles.profilePictureWrapper}>
+            {profilePicture ? (
+              <Image source={{ uri: profilePicture }} style={[styles.profilePicture, { borderColor: colors.border }]} />
+            ) : (
+              <View style={[styles.profilePicture, styles.profilePlaceholder, { borderColor: colors.border }]}>
+                <Text style={primaryText}>No Picture</Text>
+              </View>
             )}
-            <View style={styles.nameActions}>
-              <View style={[styles.nameActionButton, styles.nameActionButtonFirst]}>
-                <Button
-                  title={savingName ? "Saving..." : "Save"}
-                  onPress={handleSaveName}
-                  disabled={savingName}
-                />
-              </View>
-              <View style={styles.nameActionButton}>
-                <Button
-                  title="Cancel"
-                  onPress={handleCancelNameEdit}
-                  color="#6c757d"
-                  disabled={savingName}
-                />
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.valueRow}>
-            <Text style={[styles.value, styles.nameValue]}>{displayName}</Text>
             <TouchableOpacity
-              onPress={startNameEdit}
-              disabled={!currentUser}
+              onPress={uploadImage}
+              style={[styles.profileUploadFab, { backgroundColor: colors.accent }]}
               accessibilityRole="button"
-              accessibilityLabel="Edit display name"
-              style={!currentUser ? styles.disabledAction : undefined}
+              accessibilityLabel="Upload profile picture"
             >
-              <Text style={styles.toggleText}>Edit</Text>
+              <Ionicons name="camera" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
-        )}
-        <Text style={styles.label}>Email:</Text>
-        <Text style={styles.value}>{currentUser?.email || "-"}</Text>
-        <Text style={styles.label}>Visibility:</Text>
-        <Text style={styles.value}>{status}</Text>
 
-        <View style={styles.divider} />
+          <View style={styles.displayNameRow}>
+            {isEditingName ? (
+              <View style={styles.inlineNameEditRow}>
+                <TextInput
+                  value={nameInput}
+                  onChangeText={handleNameInputChange}
+                  placeholder="Enter your name"
+                  autoCapitalize="words"
+                  returnKeyType="done"
+                  editable={!savingName}
+                  onSubmitEditing={() => {
+                    if (!savingName) void handleSaveName();
+                  }}
+                  style={[styles.nameInput, styles.inlineNameInput, inputSurface, { textAlign: "center" }]}
+                  accessibilityLabel="Name input"
+                  placeholderTextColor={colors.muted}
+                />
+                <TouchableOpacity
+                  onPress={handleSaveName}
+                  disabled={savingName}
+                  style={styles.inlineNameIcon}
+                  accessibilityLabel="Save name"
+                >
+                  <Ionicons name="checkmark" size={20} color={colors.accent} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleCancelNameEdit}
+                  disabled={savingName}
+                  style={styles.inlineNameIcon}
+                  accessibilityLabel="Cancel name edit"
+                >
+                  <Ionicons name="close" size={20} color={colors.muted} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.inlineNameReadRow}>
+                <Text style={[styles.displayNameText, primaryText]} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                <TouchableOpacity
+                  onPress={startNameEdit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit display name"
+                  style={styles.inlineNameIcon}
+                >
+                  <Ionicons name="pencil" size={18} color={colors.accent} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {nameError && <Text style={[styles.errorText, styles.nameError]}>{nameError}</Text>}
+          </View>
+        </View>
+
+        <Text style={[styles.label, primaryText]}>Email:</Text>
+        <Text style={[styles.value, primaryText]}>{currentUser?.email || "-"}</Text>
+        <Text style={[styles.label, primaryText]}>Visibility:</Text>
+        <Text style={[styles.value, primaryText]}>{status}</Text>
+
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         {/* ✅ Interest Tags Section (unchanged) */}
         <View style={styles.tagHeader}>
-          <Text style={styles.label}>
+          <Text style={[styles.label, primaryText]}>
             Interest Tags
             {expanded && (
               <Text style={styles.labelCount}>{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
@@ -498,11 +588,17 @@ export default function ProfileScreen() {
         </View>
 
         {collapsedMessage ? (
-          <Text style={styles.emptyTags}>{collapsedMessage}</Text>
+          <Text style={[styles.emptyTags, mutedText]}>{collapsedMessage}</Text>
         ) : (
           <View style={styles.selectedTagsWrapper}>
             {displayedSelectedTags.map((tag) => (
-              <View key={tag} style={styles.selectedChip}>
+              <View
+                key={tag}
+                style={[
+                  styles.selectedChip,
+                  { backgroundColor: isDark ? colors.background : "#e6f0ff", borderColor: colors.border },
+                ]}
+              >
                 <Text style={styles.selectedChipText}>{tag}</Text>
               </View>
             ))}
@@ -510,8 +606,18 @@ export default function ProfileScreen() {
         )}
 
         {expanded && (
-          <View style={[styles.catalogSection, { maxHeight: undefined }] }>
-            <View style={styles.tagSearchWrapper}>
+          <View
+            style={[
+              styles.catalogSection,
+              { maxHeight: undefined, backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.tagSearchWrapper,
+                { backgroundColor: inputSurface.backgroundColor, borderColor: colors.border },
+              ]}
+            >
               <TextInput
                 value={tagSearch}
                 onChangeText={setTagSearch}
@@ -519,8 +625,9 @@ export default function ProfileScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
-                style={styles.tagSearchInput}
+                style={[styles.tagSearchInput, { color: colors.text }]}
                 accessibilityLabel="Search interest tags"
+                placeholderTextColor={colors.muted}
               />
               {hasSearch && (
                 <TouchableOpacity
@@ -539,8 +646,8 @@ export default function ProfileScreen() {
                   color="#007BFF"
                   style={styles.savingIndicator}
                 />
-                <Text style={[styles.helperText, styles.catalogLoadingText]}>
-                  Loading tag catalog…
+                <Text style={[styles.helperText, styles.catalogLoadingText, mutedText]}>
+                  Loading tag catalog...
                 </Text>
               </View>
             ) : (
@@ -557,6 +664,8 @@ export default function ProfileScreen() {
                             selected && styles.tagOptionSelected,
                             (savingTags || (!selected && limitReached)) &&
                             styles.tagOptionDisabled,
+                            { backgroundColor: inputSurface.backgroundColor, borderColor: colors.border },
+                            selected && { backgroundColor: isDark ? "#0f172a" : "#e6f0ff", borderColor: colors.accent },
                           ]}
                           onPress={() => handleToggleTag(tag)}
                           disabled={savingTags}
@@ -565,6 +674,8 @@ export default function ProfileScreen() {
                             style={[
                               styles.tagOptionText,
                               selected && styles.tagOptionTextSelected,
+                              { color: colors.text },
+                              selected && { color: colors.accent },
                             ]}
                           >
                             {tag}
@@ -576,14 +687,14 @@ export default function ProfileScreen() {
                 </View>
               )
             )}
-            {tagError && <Text style={styles.errorText}>{tagError}</Text>}
+            {tagError && <Text style={[styles.errorText, { color: "#c00" }]}>{tagError}</Text>}
             {noMatches && (
-              <Text style={styles.helperText}>
+              <Text style={[styles.helperText, mutedText]}>
                 {`No matches found for ${searchTerm}. Try a different keyword.`}
               </Text>
             )}
             {noCatalogTags && (
-              <Text style={styles.helperText}>
+              <Text style={[styles.helperText, mutedText]}>
                 No tags available yet. Ask an admin to populate the catalog.
               </Text>
             )}
@@ -592,9 +703,9 @@ export default function ProfileScreen() {
       </View>
 
       {/* Blocked accounts */}
-      <View style={styles.blockedSection}>
+      <View style={[styles.blockedSection, cardSurface]}>
         <View style={styles.blockedHeaderRow}>
-          <Text style={styles.sectionTitle}>Blocked Accounts</Text>
+          <Text style={[styles.sectionTitle, primaryText]}>Blocked Accounts</Text>
           <TouchableOpacity onPress={onRefreshBlocked} disabled={blockedLoading} accessibilityRole="button">
             <Text style={[styles.link, blockedLoading && styles.linkDisabled]}>{blockedLoading ? "Refreshing..." : "Refresh"}</Text>
           </TouchableOpacity>
@@ -602,23 +713,23 @@ export default function ProfileScreen() {
         {blockedLoading && blockedUsers.length === 0 ? (
           <ActivityIndicator size="small" color="#007BFF" />
         ) : blockedUsers.length === 0 ? (
-          <Text style={styles.helperText}>You haven’t blocked anyone.</Text>
+          <Text style={[styles.helperText, mutedText]}>You haven't blocked anyone.</Text>
         ) : (
           blockedUsers.map((u) => {
             const pp = (u as any).profilePicture as string | null | undefined;
             const uri = pp ? (pp.startsWith("http") ? pp : `${API_BASE_URL}${pp}`) : null;
             const initial = (u.name || u.email || "?").charAt(0).toUpperCase();
             return (
-              <View key={u.id} style={styles.blockedRowItem}>
+              <View key={u.id} style={[styles.blockedRowItem, { borderBottomColor: colors.border }]}>
                 {uri ? (
                   <Image source={{ uri }} style={styles.blockedAvatar} />
                 ) : (
-                  <View style={[styles.blockedAvatar, styles.blockedAvatarPlaceholder]}>
-                    <Text style={styles.blockedAvatarInitial}>{initial}</Text>
+                  <View style={[styles.blockedAvatar, styles.blockedAvatarPlaceholder, { backgroundColor: colors.border }]}>
+                    <Text style={[styles.blockedAvatarInitial, primaryText]}>{initial}</Text>
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.blockedNameText}>{u.name || u.email}</Text>
+                  <Text style={[styles.blockedNameText, primaryText]}>{u.name || u.email}</Text>
                 </View>
                 <TouchableOpacity onPress={() => void handleUnblock(u.id)} accessibilityRole="button">
                   <Text style={styles.unblockLink}>Unblock</Text>
@@ -631,7 +742,7 @@ export default function ProfileScreen() {
 
       <View style={styles.logout}>
         <TouchableOpacity
-          style={styles.logoutPill}
+          style={[styles.logoutPill, cardSurface]}
           onPress={handleLogout}
           accessibilityRole="button"
         >
@@ -646,7 +757,8 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f2f2f2" },
   scrollContent: { alignItems: "center", padding: 20, paddingBottom: 40 },
-  card: { backgroundColor: "white", padding: 20, borderRadius: 10, width: "100%", maxWidth: 580, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
+  card: { backgroundColor: "white", padding: 20, borderRadius: 10, width: "100%", maxWidth: 580, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3, borderWidth: StyleSheet.hairlineWidth },
+  cardHeader: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginBottom: 8 },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
   label: { fontSize: 16, fontWeight: "600", marginTop: 10 },
   labelCount: { fontSize: 13, color: "#1f5fbf", fontWeight: "500" },
@@ -667,7 +779,7 @@ const styles = StyleSheet.create({
   toggleText: { color: "#007BFF", fontWeight: "600" },
   emptyTags: { marginTop: 8, fontSize: 14, color: "#666" },
   selectedTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
-  selectedChip: { backgroundColor: "#e6f0ff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, marginBottom: 8 },
+  selectedChip: { backgroundColor: "#e6f0ff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth },
   selectedChipText: { color: "#1f5fbf", fontSize: 14, fontWeight: "500" },
   catalogSection: { marginTop: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, padding: 12, backgroundColor: "#fafafa" },
   tagSearchWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12, backgroundColor: "#fff" },
@@ -683,6 +795,21 @@ const styles = StyleSheet.create({
   catalogLoading: { flexDirection: "row", alignItems: "center" },
   catalogLoadingText: { marginLeft: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  themeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  themeChip: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  themeChipActive: { borderColor: "#2563eb", backgroundColor: "#e6f0ff" },
+  themeChipText: { fontWeight: "700", color: "#111827" },
+  themeChipTextActive: { color: "#1f5fbf" },
+  themeNote: { marginTop: 6, fontSize: 13, color: "#666", textAlign: "left" },
   helperText: { marginTop: 12, fontSize: 13, color: "#666" },
   errorText: { marginTop: 12, fontSize: 13, color: "#c00" },
   logout: { width: "100%", maxWidth: 580, marginTop: 24, marginBottom: 36 },
@@ -702,8 +829,16 @@ const styles = StyleSheet.create({
   },
   logoutPillText: { color: "#d9534f", fontWeight: "700", fontSize: 16 },
   profilePictureSection: { alignItems: "center", marginBottom: 20 },
-  profilePicture: { width: 120, height: 120, borderRadius: 60, marginBottom: 10 },
+  profilePictureWrapper: { position: "relative" },
+  profilePicture: { width: 120, height: 120, borderRadius: 60, marginBottom: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e5e7eb" },
   profilePlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
+  profileUploadFab: { position: "absolute", bottom: 6, right: 6, width: 40, height: 40, borderRadius: 20, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3, elevation: 4 },
+  displayNameText: { fontSize: 22, fontWeight: "700", marginTop: 6, marginBottom: 4, textAlign: "center" },
+  displayNameRow: { marginTop: 4, width: "100%", alignItems: "center" },
+  inlineNameReadRow: { flexDirection: "row", alignItems: "center" },
+  inlineNameEditRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", maxWidth: 320 },
+  inlineNameIcon: { marginLeft: 8, padding: 6 },
+  inlineNameInput: { flex: 1, minWidth: 180, maxWidth: 260, marginRight: 4 },
   blockedSection: {
     marginTop: 24,
     width: "100%",

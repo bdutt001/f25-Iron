@@ -28,6 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
+import { useAppTheme } from "../../context/ThemeContext";
 import {
   ApiUser,
   NearbyUser,
@@ -53,6 +54,7 @@ const normalizeTags = (tags: unknown): string[] =>
     : [];
 
 export default function NearbyScreen() {
+  const { colors, isDark } = useAppTheme();
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -419,12 +421,14 @@ export default function NearbyScreen() {
 
   // Loading and error UI
   const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
+  const textColor = { color: colors.text };
+  const mutedText = { color: colors.muted };
 
   if (showInitialLoader) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.note}>Locating you and finding nearby users...</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={[styles.note, mutedText]}>Locating you and finding nearby users...</Text>
       </View>
     );
   }
@@ -446,16 +450,16 @@ export default function NearbyScreen() {
   if (!location) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.note}>Location unavailable. Pull to refresh to retry.</Text>
+        <Text style={[styles.note, mutedText]}>Location unavailable. Pull to refresh to retry.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Visibility: {status}</Text>
+      <View style={[styles.header, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: isDark ? "#000" : "#000" }]}>
+        <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
         <TouchableOpacity
           style={[
             styles.visibilityToggle,
@@ -483,8 +487,8 @@ export default function NearbyScreen() {
 
       {loading && hasLoadedOnceRef.current && (
         <View style={styles.inlineLoader}>
-          <ActivityIndicator size="small" color="#007BFF" />
-          <Text style={styles.inlineLoaderText}>Updating nearby users…</Text>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={[styles.inlineLoaderText, mutedText]}>Updating nearby users…</Text>
         </View>
       )}
 
@@ -495,7 +499,7 @@ export default function NearbyScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.centered}>
-            <Text style={styles.note}>No other users nearby right now.</Text>
+            <Text style={[styles.note, mutedText]}>No other users nearby right now.</Text>
           </View>
         }
         renderItem={({ item, index }) => {
@@ -515,7 +519,7 @@ export default function NearbyScreen() {
           else trustColor = "#DC3545";
 
           return (
-            <View style={[styles.card, index === 0 && styles.closestCard]}>
+            <View style={[styles.card, index === 0 && styles.closestCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: isDark ? "#000" : "#000" }, index === 0 && { borderColor: colors.accent }]}>
               <View style={styles.cardHeader}>
                 <View style={styles.userInfo}>
                   {imageUri ? (
@@ -527,24 +531,24 @@ export default function NearbyScreen() {
                       contentFit="cover"
                     />
                   ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Text style={styles.avatarInitial}>
+                    <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.border }]}>
+                      <Text style={[styles.avatarInitial, textColor]}>
                         {item.name?.[0]?.toUpperCase() ?? "?"}
                       </Text>
                     </View>
                   )}
                   <View>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <Text style={[styles.cardTitle, textColor]}>{item.name}</Text>
                     {/* ✅ show score-only % match */}
                     {typeof item.score === "number" && (
-                      <Text style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
+                      <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>
                         {Math.round(item.score * 100)}% match
                       </Text>
                     )}
                   </View>
                 </View>
                 <View style={styles.rightInfo}>
-                  <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
+                  <Text style={[styles.cardDistance, textColor]}>{formatDistance(item.distanceMeters)}</Text>
                   <Text style={[styles.rightTrustLabel, { color: trustColor }]}>Trust Score: {scoreTS}</Text>
                 </View>
               </View>
@@ -552,8 +556,8 @@ export default function NearbyScreen() {
               {item.interestTags.length > 0 && (
                 <View style={styles.cardTagsWrapper}>
                   {item.interestTags.map((tag) => (
-                    <View key={tag} style={styles.cardTagChip}>
-                      <Text style={styles.cardTagText}>{tag}</Text>
+                    <View key={tag} style={[styles.cardTagChip, { backgroundColor: isDark ? colors.background : "#e6f0ff", borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth }]}>
+                      <Text style={[styles.cardTagText, { color: colors.accent }]}>{tag}</Text>
                     </View>
                   ))}
                 </View>
@@ -667,6 +671,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb",
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
   visibilityToggle: {
@@ -824,3 +830,8 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
 });
+
+
+
+
+

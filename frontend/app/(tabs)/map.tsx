@@ -15,6 +15,7 @@ import { API_BASE_URL } from "@/utils/api";
 import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useAppTheme } from "../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 // Overlay implementation removed in favor of native sprites
@@ -40,6 +41,7 @@ export default function MapScreen() {
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   const [freezeMarkers, setFreezeMarkers] = useState(false);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+  const { colors, isDark } = useAppTheme();
   const {
     status,
     setStatus,
@@ -243,7 +245,7 @@ useEffect(() => {
     (user: NearbyUser | SelectedUser, isSelf = false) => {
       const uri = avatarUri(user.profilePicture as string | null);
       const ringColor = isSelf ? "#1f5fbf" : "#e63946";
-      const fallbackBg = "#f0f0f0";
+      const fallbackBg = isDark ? colors.card : "#f0f0f0";
       const initials = userInitial(user);
 
       return (
@@ -258,13 +260,13 @@ useEffect(() => {
             />
           ) : (
             <View style={[styles.avatarFallback, { backgroundColor: fallbackBg }]}>
-              <Text style={[styles.avatarInitial, { color: "#4a4a4a" }]}>{initials}</Text>
+              <Text style={[styles.avatarInitial, { color: isDark ? colors.text : "#4a4a4a" }]}>{initials}</Text>
             </View>
           )}
         </View>
       );
     },
-    [avatarUri, userInitial]
+    [avatarUri, userInitial, colors.card, colors.text, isDark]
   );
 
   const selectedUserAvatarUri = selectedUser
@@ -279,6 +281,11 @@ useEffect(() => {
     return () => clearTimeout(timer);
   }, [markersVersion, nearbyUsers.length]);
 
+  // Ensure marker list updates when visibility status toggles
+  useEffect(() => {
+    setMarkersVersion((v) => v + 1);
+  }, [status]);
+
   // Always refresh user list when the map tab gains focus (covers block/unblock changes)
   useFocusEffect(
     useCallback(() => {
@@ -287,8 +294,11 @@ useEffect(() => {
     }, [accessToken, loadUsers])
   );
 
+  const textColor = { color: colors.text };
+  const mutedText = { color: colors.muted };
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -357,7 +367,7 @@ useEffect(() => {
               source={{ uri: selectedUserAvatarUri }}
               style={[
                 styles.floatingImage,
-                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
+                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946", backgroundColor: colors.card },
               ]}
               cachePolicy="memory-disk"
               transition={0}
@@ -367,10 +377,10 @@ useEffect(() => {
             <View
               style={[
                 styles.floatingPlaceholder,
-                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
+                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946", backgroundColor: colors.card },
               ]}
             >
-              <Text style={styles.floatingInitials}>{userInitial(selectedUser)}</Text>
+              <Text style={[styles.floatingInitials, { color: isDark ? colors.text : "#555" }]}>{userInitial(selectedUser)}</Text>
             </View>
           )}
         </View>
@@ -384,23 +394,28 @@ useEffect(() => {
             activeOpacity={1}
             onPress={() => setSelectedUser(null)}
           />
-          <View style={styles.sheet}>
+          <View
+            style={[
+              styles.sheet,
+              { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth, shadowColor: isDark ? "#000" : "#000" },
+            ]}
+          >
             <View style={styles.sheetHeader}>
-              <View style={styles.sheetHandle} />
+              <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
               <TouchableOpacity onPress={() => setSelectedUser(null)}>
                 <Text style={styles.sheetClose}>Close</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.calloutHeaderRow}>
-              <Text style={styles.calloutTitle}>{selectedUser.name || selectedUser.email}</Text>
+              <Text style={[styles.calloutTitle, textColor]}>{selectedUser.name || selectedUser.email}</Text>
               {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
             </View>
 
-            <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
+            <Text style={[styles.calloutSubtitle, mutedText]}>{selectedUser.email}</Text>
 
             {/* Color-coded trust score */}
-            <Text style={styles.trustScoreName}>
+            <Text style={[styles.trustScoreName, textColor]}>
               Trust Score:{" "}
               <Text
                 style={[
@@ -414,19 +429,19 @@ useEffect(() => {
 
             {/* Match percent */}
             {!selectedUser.isCurrentUser && (
-              <Text style={[styles.calloutSubtitle, { marginTop: 4 }]}>Match: {matchPercent(selectedUser)}%</Text>
+              <Text style={[styles.calloutSubtitle, mutedText, { marginTop: 4 }]}>Match: {matchPercent(selectedUser)}%</Text>
             )}
 
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
-                  <View key={tag} style={styles.calloutTagChip}>
+                  <View key={tag} style={[styles.calloutTagChip, { backgroundColor: isDark ? colors.background : "#e6f0ff" }]}>
                     <Text style={styles.calloutTagText}>{tag}</Text>
                   </View>
                 ))}
               </View>
             ) : (
-              <Text style={styles.calloutEmptyTags}>
+              <Text style={[styles.calloutEmptyTags, mutedText]}>
                 {selectedUser.isCurrentUser
                   ? "You haven't added any interest tags yet."
                   : "No tags selected"}
@@ -457,7 +472,7 @@ useEffect(() => {
                   hitSlop={{ left: 8, right: 8, top: 6, bottom: 6 }}
                   style={{ paddingHorizontal: 2, paddingVertical: 6 }}
                 >
-                  <Ionicons name="ellipsis-vertical" size={20} color="#333" />
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
                 </TouchableOpacity>
               </View>
               </>
@@ -471,8 +486,14 @@ useEffect(() => {
       {/* Inline actions are rendered inside the sheet above */}
 
       {/* 🔘 Controls (lift when sheet is open) */}
-      <View style={[styles.controls, selectedUser ? { display: 'none' } : null]}>
-        <Text style={styles.statusText}>Visibility: {status}</Text>
+      <View
+        style={[
+          styles.controls,
+          { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth, shadowColor: isDark ? "#000" : "#000" },
+          selectedUser ? { display: 'none' } : null,
+        ]}
+      >
+        <Text style={[styles.statusText, textColor]}>Visibility: {status}</Text>
         <TouchableOpacity
           style={[
             styles.visibilityToggle,
@@ -493,7 +514,7 @@ useEffect(() => {
             </Text>
           )}
         </TouchableOpacity>
-        {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+        {!!errorMsg && <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>}
       </View>
     </View>
   );

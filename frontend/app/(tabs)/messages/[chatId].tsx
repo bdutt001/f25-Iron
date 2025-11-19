@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useEffect, useCallback, useRef } from "react";
+import React, { useState, useLayoutEffect, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +17,7 @@ import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useUser } from "../../../context/UserContext";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../../components/UserOverflowMenu";
+import { useAppTheme } from "../../../context/ThemeContext";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -37,6 +38,7 @@ export default function ChatScreen() {
   }>();
   const navigation = useNavigation();
   const { currentUser, accessToken } = useUser();
+  const { colors, isDark } = useAppTheme();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -53,12 +55,12 @@ export default function ChatScreen() {
         title: name,
         headerRight: () => (
           <TouchableOpacity onPress={() => setMenuOpen(true)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
-            <Ionicons name="ellipsis-vertical" size={20} color="#333" />
+            <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
           </TouchableOpacity>
         ),
       });
     }
-  }, [navigation, name, chatId, receiverId]);
+  }, [navigation, name, chatId, receiverId, colors.text]);
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
@@ -86,6 +88,83 @@ export default function ChatScreen() {
   useEffect(() => {
     fetchMessages();
   }, [fetchMessages]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.background },
+        messagesContainer: { padding: 10, flexGrow: 1 },
+        messageRow: { flexDirection: "row", alignItems: "flex-end", marginVertical: 4 },
+        messageBubble: { padding: 10, borderRadius: 12, maxWidth: "75%" },
+        myMessage: { alignSelf: "flex-end", backgroundColor: colors.accent },
+        theirMessage: {
+          alignSelf: "flex-start",
+          backgroundColor: colors.card,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
+        },
+        messageText: { fontSize: 16, color: colors.text },
+        // ? Reuse placeholder for both avatar and image case
+        messageAvatarPlaceholder: {
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: colors.border,
+          justifyContent: "center",
+          alignItems: "center",
+          marginRight: 8,
+        },
+        messageAvatarInitial: { fontSize: 16, fontWeight: "bold", color: colors.text },
+        inputContainer: {
+          flexDirection: "row",
+          padding: 10,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
+          backgroundColor: colors.card, // keeps visible above keyboard
+        },
+        input: {
+          flex: 1,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 20,
+          paddingHorizontal: 12,
+          marginRight: 8,
+          backgroundColor: colors.background,
+          color: colors.text,
+        },
+        /* ? New profile section inside chat */
+        chatHeader: { alignItems: "center", marginVertical: 12 },
+        chatHeaderAvatar: {
+          width: 72,
+          height: 72,
+          borderRadius: 36,
+          marginBottom: 6,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 3,
+          elevation: 5,
+        },
+        chatHeaderAvatarPlaceholder: {
+          width: 72,
+          height: 72,
+          borderRadius: 36,
+          backgroundColor: colors.border,
+          justifyContent: "center",
+          alignItems: "center",
+          marginBottom: 6,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 3,
+          elevation: 5,
+        },
+        chatHeaderAvatarInitial: { fontSize: 20, fontWeight: "bold", color: colors.text },
+        centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background },
+        note: { color: colors.muted, fontSize: 16 },
+      }),
+    [colors, isDark]
+  );
 
   // Send a message
   const handleSend = async () => {
@@ -116,8 +195,8 @@ export default function ChatScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text>Loading chat...</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={{ color: colors.text }}>Loading chat...</Text>
       </View>
     );
   }
@@ -125,7 +204,7 @@ export default function ChatScreen() {
   // ✅ Fixed layout so input bar moves above keyboard (especially on iPhone 14 Pro / iOS 18)
   return (
     <>
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["bottom", "left", "right"]}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -194,7 +273,7 @@ export default function ChatScreen() {
                   <Text
                     style={[
                       styles.messageText,
-                      isMine ? { color: "white" } : { color: "black" },
+                      isMine ? { color: "#fff" } : { color: colors.text },
                     ]}
                   >
                     {item.content}
@@ -212,6 +291,7 @@ export default function ChatScreen() {
           <TextInput
             style={styles.input}
             placeholder="Type a message..."
+            placeholderTextColor={colors.muted}
             value={newMessage}
             onChangeText={setNewMessage}
             onSubmitEditing={handleSend}
@@ -233,73 +313,3 @@ export default function ChatScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  messagesContainer: { padding: 10, flexGrow: 1 },
-  messageRow: { flexDirection: "row", alignItems: "flex-end", marginVertical: 4 },
-  messageBubble: { padding: 10, borderRadius: 12, maxWidth: "75%" },
-  myMessage: { alignSelf: "flex-end", backgroundColor: "#007AFF" },
-  theirMessage: { alignSelf: "flex-start", backgroundColor: "#E5E5EA" },
-  messageText: { fontSize: 16 },
-
-  // ✅ Reuse placeholder for both avatar and image case
-  messageAvatarPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#ddd",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 8,
-  },
-  messageAvatarInitial: { fontSize: 16, fontWeight: "bold", color: "#555" },
-
-  inputContainer: {
-    flexDirection: "row",
-    padding: 10,
-    borderTopWidth: 1,
-    borderColor: "#ccc",
-    backgroundColor: "#fff", // ✅ keeps visible above keyboard
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    marginRight: 8,
-  },
-
-  /* ✅ New profile section inside chat */
-  chatHeader: { alignItems: "center", marginVertical: 12 },
-  chatHeaderAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    marginBottom: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 5,
-  },
-  chatHeaderAvatarPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#ddd",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 5,
-  },
-  chatHeaderAvatarInitial: { fontSize: 20, fontWeight: "bold", color: "#555" },
-
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  note: { color: "#555", fontSize: 16 },
-});

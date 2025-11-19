@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Image, useColorScheme } from "react-native";
+import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Image } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useUser } from "../../../context/UserContext";
+import { useAppTheme } from "../../../context/ThemeContext";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -9,7 +10,7 @@ type Conversation = {
   id: string;
   name: string;
   receiverId: number;
-  receiverProfilePicture?: string | null; // ✅ new
+  receiverProfilePicture?: string | null;
   lastMessage?: string;
   lastTimestamp?: string;
 };
@@ -19,44 +20,53 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // ✅ Respect system Light/Dark mode
-  const scheme = useColorScheme();
-  const isDark = scheme === "dark";
+  const { isDark, colors } = useAppTheme();
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        container: { flex: 1, padding: 16, backgroundColor: isDark ? "#121212" : "#FFFFFF" },
+        container: {
+          flex: 1,
+          paddingHorizontal: 14,
+          paddingTop: 8,
+          backgroundColor: colors.background,
+        },
         centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+        listContent: { paddingBottom: 24 },
         chatItem: {
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: isDark ? "#2A2A2A" : "#CCCCCC",
+          padding: 14,
+          borderRadius: 16,
+          backgroundColor: colors.card,
+          marginBottom: 12,
+          shadowColor: "#000",
+          shadowOpacity: isDark ? 0.35 : 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 3,
         },
         chatRow: { flexDirection: "row", alignItems: "center" },
         chatHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-        name: { fontWeight: "bold", fontSize: 16, color: isDark ? "#FFFFFF" : "#111111" },
-        preview: { color: isDark ? "#B5B5B5" : "gray", marginTop: 2 },
-        time: { color: isDark ? "#A0A0A0" : "#888", fontSize: 12 },
-        avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+        name: { fontWeight: "700", fontSize: 16, color: colors.text },
+        preview: { color: colors.muted, marginTop: 4 },
+        time: { color: isDark ? "#8b8ca0" : "#6b7280", fontSize: 12 },
+        avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 12 },
         avatarPlaceholder: {
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: isDark ? "#2F2F2F" : "#DDDDDD",
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: isDark ? "#252634" : "#e5e7eb",
           justifyContent: "center",
           alignItems: "center",
           marginRight: 12,
         },
-        avatarInitial: { fontSize: 18, fontWeight: "bold", color: isDark ? "#E0E0E0" : "#555" },
+        avatarInitial: { fontSize: 18, fontWeight: "700", color: isDark ? "#e5e7eb" : "#374151" },
         note: { color: isDark ? "#BBBBBB" : "#777" },
         error: { color: "#c00", marginBottom: 12 },
-        retryButton: { backgroundColor: "#007BFF", padding: 10, borderRadius: 8 },
-        retryText: { color: "white", fontWeight: "bold" },
+        retryButton: { backgroundColor: colors.accent, padding: 10, borderRadius: 8 },
+        retryText: { color: "#fff", fontWeight: "bold" },
         loadingText: { color: isDark ? "#FFFFFF" : "#111111" },
       }),
-    [isDark]
+    [isDark, colors]
   );
 
   const loadConversations = useCallback(async () => {
@@ -90,83 +100,88 @@ export default function MessagesScreen() {
     }, [loadConversations])
   );
 
-return (
-  <View style={styles.container}>
-    {loading && (
-      <View style={{ position: "absolute", top: 10, right: 10 }}>
-        <ActivityIndicator size="small" color="#007BFF" />
-      </View>
-    )}
+  return (
+    <View style={styles.container}>
+      {loading && (
+        <View style={{ position: "absolute", top: 10, right: 14 }}>
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      )}
 
-    {error ? (
-      <View style={styles.centered}>
-        <Text style={styles.error}>{error}</Text>
-        <Pressable onPress={loadConversations} style={styles.retryButton}>
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      </View>
-    ) : conversations.length === 0 && !loading ? (
-      <View style={styles.centered}>
-        <Text style={styles.note}>You have no active chats yet.</Text>
-      </View>
-    ) : (
-      <FlatList
-        data={conversations}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
-          const imageUri = item.receiverProfilePicture
-            ? item.receiverProfilePicture.startsWith("http")
-              ? item.receiverProfilePicture
-              : `${API_BASE_URL}${item.receiverProfilePicture}`
-            : null;
+      {error ? (
+        <View style={styles.centered}>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable onPress={loadConversations} style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : conversations.length === 0 && !loading ? (
+        <View style={styles.centered}>
+          <Text style={styles.note}>You have no active chats yet.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={conversations}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => {
+            const imageUri = item.receiverProfilePicture
+              ? item.receiverProfilePicture.startsWith("http")
+                ? item.receiverProfilePicture
+                : `${API_BASE_URL}${item.receiverProfilePicture}`
+              : null;
 
-          return (
-            <Pressable
-              style={styles.chatItem}
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/messages/[chatId]",
-                  params: {
-                    chatId: item.id,
-                    name: item.name,
-                    receiverId: item.receiverId.toString(),
-                    profilePicture: item.receiverProfilePicture || "",
-                  },
-                })
-              }
-            >
-              <View style={styles.chatRow}>
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.avatar} />
-                ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarInitial}>
-                      {item.name[0]?.toUpperCase() || "?"}
+            return (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.chatItem,
+                  pressed ? { transform: [{ translateY: 1 }], opacity: 0.96 } : null,
+                ]}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/messages/[chatId]",
+                    params: {
+                      chatId: item.id,
+                      name: item.name,
+                      receiverId: item.receiverId.toString(),
+                      profilePicture: item.receiverProfilePicture || "",
+                    },
+                  })
+                }
+              >
+                <View style={styles.chatRow}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}>
+                      <Text style={styles.avatarInitial}>{item.name[0]?.toUpperCase() || "?"}</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.chatHeaderRow}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.lastTimestamp && (
+                        <Text style={styles.time}>
+                          {new Date(item.lastTimestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.preview} numberOfLines={1}>
+                      {item.lastMessage || "Tap to chat"}
                     </Text>
                   </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <View style={styles.chatHeaderRow}>
-                    <Text style={styles.name}>{item.name}</Text>
-                    {item.lastTimestamp && (
-                      <Text style={styles.time}>
-                        {new Date(item.lastTimestamp).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </Text>
-                    )}
-                  </View>
-                  <Text style={styles.preview}>
-                    {item.lastMessage || "Tap to chat"}
-                  </Text>
                 </View>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
-    )}
-  </View>
-);
+              </Pressable>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
 }
+
