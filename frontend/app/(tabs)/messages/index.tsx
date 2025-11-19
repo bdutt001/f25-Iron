@@ -19,7 +19,7 @@ type Conversation = {
 };
 
 export default function MessagesScreen() {
-  const { currentUser, accessToken } = useUser();
+  const { currentUser, fetchWithAuth } = useUser();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,16 +79,15 @@ export default function MessagesScreen() {
 
   const loadConversations = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (!currentUser || !accessToken) return;
+      if (!currentUser) return;
 
       const showLoading = !options?.silent;
       if (showLoading) setLoading(true);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
           },
         });
 
@@ -115,7 +114,7 @@ export default function MessagesScreen() {
         if (showLoading) setLoading(false);
       }
     },
-    [currentUser, accessToken]
+    [currentUser, fetchWithAuth]
   );
 
   useFocusEffect(

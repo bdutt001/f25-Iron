@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
@@ -75,8 +74,7 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 };
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers } = useUser();
+  const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers, fetchWithAuth, logout } = useUser();
   const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
   const alertAppearance = useMemo<AlertOptions>(
     () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
@@ -152,13 +150,13 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!accessToken) return;
+    if (!currentUser) return;
 
     const loadTags = async () => {
       setLoadingTags(true);
       setTagError(null);
       try {
-        const tags = await fetchTagCatalog(accessToken);
+        const tags = await fetchTagCatalog(fetchWithAuth);
         if (!cancelled) setAvailableTags(tags);
       } catch (error) {
         if (!cancelled) {
@@ -175,21 +173,28 @@ export default function ProfileScreen() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken]);
+  }, [currentUser, fetchWithAuth]);
 
   // Load blocked users for this profile tab (also on focus)
   const loadBlocked = React.useCallback(async () => {
-    if (!accessToken) { setBlockedUsers([]); return; }
+    if (!currentUser) {
+      setBlockedUsers([]);
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/me/blocks`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const res = await fetchWithAuth(`${API_BASE_URL}/api/users/me/blocks`);
       const data = (await res.json()) as ApiUser[] | { error?: string };
       setBlockedUsers(Array.isArray(data) ? data : []);
     } catch {
       setBlockedUsers([]);
     }
-  }, [accessToken]);
+  }, [currentUser, fetchWithAuth]);
 
-  useEffect(() => { if (accessToken) { setBlockedLoading(true); loadBlocked().finally(() => setBlockedLoading(false)); } }, [accessToken, loadBlocked]);
+  useEffect(() => {
+    if (!currentUser) return;
+    setBlockedLoading(true);
+    loadBlocked().finally(() => setBlockedLoading(false));
+  }, [currentUser, loadBlocked]);
   useFocusEffect(
     React.useCallback(() => {
       let active = true;
@@ -199,11 +204,9 @@ export default function ProfileScreen() {
   );
 
   const handleUnblock = async (userId: number) => {
-    if (!accessToken) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
+      const res = await fetchWithAuth(`${API_BASE_URL}/api/users/${userId}/block`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (res.ok || res.status === 204) {
         setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -237,7 +240,7 @@ export default function ProfileScreen() {
   };
 
   const handleSaveName = async () => {
-    if (!currentUser || !accessToken) return;
+    if (!currentUser) return;
 
     const trimmed = nameInput.trim();
     if (!trimmed) {
@@ -254,11 +257,7 @@ export default function ProfileScreen() {
     setNameError(null);
 
     try {
-      const updated = await updateUserProfile(
-        currentUser.id,
-        { name: trimmed },
-        accessToken
-      );
+      const updated = await updateUserProfile(currentUser.id, { name: trimmed }, fetchWithAuth);
       applyUserUpdate(updated);
       setNameInput(updated.name ?? trimmed);
       setIsEditingName(false);
@@ -273,9 +272,8 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
     setPrefetchedUsers(null);
-    router.replace("/login");
+    void logout();
   };
 
   // ✅ Stable version for Android + iOS
@@ -345,7 +343,7 @@ export default function ProfileScreen() {
   };
 
   const handleToggleTag = async (tag: string) => {
-    if (!currentUser || !accessToken) return;
+    if (!currentUser) return;
 
     const previous = [...selectedTags];
     const isRemoving = previous.includes(tag);
@@ -365,11 +363,7 @@ export default function ProfileScreen() {
     setTagError(null);
 
     try {
-      const updated = await updateUserProfile(
-        currentUser.id,
-        { interestTags: sortedNext },
-        accessToken
-      );
+      const updated = await updateUserProfile(currentUser.id, { interestTags: sortedNext }, fetchWithAuth);
       applyUserUpdate(updated);
       setSelectedTags(updated.interestTags ?? []);
     } catch (error) {

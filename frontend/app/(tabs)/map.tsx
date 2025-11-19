@@ -52,6 +52,7 @@ export default function MapScreen() {
     prefetchedUsers,
     setPrefetchedUsers,
     isStatusUpdating,
+    fetchWithAuth,
   } = useUser();
   const currentUserId = currentUser?.id;
 
@@ -81,10 +82,10 @@ export default function MapScreen() {
     userFetchAbortRef.current = controller;
     setIsRefreshingUsers(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/users`, {
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-        signal: controller.signal,
-      });
+      const response = await fetchWithAuth(
+        `${API_BASE_URL}/users`,
+        { signal: controller.signal, skipAuth: !accessToken }
+      );
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       const data = (await response.json()) as ApiUser[];
       const filtered = data.filter(
@@ -106,7 +107,7 @@ export default function MapScreen() {
         setIsRefreshingUsers(false);
       }
     }
-  }, [accessToken, currentUserId, setPrefetchedUsers]);
+  }, [accessToken, currentUserId, fetchWithAuth, setPrefetchedUsers]);
 
   // Compute simple match score (% overlap of tags using Jaccard)
   const matchPercent = useCallback(
@@ -128,18 +129,17 @@ export default function MapScreen() {
       if (!currentUser) return;
       try {
         // Fetch latest receiver for display info
-        const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-        });
+      const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`, {
+        skipAuth: !accessToken,
+      });
         let latestUser: ApiUser | null = null;
         if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
         // Create or get chat session
-        const resp = await fetch(`${API_BASE_URL}/api/messages/session`, {
+        const resp = await fetchWithAuth(`${API_BASE_URL}/api/messages/session`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
           body: JSON.stringify({ participants: [currentUser.id, receiverId] }),
         });
@@ -159,7 +159,7 @@ export default function MapScreen() {
         console.error(e);
       }
     },
-    [accessToken, currentUser]
+    [accessToken, currentUser, fetchWithAuth]
   );
 
   // Actions handled by shared UserOverflowMenu
@@ -190,9 +190,9 @@ export default function MapScreen() {
       return;
     }
 
-    if (!accessToken || !currentUser) return;
+    if (!currentUser) return;
     void loadUsers();
-  }, [prefetchedUsers, accessToken, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
+  }, [prefetchedUsers, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
 
   // 🧠 Bridge effect for late prefetched users
   useEffect(() => {
@@ -288,9 +288,9 @@ export default function MapScreen() {
   // Always refresh user list when the map tab gains focus (covers block/unblock changes)
   useFocusEffect(
     useCallback(() => {
-      if (!accessToken) return;
+      if (!currentUser) return;
       void loadUsers();
-    }, [accessToken, loadUsers])
+    }, [currentUser, loadUsers])
   );
 
   const textColor = { color: colors.text };

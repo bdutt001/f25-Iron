@@ -95,6 +95,7 @@ export default function NearbyScreen() {
     currentUser,
     prefetchedUsers,
     setPrefetchedUsers,
+    fetchWithAuth,
   } = useUser();
 
   /**
@@ -189,9 +190,7 @@ export default function NearbyScreen() {
           return;
         }
 
-        const response = await fetch(`${API_BASE_URL}/users`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users`);
         if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
@@ -211,7 +210,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    [accessToken, setPrefetchedUsers, buildRankedList]
+    [accessToken, fetchWithAuth, setPrefetchedUsers, buildRankedList]
   );
 
   /**
@@ -220,9 +219,7 @@ export default function NearbyScreen() {
   const refreshTrustScore = useCallback(
     async (userId: number) => {
       try {
-        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/${userId}`);
         if (!response.ok) throw new Error(`Failed to fetch user ${userId} (${response.status})`);
         const updatedUser = (await response.json()) as ApiUser;
 
@@ -237,7 +234,7 @@ export default function NearbyScreen() {
         console.error("Failed to refresh trust score:", err);
       }
     },
-    [accessToken]
+    [fetchWithAuth]
   );
 
   /**
@@ -321,18 +318,15 @@ export default function NearbyScreen() {
 
     try {
       // Fetch latest receiver (for name/picture)
-      const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`);
       let latestUser: ApiUser | null = null;
       if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
       // Create or get chat session
-      const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/session`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({
           participants: [currentUser.id, receiverId],
@@ -364,11 +358,10 @@ export default function NearbyScreen() {
 
   const handleBlock = useCallback(
     async (userId: number) => {
-      if (!accessToken) return Alert.alert("Not logged in", "Please log in to block users.", undefined, alertAppearance);
+      if (!currentUser) return Alert.alert("Not logged in", "Please log in to block users.", undefined, alertAppearance);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/users/${userId}/block`, {
+        const res = await fetchWithAuth(`${API_BASE_URL}/api/users/${userId}/block`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!res.ok) throw new Error(`Failed to block (${res.status})`);
         setUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -378,7 +371,7 @@ export default function NearbyScreen() {
         Alert.alert("Error", "Could not block user. Please try again.", undefined, alertAppearance);
       }
     },
-    [accessToken, alertAppearance, setPrefetchedUsers, prefetchedUsers]
+    [alertAppearance, currentUser, fetchWithAuth, prefetchedUsers, setPrefetchedUsers]
   );
 
   // Unblock flow moved to Profile tab
@@ -387,7 +380,7 @@ export default function NearbyScreen() {
 
   const startReportFlow = useCallback(
     (user: ApiUser) => {
-      if (!accessToken || !currentUser) {
+      if (!currentUser) {
         Alert.alert("Error", "You must be logged in to report users.", undefined, alertAppearance);
         return;
       }
@@ -397,9 +390,9 @@ export default function NearbyScreen() {
       }
       const submitReport = async (reason: string, severity = 1) => {
         try {
-          const resp = await fetch(`${API_BASE_URL}/api/report`, {
+          const resp = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ reportedId: user.id, reason, severity }),
           });
           const payload = (await resp.json()) as { trustScore?: number; error?: string };
@@ -423,7 +416,7 @@ export default function NearbyScreen() {
         alertAppearance
       );
     },
-    [accessToken, alertAppearance, currentUser, refreshTrustScore]
+    [alertAppearance, currentUser, fetchWithAuth, refreshTrustScore]
   );
 
   // Loading and error UI
@@ -726,7 +719,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: Platform.OS === "android" ? 10 : 16,
+    paddingBottom: Platform.OS === "android" ? 6 : 16,
     marginBottom: 12,
     elevation: 1,
     shadowColor: "#000",
@@ -757,12 +750,13 @@ const styles = StyleSheet.create({
 
   /* Bottom buttons layout */
   cardFooter: {
-    marginTop: Platform.OS === "android" ? 8 : 12,
+    marginTop: Platform.OS === "android" ? 4 : 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: Platform.OS === "ios" ? 2 : 0,
-    marginBottom: Platform.OS === "android" ? -2 : 0,
+    marginBottom: 0,
+    ...(Platform.OS === "android" ? { minHeight: 40 } : {}),
   },
   chatButton: {
     width: 40,

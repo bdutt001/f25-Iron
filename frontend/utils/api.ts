@@ -1,6 +1,10 @@
 import { Platform } from "react-native";
 import type { CurrentUser } from "../context/UserContext";
 
+type FetchInput = Parameters<typeof fetch>[0];
+export type AuthorizedRequestInit = RequestInit & { skipAuth?: boolean };
+export type AuthorizedFetch = (input: FetchInput, init?: AuthorizedRequestInit) => Promise<Response>;
+
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ??
   (Platform.OS === "android"
@@ -76,10 +80,6 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
 });
 
-const buildAuthHeaders = (token: string): Record<string, string> => ({
-  Authorization: `Bearer ${token}`,
-});
-
 const extractErrorMessage = async (response: Response): Promise<string> => {
   try {
     const data = (await response.json()) as JsonRecord | undefined;
@@ -105,10 +105,8 @@ export const fetchProfile = async (accessToken: string): Promise<CurrentUser> =>
 };
 
 // ✅ Fetch available tags
-export const fetchTagCatalog = async (accessToken: string): Promise<string[]> => {
-  const response = await fetch(`${API_BASE_URL}/tags/catalog`, {
-    headers: buildAuthHeaders(accessToken),
-  });
+export const fetchTagCatalog = async (fetcher: AuthorizedFetch): Promise<string[]> => {
+  const response = await fetcher(`${API_BASE_URL}/tags/catalog`);
 
   if (!response.ok) {
     throw new Error(await extractErrorMessage(response));
@@ -129,7 +127,7 @@ export type UpdateUserProfilePayload = {
 export const updateUserProfile = async (
   userId: number,
   payload: UpdateUserProfilePayload,
-  accessToken: string
+  fetcher: AuthorizedFetch
 ): Promise<CurrentUser> => {
   const body: Record<string, unknown> = {};
 
@@ -141,11 +139,10 @@ export const updateUserProfile = async (
     throw new Error("No profile fields provided.");
   }
 
-  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+  const response = await fetcher(`${API_BASE_URL}/users/${userId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(accessToken),
     },
     body: JSON.stringify(body),
   });
@@ -160,13 +157,12 @@ export const updateUserProfile = async (
 
 export const updateUserVisibility = async (
   visibility: boolean,
-  accessToken: string
+  fetcher: AuthorizedFetch
 ): Promise<CurrentUser> => {
-  const response = await fetch(`${API_BASE_URL}/users/me/visibility`, {
+  const response = await fetcher(`${API_BASE_URL}/users/me/visibility`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(accessToken),
     },
     body: JSON.stringify({ visibility }),
   });

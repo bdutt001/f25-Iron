@@ -51,7 +51,7 @@ export default function ChatScreen() {
     returnToMessages?: string;
   }>();
   const navigation = useNavigation();
-  const { currentUser, accessToken } = useUser();
+  const { currentUser, fetchWithAuth } = useUser();
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -67,6 +67,7 @@ export default function ChatScreen() {
   const hasNavigatedAwayRef = useRef(false);
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
+  const isAndroid = Platform.OS === "android";
   const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + insets.top : 0;
   const safeAreaEdges: Edge[] =
     Platform.OS === "ios" ? ["bottom", "left", "right", "top"] : ["bottom", "left", "right"];
@@ -107,14 +108,34 @@ export default function ChatScreen() {
   useLayoutEffect(() => {
     if (!name) return;
     navigation.setOptions({
-      headerStyle: { backgroundColor: colors.background },
+      headerStyle: {
+        backgroundColor: colors.background,
+        ...(isAndroid
+          ? {
+              height: 56,
+              minHeight: 56,
+              maxHeight: 56,
+              paddingTop: 0,
+              paddingBottom: 0,
+              elevation: 0,
+              shadowOpacity: 0,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: colors.border,
+            }
+          : {}),
+      },
       headerTitleAlign: "center",
       headerBackTitleVisible: false,
-      headerStatusBarHeight: Platform.OS === "android" ? 0 : undefined,
-      headerTitleContainerStyle:
-        Platform.OS === "android" ? { alignItems: "center", paddingTop: 0 } : undefined,
-      headerRightContainerStyle: Platform.OS === "android" ? { paddingTop: 0 } : undefined,
-      headerLeftContainerStyle: Platform.OS === "android" ? { paddingTop: 0 } : undefined,
+      headerStatusBarHeight: isAndroid ? 0 : undefined,
+      headerTitleContainerStyle: isAndroid
+        ? { alignItems: "center", justifyContent: "center", paddingTop: 0, marginTop: 0, height: 56 }
+        : undefined,
+      headerRightContainerStyle: isAndroid
+        ? { paddingTop: 0, marginTop: 0, justifyContent: "center", alignItems: "center", height: 56 }
+        : undefined,
+      headerLeftContainerStyle: isAndroid
+        ? { paddingTop: 0, marginTop: 0, justifyContent: "center", alignItems: "center", height: 56 }
+        : undefined,
       headerTitle: () => (
         <View style={headerTitleStyles.container}>
           {resolvedProfileImage ? (
@@ -144,6 +165,8 @@ export default function ChatScreen() {
     name,
     colors.background,
     colors.icon,
+    colors.border,
+    isAndroid,
     headerTitleStyles,
     resolvedProfileImage,
     receiverInitial,
@@ -162,14 +185,13 @@ export default function ChatScreen() {
   // Fetch messages
   const fetchMessages = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (!accessToken) return;
+      if (!currentUser) return;
       const showLoading = !options?.silent;
       if (showLoading) setLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/messages/${chatId}`, {
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/${chatId}`, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
           },
         });
         if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
@@ -184,7 +206,7 @@ export default function ChatScreen() {
         if (showLoading) setLoading(false);
       }
     },
-    [chatId, accessToken]
+    [chatId, fetchWithAuth, currentUser]
   );
 
   useFocusEffect(
@@ -302,11 +324,10 @@ export default function ChatScreen() {
   const handleSend = async () => {
     if (!trimmedMessage || !currentUser) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messages`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           content: trimmedMessage,

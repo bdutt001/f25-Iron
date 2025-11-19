@@ -15,7 +15,7 @@ type Props = {
 };
 
 export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported }: Props) {
-  const { currentUser, accessToken } = useUser();
+  const { currentUser, fetchWithAuth } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
   const { isDark } = useAppTheme();
   const alertAppearance = useMemo<AlertOptions>(
@@ -34,7 +34,7 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
   const doReport = async () => {
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective) return;
-    if (!targetUser || !accessToken || !currentUser) {
+    if (!targetUser || !currentUser) {
       Alert.alert("Error", "You must be logged in to report.", undefined, alertAppearance);
       return;
     }
@@ -59,11 +59,11 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
 
   const submitReport = async (reason: string) => {
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
-    if (!effective || !accessToken) return;
+    if (!effective) return;
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/report`, {
+      const resp = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reportedId: effective.id, reason, severity: 1 }),
       });
       const payload = (await resp.json()) as { error?: string };
@@ -77,14 +77,13 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
 
   const doBlock = async () => {
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
-    if (!effective || !accessToken) {
+    if (!effective) {
       Alert.alert("Error", "You must be logged in to block.", undefined, alertAppearance);
       return;
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/${effective.id}/block`, {
+      const res = await fetchWithAuth(`${API_BASE_URL}/api/users/${effective.id}/block`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) throw new Error(`Failed to block (${res.status})`);
       onBlocked?.(effective.id);
