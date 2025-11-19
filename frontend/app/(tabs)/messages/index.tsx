@@ -14,6 +14,8 @@ type Conversation = {
   receiverProfilePicture?: string | null;
   lastMessage?: string;
   lastTimestamp?: string;
+  lastSenderId?: number | null;
+  lastIncomingTimestamp?: string | null;
 };
 
 export default function MessagesScreen() {
@@ -54,23 +56,23 @@ export default function MessagesScreen() {
         previewUnread: { color: colors.text, fontWeight: "600" },
         timeRow: { flexDirection: "row", alignItems: "center" },
         unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent, marginRight: 6 },
-        time: { color: isDark ? "#8b8ca0" : "#6b7280", fontSize: 12 },
+        time: { color: isDark ? "#a5acc7" : "#6b7280", fontSize: 12 },
         avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 12 },
         avatarPlaceholder: {
           width: 52,
           height: 52,
           borderRadius: 26,
-          backgroundColor: isDark ? "#252634" : "#e5e7eb",
+          backgroundColor: isDark ? "#2b3147" : "#e5e7eb",
           justifyContent: "center",
           alignItems: "center",
           marginRight: 12,
         },
-        avatarInitial: { fontSize: 18, fontWeight: "700", color: isDark ? "#e5e7eb" : "#374151" },
-        note: { color: isDark ? "#BBBBBB" : "#777" },
+        avatarInitial: { fontSize: 18, fontWeight: "700", color: isDark ? "#f0f4ff" : "#374151" },
+        note: { color: isDark ? "#cfd3e5" : "#777" },
         error: { color: "#c00", marginBottom: 12 },
         retryButton: { backgroundColor: colors.accent, padding: 10, borderRadius: 8 },
         retryText: { color: "#fff", fontWeight: "bold" },
-        loadingText: { color: isDark ? "#FFFFFF" : "#111111" },
+        loadingText: { color: colors.text },
       }),
     [isDark, colors]
   );
@@ -188,8 +190,15 @@ export default function MessagesScreen() {
             const lastReadTimestamp = lastRead[item.id];
             const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
             const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
-            const isUnread =
-              Number.isFinite(lastMsgTime) && (!Number.isFinite(lastReadTime) || lastMsgTime > lastReadTime);
+            const lastIncomingTime = item.lastIncomingTimestamp ? Date.parse(item.lastIncomingTimestamp) : NaN;
+            const hasUnreadFromOthers = Number.isFinite(lastIncomingTime)
+              ? Number.isFinite(lastReadTime)
+                ? lastIncomingTime > lastReadTime
+                : item.lastSenderId !== currentUser?.id &&
+                  Number.isFinite(lastMsgTime) &&
+                  lastIncomingTime === lastMsgTime
+              : false;
+            const isUnread = hasUnreadFromOthers;
 
             const handleOpenChat = () => {
               void markConversationRead(item.id, item.lastTimestamp || undefined);

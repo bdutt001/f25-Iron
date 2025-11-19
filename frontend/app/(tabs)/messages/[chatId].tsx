@@ -1,7 +1,6 @@
 import React, { useState, useLayoutEffect, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   KeyboardAvoidingView,
-  Keyboard,
   Platform,
   View,
   FlatList,
@@ -50,15 +49,17 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   // ✅ Add FlatList ref for auto-scroll
   const flatListRef = useRef<FlatList<Message>>(null);
+  const hasNavigatedAwayRef = useRef(false);
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
   const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + insets.top : 0;
   const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
   const goToMessagesList = useCallback(() => {
+    if (hasNavigatedAwayRef.current) return;
+    hasNavigatedAwayRef.current = true;
     router.replace("/(tabs)/messages");
   }, []);
   const resolvedProfileImage = useMemo(() => {
@@ -68,44 +69,33 @@ export default function ChatScreen() {
   const receiverInitial = useMemo(() => name?.[0]?.toUpperCase() || "?", [name]);
   const headerTitleStyles = useMemo(
     () => ({
-      container: { alignItems: "center", justifyContent: "center" },
-      avatar: { width: 44, height: 44, borderRadius: 22, marginBottom: 4 },
+      container: { flexDirection: "row", alignItems: "center" },
+      avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
       avatarPlaceholder: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         backgroundColor: colors.card,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: colors.border,
         alignItems: "center",
         justifyContent: "center",
-        marginBottom: 4,
+        marginRight: 10,
       },
-      initial: { fontWeight: "700", color: colors.text },
-      name: { fontSize: 16, fontWeight: "600", color: colors.text },
+      initial: { fontWeight: "700", color: colors.text, fontSize: 16 },
+      name: { fontSize: 17, fontWeight: "600", color: colors.text },
+      menuButton: { paddingHorizontal: 8, minHeight: 40, justifyContent: "center", alignItems: "center" },
     }),
     [colors]
   );
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
-      setAndroidKeyboardHeight(event.endCoordinates.height || 0);
-    });
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-      setAndroidKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   // ✅ Simplify header — just show title + Report button
   useLayoutEffect(() => {
     if (!name) return;
     navigation.setOptions({
+      headerStyle: { backgroundColor: colors.background },
       headerTitleAlign: "center",
+      headerBackTitleVisible: false,
       headerTitle: () => (
         <View style={headerTitleStyles.container}>
           {resolvedProfileImage ? (
@@ -120,29 +110,21 @@ export default function ChatScreen() {
           </Text>
         </View>
       ),
-      headerLeft: shouldReturnToMessages
-        ? () => (
-            <TouchableOpacity
-              onPress={goToMessagesList}
-              style={{ paddingHorizontal: 8, paddingVertical: 6, flexDirection: "row", alignItems: "center" }}
-            >
-              <Ionicons name="chevron-back" size={20} color={colors.text} />
-              <Text style={{ color: colors.text, fontWeight: "600", marginLeft: 4 }}>Chats</Text>
-            </TouchableOpacity>
-          )
-        : undefined,
       headerRight: () => (
-        <TouchableOpacity onPress={() => setMenuOpen(true)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
-          <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+        <TouchableOpacity
+          onPress={() => setMenuOpen(true)}
+          style={headerTitleStyles.menuButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
         </TouchableOpacity>
       ),
     });
   }, [
     navigation,
     name,
-    colors.text,
-    shouldReturnToMessages,
-    goToMessagesList,
+    colors.background,
+    colors.icon,
     headerTitleStyles,
     resolvedProfileImage,
     receiverInitial,
@@ -151,6 +133,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!shouldReturnToMessages) return;
     const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+      if (hasNavigatedAwayRef.current) return;
       event.preventDefault();
       goToMessagesList();
     });
@@ -230,34 +213,47 @@ export default function ChatScreen() {
           marginRight: 8,
         },
         messageAvatarInitial: { fontSize: 16, fontWeight: "bold", color: colors.text },
-        inputContainer: {
+        composerWrapper: {
+          paddingHorizontal: 16,
+        },
+        composerSurface: {
           flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 10,
-          paddingTop: 10,
-          paddingBottom: 10,
-          borderTopWidth: StyleSheet.hairlineWidth,
+          alignItems: "flex-end",
+          borderRadius: 28,
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          backgroundColor: isDark ? colors.card : "#f4f5f7",
+          borderWidth: StyleSheet.hairlineWidth,
           borderColor: colors.border,
-          backgroundColor: colors.card, // keeps visible above keyboard
+          shadowColor: "#000",
+          shadowOpacity: isDark ? 0.25 : 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 3,
+          minHeight: 52,
         },
         input: {
           flex: 1,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 20,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          marginRight: 8,
-          backgroundColor: colors.background,
+          fontSize: 16,
           color: colors.text,
+          maxHeight: 120,
+          paddingRight: 12,
+          paddingVertical: Platform.OS === "ios" ? 12 : 8,
+          textAlignVertical: "center",
+          lineHeight: 20,
         },
         sendButton: {
-          width: 44,
-          height: 44,
-          borderRadius: 22,
+          width: 42,
+          height: 42,
+          borderRadius: 21,
           backgroundColor: colors.accent,
           alignItems: "center",
           justifyContent: "center",
+          shadowColor: "#000",
+          shadowOpacity: 0.2,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 4,
         },
         sendButtonDisabled: { opacity: 0.4 },
         centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background },
@@ -265,6 +261,9 @@ export default function ChatScreen() {
       }),
     [colors, isDark]
   );
+
+  const composerBottomInset = Math.max(insets.bottom, 8) + 8;
+  const keyboardBehavior = Platform.OS === "ios" ? "padding" : "height";
 
   // Send a message
   const handleSend = async () => {
@@ -301,14 +300,14 @@ export default function ChatScreen() {
     );
   }
 
-  // ✅ Fixed layout so input bar moves above keyboard (especially on iPhone 14 Pro / iOS 18)
+  // ✅ Fixed layout so input bar moves above the keyboard on all devices
   return (
     <>
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["bottom", "left", "right", "top"]}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={keyboardVerticalOffset} // ✅ calibrated offset for stack header
+        behavior={keyboardBehavior}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <View style={styles.chatBody}>
           {messages.length === 0 && (
@@ -361,26 +360,30 @@ export default function ChatScreen() {
           />
         </View>
 
-        <View style={[styles.inputContainer, { paddingBottom: 10 + insets.bottom }]}>
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message..."
-            placeholderTextColor={colors.muted}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            onSubmitEditing={handleSend}
-            returnKeyType="send"
-            blurOnSubmit={false}
-          />
-          <TouchableOpacity
-            onPress={handleSend}
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
-            disabled={!canSend}
-            style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-          >
-            <Ionicons name="send" size={20} color={canSend ? "#fff" : colors.muted} />
-          </TouchableOpacity>
+        <View style={[styles.composerWrapper, { paddingBottom: composerBottomInset }]}>
+          <View style={styles.composerSurface}>
+            <TextInput
+              style={styles.input}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.muted}
+              value={newMessage}
+              onChangeText={setNewMessage}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              multiline
+              autoCorrect
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              disabled={!canSend}
+              style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+            >
+              <Ionicons name="send" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

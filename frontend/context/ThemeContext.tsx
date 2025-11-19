@@ -17,6 +17,7 @@ type ThemeContextValue = {
     muted: string;
     border: string;
     accent: string;
+    icon: string;
   };
   navigationTheme: Theme;
   statusBarStyle: "light" | "dark";
@@ -58,12 +59,13 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
   const colors = useMemo(
     () => ({
-      background: isDark ? "#0f172a" : "#f5f7fa",
-      card: isDark ? "#191921" : "#ffffff",
-      text: isDark ? "#ffffff" : "#0f172a",
-      muted: isDark ? "#b8b9c9" : "#6b7280",
-      border: isDark ? "#1f2937" : "#e5e7eb",
+      background: isDark ? "#141b2f" : "#f5f7fa",
+      card: isDark ? "#1f2639" : "#ffffff",
+      text: isDark ? "#f6f7ff" : "#0f172a",
+      muted: isDark ? "#c8cbe0" : "#6b7280",
+      border: isDark ? "#2c3653" : "#e5e7eb",
       accent: isDark ? "#66a8ff" : "#2563eb",
+      icon: isDark ? "#d6dbf5" : "#475569",
     }),
     [isDark]
   );
@@ -76,7 +78,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
             colors: {
               ...NavDarkTheme.colors,
               background: colors.background,
-              card: "#0f172a",
+              card: colors.card,
               text: colors.text,
               border: colors.border,
               primary: colors.accent,

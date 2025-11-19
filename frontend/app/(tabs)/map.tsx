@@ -454,28 +454,23 @@ useEffect(() => {
             {/* Action bar: message + more menu (report/block) */}
             {!selectedUser.isCurrentUser && (
               <>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 16, alignItems: "center" }}>
+              <View style={styles.calloutActionsRow}>
                 <TouchableOpacity
                   onPress={() => startChat(selectedUser.id, selectedUser.name || selectedUser.email)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: "#007BFF",
-                    borderRadius: 18,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                  }}
+                  style={[styles.calloutActionButton, { backgroundColor: colors.accent }]}
+                  activeOpacity={0.85}
                 >
                   <Ionicons name="chatbubble" size={18} color="#fff" />
-                  <Text style={{ color: "#fff", marginLeft: 8, fontWeight: "700" }}>Message</Text>
+                  <Text style={styles.calloutActionLabel}>Message</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => setMenuTarget(selectedUser)}
                   hitSlop={{ left: 8, right: 8, top: 6, bottom: 6 }}
-                  style={{ paddingHorizontal: 2, paddingVertical: 6 }}
+                  style={styles.calloutActionMenu}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
                 </TouchableOpacity>
               </View>
               </>
@@ -651,6 +646,28 @@ const styles = StyleSheet.create({
   },
   calloutTagText: { fontSize: 12, color: "#66a8ff", fontWeight: "500" },
   calloutEmptyTags: { marginTop: 8, fontSize: 12, color: "#999" },
+  calloutActionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+  },
+  calloutActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 44,
+  },
+  calloutActionLabel: { color: "#fff", marginLeft: 8, fontWeight: "700", fontSize: 15 },
+  calloutActionMenu: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   trustScoreName: { textAlign: "right", fontSize: 15, marginTop: 6 },
   trustScoreNumber: { fontSize: 15, fontWeight: "700" },

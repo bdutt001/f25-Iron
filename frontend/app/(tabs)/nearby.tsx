@@ -515,7 +515,7 @@ export default function NearbyScreen() {
 
           // Dynamic color based on trust score
           const scoreTS = item.trustScore ?? 0;
-          let trustColor = "#007BFF";
+          let trustColor = colors.accent;
           if (scoreTS >= 90) trustColor = "#28a745";
           else if (scoreTS >= 70) trustColor = "#7ED957";
           else if (scoreTS >= 51) trustColor = "#FFC107";
@@ -571,7 +571,11 @@ export default function NearbyScreen() {
                 {/* Chat */}
                 <Pressable
                   onPress={() => startChat(item.id, item.name || item.email)}
-                  style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
+                  style={({ pressed }) => [
+                    styles.chatButton,
+                    { backgroundColor: colors.accent },
+                    pressed && { opacity: 0.85 },
+                  ]}
                 >
                   <Ionicons
                     name="chatbubble"
@@ -600,7 +604,7 @@ export default function NearbyScreen() {
                       startReportFlow(item as unknown as ApiUser);
                     }}
                   >
-                    <Text style={styles.inlineActionDanger}>Report</Text>
+                    <Text style={[styles.inlineActionDanger, { backgroundColor: colors.card }]}>Report</Text>
                   </TouchableOpacity>
                   <View style={{ width: 8 }} />
                   <TouchableOpacity
@@ -610,7 +614,7 @@ export default function NearbyScreen() {
                       void handleBlock((item as any).id);
                     }}
                   >
-                    <Text style={styles.inlineActionDanger}>Block</Text>
+                    <Text style={[styles.inlineActionDanger, { backgroundColor: colors.card }]}>Block</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -619,12 +623,17 @@ export default function NearbyScreen() {
                   onPress={() => setMenuTarget(item as unknown as ApiUser)}
                   style={styles.moreButton}
                   activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
                   <Ionicons
                     name="ellipsis-vertical"
                     size={18}
-                    color="#333"
-                    style={Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center', lineHeight: 18 } : undefined}
+                    color={colors.icon}
+                    style={
+                      Platform.OS === "android"
+                        ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                        : undefined
+                    }
                   />
                 </TouchableOpacity>
               </View>
@@ -719,7 +728,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
   },
-  closestCard: { borderWidth: 1, borderColor: "#007BFF" },
+  closestCard: { borderWidth: 1 },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   rightInfo: { alignItems: "flex-end" },
   rightTrustLabel: { fontSize: 13, marginTop: 4, fontWeight: "700" },
@@ -742,16 +751,16 @@ const styles = StyleSheet.create({
 
   /* Bottom buttons layout */
   cardFooter: {
-    marginTop: 10,
+    marginTop: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: Platform.OS === "ios" ? 2 : 0,
   },
   chatButton: {
-    width: 36,
-    height: 36,
-    backgroundColor: "#007BFF",
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -774,7 +783,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   reportContainer: { alignItems: "center", minWidth: 20 },
-  moreButton: { width: 32, height: 32, justifyContent: "center", alignItems: "center" },
+  moreButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
   flexGrow: { flexGrow: 1 },
   modalBackdrop: {
@@ -821,7 +836,7 @@ const styles = StyleSheet.create({
   inlineActionDanger: {
     color: "#dc3545",
     fontWeight: "700",
-    paddingVertical: 6,
+    paddingVertical: 4,
     paddingHorizontal: 0,
     fontSize: 15,
     backgroundColor: "#fff",
@@ -831,6 +846,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 1,
+    lineHeight: 18,
+    ...(Platform.OS === "android" ? { includeFontPadding: false, textAlignVertical: "center" } : null),
   },
 });
 
