@@ -27,6 +27,7 @@ export type CurrentUser = {
   profilePicture?: string | null;
   trustScore?: number;
   visibility?: boolean;
+  isAdmin?: boolean;
 };
 
 /** Context state shape shared throughout the app */
@@ -99,6 +100,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
                 interestTags: updated.interestTags ?? prev.interestTags,
                 profilePicture: updated.profilePicture ?? prev.profilePicture,
                 visibility: updated.visibility ?? visibilityFlag,
+                isAdmin: updated.isAdmin ?? prev.isAdmin,
               }
             : updated
         );

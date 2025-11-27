@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
+import { useUser } from "../../context/UserContext";
 
 export default function TabLayout() {
+  const { user } = useUser();
   return (
+    
       <Tabs
         screenOptions={{
           headerShown: true,
@@ -44,7 +47,18 @@ export default function TabLayout() {
             <Ionicons name="person-circle-outline" color={color} size={size} />
             ),
           }}
-        />
+          />
+          // example in a tabs layout
+          
+          <Tabs.Screen
+            name="AdminReportsScreen"
+            options={{
+              title: "Admin",
+              
+              /* Will deal with isAdmin parameter later */
+              //href: user?.isAdmin ? "/(tabs)/AdminReportsScreen" : null, // hides tab if not admin
+            }}
+          />
       </Tabs>
   );
 }

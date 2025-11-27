@@ -252,6 +252,7 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     console.log("🧩 /me → user.interestTags:", user.interestTags);
+    
     return res.json(serializeUser(user));
   } catch (error) {
     console.error("Profile Error:", error);

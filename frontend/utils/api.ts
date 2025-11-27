@@ -74,6 +74,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),
   visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
+  isAdmin: normalizeOptionalBoolean(payload.isAdmin),
 });
 
 const buildAuthHeaders = (token: string): Record<string, string> => ({

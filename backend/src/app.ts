@@ -7,7 +7,7 @@ import tagsRouter from "./routes/tags.routes";
 import messagesRouter from "./routes/messages.routes";
 import reportsRouter from "./routes/reports.routes";
 import reportRouter from "./routes/report.routes";
-
+import adminRouter from "./routes/admin.routes"
 // ✅ Load environment variables before anything else
 dotenv.config();
 
@@ -39,6 +39,9 @@ app.use("/api", reportRouter);
 // Mount messaging routes
 app.use("/api/messages", messagesRouter); 
 app.use("/messages", messagesRouter);
+
+//admin route
+app.use("/api/admin", adminRouter);
 
 // ✅ No /uploads folder served — Cloudinary handles media now
 
