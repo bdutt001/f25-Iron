@@ -444,7 +444,7 @@ export default function NearbyScreen() {
               <Text style={[styles.metricValue, textColor]}>
                 {formatDistance(item.distanceMeters)}
               </Text>
-              <Text style={[styles.metricValueSmall, textColor]}>
+              <Text style={[styles.metricValueSmall, { color: trustColor }]}>
                 Trust Score: <Text style={{ color: trustColor }}>{trustScore}</Text>
               </Text>
             </View>

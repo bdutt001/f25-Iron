@@ -1,5 +1,15 @@
-import React, { useState, useCallback, useMemo } from "react";
-import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Image } from "react-native";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import {
+  ActivityIndicator,
+  AppState,
+  FlatList,
+  Image,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
@@ -24,6 +34,7 @@ export default function MessagesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRead, setLastRead] = useState<Record<string, string>>({});
+  const [refreshing, setRefreshing] = useState(false);
   const { isDark, colors } = useAppTheme();
 
   const styles = useMemo(
@@ -31,31 +42,51 @@ export default function MessagesScreen() {
       StyleSheet.create({
         container: {
           flex: 1,
-          paddingHorizontal: 14,
+          paddingHorizontal: 16,
           paddingTop: 8,
           backgroundColor: colors.background,
         },
-        centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-        listContent: { paddingBottom: 24 },
+        topBar: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        },
+        heading: { fontSize: 24, fontWeight: "800", color: colors.text },
+        syncBadge: {
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: isDark ? "#1f263a" : "#e8edff",
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 999,
+          gap: 8,
+        },
+        syncText: { color: isDark ? "#dbeafe" : "#1e293b", fontWeight: "600", fontSize: 12 },
+        syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+        centered: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 16 },
+        listContent: { paddingBottom: 28 },
         chatItem: {
           padding: 14,
-          borderRadius: 16,
+          borderRadius: 18,
           backgroundColor: colors.card,
           marginBottom: 12,
           shadowColor: "#000",
-          shadowOpacity: isDark ? 0.35 : 0.08,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDark ? 0.3 : 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 5 },
           elevation: 3,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
         },
         chatRow: { flexDirection: "row", alignItems: "center" },
         chatHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
         name: { fontWeight: "700", fontSize: 16, color: colors.text },
         nameUnread: { fontWeight: "800" },
-        preview: { color: colors.muted, marginTop: 4 },
+        preview: { color: colors.muted, marginTop: 4, fontSize: 14 },
         previewUnread: { color: colors.text, fontWeight: "600" },
-        timeRow: { flexDirection: "row", alignItems: "center" },
-        unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent, marginRight: 6 },
+        timeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+        unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
         time: { color: isDark ? "#a5acc7" : "#6b7280", fontSize: 12 },
         avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 12 },
         avatarPlaceholder: {
@@ -68,9 +99,9 @@ export default function MessagesScreen() {
           marginRight: 12,
         },
         avatarInitial: { fontSize: 18, fontWeight: "700", color: isDark ? "#f0f4ff" : "#374151" },
-        note: { color: isDark ? "#cfd3e5" : "#777" },
-        error: { color: "#c00", marginBottom: 12 },
-        retryButton: { backgroundColor: colors.accent, padding: 10, borderRadius: 8 },
+        note: { color: isDark ? "#cfd3e5" : "#777", textAlign: "center" },
+        error: { color: "#c00", marginBottom: 12, textAlign: "center" },
+        retryButton: { backgroundColor: colors.accent, padding: 10, borderRadius: 12, marginTop: 8 },
         retryText: { color: "#fff", fontWeight: "bold" },
         loadingText: { color: colors.text },
       }),
@@ -78,11 +109,14 @@ export default function MessagesScreen() {
   );
 
   const loadConversations = useCallback(
-    async (options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean; fromPull?: boolean }) => {
       if (!currentUser) return;
 
       const showLoading = !options?.silent;
+      const fromPull = options?.fromPull === true;
+      const showErrors = showLoading || fromPull;
       if (showLoading) setLoading(true);
+      if (fromPull) setRefreshing(true);
 
       try {
         const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
@@ -105,24 +139,38 @@ export default function MessagesScreen() {
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (showLoading) {
+        if (showErrors) {
           setError(message);
         } else {
           console.warn("Background conversation refresh failed:", message);
         }
       } finally {
         if (showLoading) setLoading(false);
+        if (fromPull) setRefreshing(false);
       }
     },
     [currentUser, fetchWithAuth]
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        loadConversations({ silent: true });
+      }
+    });
+    return () => subscription.remove();
+  }, [loadConversations]);
+
+  const handleRefresh = useCallback(() => {
+    void loadConversations({ silent: true, fromPull: true });
+  }, [loadConversations]);
 
   useFocusEffect(
     useCallback(() => {
       loadConversations();
       const interval = setInterval(() => {
         loadConversations({ silent: true });
-      }, 5000);
+      }, 4000);
       return () => clearInterval(interval);
     }, [loadConversations])
   );
@@ -157,16 +205,19 @@ export default function MessagesScreen() {
 
   return (
     <View style={styles.container}>
-      {loading && (
-        <View style={{ position: "absolute", top: 10, right: 14 }}>
-          <ActivityIndicator size="small" color={colors.accent} />
+      <View style={styles.topBar}>
+        <Text style={styles.heading}>Messages</Text>
+        <View style={styles.syncBadge}>
+          <View style={[styles.syncDot, { opacity: loading ? 0.5 : 1 }]} />
+          <Text style={styles.syncText}>{loading ? "Syncing..." : "Up to date"}</Text>
+          {loading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
         </View>
-      )}
+      </View>
 
       {error ? (
         <View style={styles.centered}>
           <Text style={styles.error}>{error}</Text>
-          <Pressable onPress={loadConversations} style={styles.retryButton}>
+          <Pressable onPress={() => loadConversations()} style={styles.retryButton}>
             <Text style={styles.retryText}>Retry</Text>
           </Pressable>
         </View>
@@ -179,6 +230,14 @@ export default function MessagesScreen() {
           data={conversations}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+            />
+          }
           renderItem={({ item }) => {
             const imageUri = item.receiverProfilePicture
               ? item.receiverProfilePicture.startsWith("http")

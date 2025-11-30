@@ -1,29 +1,31 @@
-import React, { useState, useLayoutEffect, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  View,
+  ActivityIndicator,
+  Animated,
   FlatList,
+  Image,
+  Keyboard,
+  Platform,
+  Easing,
+  StyleSheet,
   Text,
   TextInput,
-  StyleSheet,
-  ActivityIndicator,
-  Image,
   TouchableOpacity,
-  Keyboard,
+  View,
 } from "react-native";
-import type { ImageStyle, TextStyle, ViewStyle } from "react-native";
-import { SafeAreaView, useSafeAreaInsets, Edge } from "react-native-safe-area-context"; // ✅ modern SafeAreaView
+import type { ListRenderItem } from "react-native";
+import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect } from "@react-navigation/native";
-import { useUser } from "../../../context/UserContext";
-import { Ionicons } from "@expo/vector-icons";
-import UserOverflowMenu from "../../../components/UserOverflowMenu";
 import { useAppTheme } from "../../../context/ThemeContext";
+import { useUser } from "../../../context/UserContext";
+import UserOverflowMenu from "../../../components/UserOverflowMenu";
 import { saveChatLastRead } from "@/utils/chatReadStorage";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const WS_BASE_URL = API_BASE_URL ? API_BASE_URL.replace(/^http/i, "ws") : undefined;
 
 type Message = {
   id: number;
@@ -33,14 +35,19 @@ type Message = {
   createdAt: string;
 };
 
-type HeaderTitleStyles = {
-  container: ViewStyle;
-  avatar: ImageStyle;
-  avatarPlaceholder: ViewStyle;
-  initial: TextStyle;
-  name: TextStyle;
-  menuButton: ViewStyle;
-};
+type StreamEnvelope =
+  | { type: "message"; data: Message }
+  | { type: "connected" }
+  | Record<string, unknown>;
+
+type DisplayItem =
+  | { kind: "separator"; id: string; label: string }
+  | { kind: "message"; item: Message };
+
+const sortMessages = (items: Message[]) =>
+  [...items].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
 
 export default function ChatScreen() {
   const { chatId, name, receiverId, profilePicture, returnToMessages } = useLocalSearchParams<{
@@ -51,7 +58,7 @@ export default function ChatScreen() {
     returnToMessages?: string;
   }>();
   const navigation = useNavigation();
-  const { currentUser, fetchWithAuth } = useUser();
+  const { currentUser, fetchWithAuth, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -60,269 +67,204 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [keyboardSpace, setKeyboardSpace] = useState(0);
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
 
-  // ✅ Add FlatList ref for auto-scroll
-  const flatListRef = useRef<FlatList<Message>>(null);
+  const flatListRef = useRef<FlatList<DisplayItem>>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shouldReconnectRef = useRef(false);
   const hasNavigatedAwayRef = useRef(false);
+
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
-  const isAndroid = Platform.OS === "android";
-  const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + insets.top : 0;
   const safeAreaEdges: Edge[] =
-    Platform.OS === "ios" ? ["bottom", "left", "right", "top"] : ["bottom", "left", "right"];
+    Platform.OS === "ios" ? ["left", "right", "bottom"] : ["left", "right", "bottom"];
   const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
-  const goToMessagesList = useCallback(() => {
-    if (hasNavigatedAwayRef.current) return;
-    hasNavigatedAwayRef.current = true;
-    router.replace("/(tabs)/messages");
-  }, []);
+  const baseBottomSpace = Math.max(insets.bottom, 0) + 2; // minimal gap above tab bar
+
   const resolvedProfileImage = useMemo(() => {
     if (!profilePicture) return null;
     return profilePicture.startsWith("http") ? profilePicture : `${API_BASE_URL}${profilePicture}`;
   }, [profilePicture]);
+
   const receiverInitial = useMemo(() => name?.[0]?.toUpperCase() || "?", [name]);
-  const headerTitleStyles = useMemo<HeaderTitleStyles>(
-    () => ({
-      container: { flexDirection: "row", alignItems: "center" },
-      avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
-      avatarPlaceholder: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.card,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.border,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 10,
-      },
-      initial: { fontWeight: "700", color: colors.text, fontSize: 16 },
-      name: { fontSize: 17, fontWeight: "600", color: colors.text },
-      menuButton: { paddingHorizontal: 8, minHeight: 40, justifyContent: "center", alignItems: "center" },
-    }),
-    [colors]
-  );
-
-  // ✅ Simplify header — just show title + Report button
-  useLayoutEffect(() => {
-    if (!name) return;
-    navigation.setOptions({
-      headerStyle: {
-        backgroundColor: colors.background,
-        ...(isAndroid
-          ? {
-              height: 56,
-              minHeight: 56,
-              maxHeight: 56,
-              paddingTop: 0,
-              paddingBottom: 0,
-              elevation: 0,
-              shadowOpacity: 0,
-              borderBottomWidth: StyleSheet.hairlineWidth,
-              borderBottomColor: colors.border,
-            }
-          : {}),
-      },
-      headerTitleAlign: "center",
-      headerBackTitleVisible: false,
-      headerStatusBarHeight: isAndroid ? 0 : undefined,
-      headerTitleContainerStyle: isAndroid
-        ? { alignItems: "center", justifyContent: "center", paddingTop: 0, marginTop: 0, height: 56 }
-        : undefined,
-      headerRightContainerStyle: isAndroid
-        ? { paddingTop: 0, marginTop: 0, justifyContent: "center", alignItems: "center", height: 56 }
-        : undefined,
-      headerLeftContainerStyle: isAndroid
-        ? { paddingTop: 0, marginTop: 0, justifyContent: "center", alignItems: "center", height: 56 }
-        : undefined,
-      headerTitle: () => (
-        <View style={headerTitleStyles.container}>
-          {resolvedProfileImage ? (
-            <Image source={{ uri: resolvedProfileImage }} style={headerTitleStyles.avatar} />
-          ) : (
-            <View style={headerTitleStyles.avatarPlaceholder}>
-              <Text style={headerTitleStyles.initial}>{receiverInitial}</Text>
-            </View>
-          )}
-          <Text style={headerTitleStyles.name} numberOfLines={1}>
-            {name}
-          </Text>
-        </View>
-      ),
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={() => setMenuOpen(true)}
-          style={headerTitleStyles.menuButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
-        </TouchableOpacity>
-      ),
-    });
-  }, [
-    navigation,
-    name,
-    colors.background,
-    colors.icon,
-    colors.border,
-    isAndroid,
-    headerTitleStyles,
-    resolvedProfileImage,
-    receiverInitial,
-  ]);
-
-  useEffect(() => {
-    if (!shouldReturnToMessages) return;
-    const unsubscribe = navigation.addListener("beforeRemove", (event) => {
-      if (hasNavigatedAwayRef.current) return;
-      event.preventDefault();
-      goToMessagesList();
-    });
-    return unsubscribe;
-  }, [navigation, shouldReturnToMessages, goToMessagesList]);
-
-  // Fetch messages
-  const fetchMessages = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!currentUser) return;
-      const showLoading = !options?.silent;
-      if (showLoading) setLoading(true);
-      try {
-        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/${chatId}`, {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-        if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
-        const data = (await response.json()) as Message[];
-        setMessages(data);
-
-        // ✅ Scroll to bottom after fetching messages
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
-      } catch (err) {
-        console.error("Fetch messages error:", err);
-      } finally {
-        if (showLoading) setLoading(false);
-      }
-    },
-    [chatId, fetchWithAuth, currentUser]
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchMessages();
-      const interval = setInterval(() => {
-        fetchMessages({ silent: true });
-      }, 4000);
-      return () => clearInterval(interval);
-    }, [fetchMessages])
-  );
-
-  useEffect(() => {
-    if (!chatId || messages.length === 0) return;
-    const latest = messages[messages.length - 1];
-    if (!latest?.createdAt) return;
-    void saveChatLastRead(String(chatId), latest.createdAt);
-  }, [chatId, messages]);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        container: { flex: 1, backgroundColor: colors.background },
-        chatBody: { flex: 1 },
-        messagesList: { flex: 1 },
-        messagesContainer: { padding: 10, flexGrow: 1 },
-        messageRow: { flexDirection: "row", alignItems: "flex-end", marginVertical: 4 },
-        messageBubble: { padding: 10, borderRadius: 12, maxWidth: "75%" },
-        myMessage: { alignSelf: "flex-end", backgroundColor: colors.accent },
-        theirMessage: {
-          alignSelf: "flex-start",
+        safeArea: { flex: 1, backgroundColor: colors.background },
+        container: { flex: 1 },
+        headerTitleRow: { flexDirection: "row", alignItems: "center" },
+        headerAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
+        headerAvatarFallback: {
+          width: 40,
+          height: 40,
+          borderRadius: 20,
           backgroundColor: colors.card,
           borderWidth: StyleSheet.hairlineWidth,
           borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 12,
         },
-        messageText: { fontSize: 16, color: colors.text },
-        // ? Reuse placeholder for both avatar and image case
-        messageAvatarPlaceholder: {
-          width: 36,
-          height: 36,
+        headerInitial: { fontWeight: "700", color: colors.text, fontSize: 17 },
+        headerTextWrap: { flexDirection: "column", flex: 1 },
+        headerName: { fontSize: 18, fontWeight: "800", color: colors.text },
+        headerSubText: { color: colors.muted, fontSize: 12, marginTop: 2 },
+        headerIconButton: {
+          paddingHorizontal: 10,
+          height: 40,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 12,
+        },
+        chatBody: { flex: 1 },
+        messagesContainer: {
+          paddingHorizontal: 16,
+          paddingTop: 6,
+          flexGrow: 1,
+          justifyContent: messages.length ? "flex-end" : "center",
+        },
+        messageRow: { marginBottom: 12, flexDirection: "row", alignItems: "flex-end", gap: 10 },
+        bubbleBase: {
+          paddingHorizontal: 14,
+          paddingVertical: 12,
           borderRadius: 18,
+          maxWidth: "80%",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
+        },
+        bubbleMine: {
+          alignSelf: "flex-end",
+          backgroundColor: colors.accent,
+          borderTopRightRadius: 6,
+          borderColor: colors.accent,
+        },
+        bubbleTheirs: {
+          alignSelf: "flex-start",
+          backgroundColor: colors.card,
+          borderTopLeftRadius: 6,
+        },
+        bubbleText: { fontSize: 16, lineHeight: 22 },
+        bubbleMeta: {
+          marginTop: 4,
+          fontSize: 12,
+          color: isDark ? "#cdd2eb" : "#6b7280",
+        },
+        separatorWrap: { alignItems: "center", marginVertical: 10 },
+        separatorText: { fontSize: 12, color: colors.muted },
+        avatarSmall: {
+          width: 32,
+          height: 32,
+          borderRadius: 16,
           backgroundColor: colors.border,
           justifyContent: "center",
           alignItems: "center",
-          marginRight: 8,
         },
-        messageAvatarInitial: { fontSize: 16, fontWeight: "bold", color: colors.text },
         composerWrapper: {
           paddingHorizontal: 16,
+          paddingBottom: baseBottomSpace,
+          backgroundColor: "transparent",
         },
         composerSurface: {
           flexDirection: "row",
           alignItems: "flex-end",
-          borderRadius: 28,
           paddingHorizontal: 16,
-          paddingVertical: 10,
-          backgroundColor: isDark ? colors.card : "#f4f5f7",
+          paddingVertical: 8,
+          borderRadius: 26,
+          backgroundColor: isDark ? "#1f2537" : "#ffffff",
           borderWidth: StyleSheet.hairlineWidth,
           borderColor: colors.border,
           shadowColor: "#000",
           shadowOpacity: isDark ? 0.25 : 0.08,
-          shadowRadius: 8,
+          shadowRadius: 10,
           shadowOffset: { width: 0, height: 4 },
           elevation: 3,
-          minHeight: 52,
         },
         input: {
           flex: 1,
           fontSize: 16,
           color: colors.text,
-          maxHeight: 120,
+          maxHeight: 140,
           paddingRight: 12,
           paddingVertical: Platform.OS === "ios" ? 12 : 8,
           textAlignVertical: "center",
           lineHeight: 20,
         },
         sendButton: {
-          width: 42,
-          height: 42,
-          borderRadius: 21,
-          backgroundColor: colors.accent,
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: canSend ? colors.accent : colors.border,
           alignItems: "center",
           justifyContent: "center",
-          shadowColor: "#000",
-          shadowOpacity: 0.2,
-          shadowRadius: 4,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 4,
         },
-        sendButtonDisabled: { opacity: 0.4 },
-        centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background },
-        note: { color: colors.muted, fontSize: 16 },
+        errorBanner: {
+          marginHorizontal: 16,
+          marginBottom: 8,
+          padding: 12,
+          borderRadius: 12,
+          backgroundColor: isDark ? "#3a2f2f" : "#fff5f5",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: isDark ? "#5a4242" : "#f5c2c0",
+        },
+        errorText: { color: isDark ? "#ffd7d5" : "#8b0000" },
+        placeholderText: { color: colors.muted, textAlign: "center", marginTop: 12 },
       }),
-    [colors, isDark]
+    [baseBottomSpace, canSend, colors, isDark, messages.length]
   );
 
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const showSubscription = Keyboard.addListener("keyboardDidShow", (event) => {
-      setKeyboardHeight(Math.max(event.endCoordinates.height - insets.bottom, 0));
+  const scrollToBottom = useCallback(
+    (animated = true) => flatListRef.current?.scrollToEnd({ animated }),
+    []
+  );
+
+  const mergeMessages = useCallback((incoming: Message | Message[]) => {
+    const items = Array.isArray(incoming) ? incoming : [incoming];
+    setMessages((prev) => {
+      const map = new Map<number, Message>();
+      for (const message of prev) {
+        map.set(message.id, message);
+      }
+      for (const message of items) {
+        map.set(message.id, message);
+      }
+      return sortMessages(Array.from(map.values()));
     });
-    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, [insets.bottom]);
+  }, []);
 
-  const keyboardBehavior = Platform.OS === "ios" ? "padding" : undefined;
-  const keyboardInset = Platform.OS === "android" ? keyboardHeight : 0;
-  const composerBottomInset = Math.max(insets.bottom, 8) + 8 + keyboardInset;
-  const listBottomPadding = 16 + keyboardInset;
+  const fetchMessages = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!currentUser || !chatId) return;
+      const showLoading = !options?.silent;
+      if (showLoading) setLoading(true);
+      try {
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/${chatId}`, {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
+        const data = (await response.json()) as Message[];
+        mergeMessages(data);
+        if (showLoading) {
+          scrollToBottom(false);
+        }
+        setError(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to load messages";
+        if (!options?.silent) setError(message);
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [chatId, currentUser, fetchWithAuth, mergeMessages, scrollToBottom]
+  );
 
-  // Send a message
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!trimmedMessage || !currentUser) return;
+    setError(null);
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/api/messages`, {
         method: "POST",
@@ -335,90 +277,348 @@ export default function ChatScreen() {
         }),
       });
       if (!response.ok) throw new Error(`Failed to send message (${response.status})`);
+      const saved = (await response.json()) as Message;
+      mergeMessages(saved);
       setNewMessage("");
-      await fetchMessages();
-
-      // ✅ Scroll to bottom after sending
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(() => scrollToBottom(true), 50);
     } catch (err) {
-      console.error("Send message error:", err);
+      const message = err instanceof Error ? err.message : "Failed to send message";
+      setError(message);
     }
-  };
+  }, [chatId, currentUser, fetchWithAuth, mergeMessages, scrollToBottom, trimmedMessage]);
+
+  const goToMessagesList = useCallback(() => {
+    if (hasNavigatedAwayRef.current) return;
+    hasNavigatedAwayRef.current = true;
+    router.replace("/(tabs)/messages");
+  }, []);
+
+  useEffect(() => {
+    if (!shouldReturnToMessages) return;
+    const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+      if (hasNavigatedAwayRef.current) return;
+      event.preventDefault();
+      goToMessagesList();
+    });
+    return unsubscribe;
+  }, [navigation, shouldReturnToMessages, goToMessagesList]);
+
+  useLayoutEffect(() => {
+    if (!name) return;
+    navigation.setOptions({
+      headerStyle: { backgroundColor: colors.background },
+      headerShadowVisible: false,
+      headerTitleAlign: "left",
+      headerBackTitleVisible: false,
+      headerTitleContainerStyle: { marginLeft: Platform.OS === "android" ? -4 : 0 },
+      headerRightContainerStyle: { paddingRight: 6 },
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => (navigation as any)?.goBack?.()}
+          style={styles.headerIconButton}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </TouchableOpacity>
+      ),
+      headerTitle: () => (
+        <View style={styles.headerTitleRow}>
+          {resolvedProfileImage ? (
+            <Image source={{ uri: resolvedProfileImage }} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.headerAvatarFallback}>
+              <Text style={styles.headerInitial}>{receiverInitial}</Text>
+            </View>
+          )}
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.headerName} numberOfLines={1}>
+              {name}
+            </Text>
+          </View>
+        </View>
+      ),
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => setMenuOpen(true)}
+          style={styles.headerIconButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Chat actions"
+        >
+          <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [colors.accent, colors.background, colors.icon, colors.muted, colors.text, name, navigation, receiverInitial, resolvedProfileImage, styles]);
+
+  useEffect(() => {
+    const animateTo = (value: number, duration = 140) => {
+      Animated.timing(keyboardOffset, {
+        toValue: value,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handleFrame = (event: any) => {
+      const height = Math.max((event?.endCoordinates?.height ?? 0) - insets.bottom, 0);
+      setKeyboardSpace(height);
+      animateTo(height, event?.duration ?? 160);
+    };
+
+    const handleShow = (event: any) => {
+      const height = Math.max((event?.endCoordinates?.height ?? 0) - insets.bottom, 0);
+      setKeyboardSpace(height);
+      animateTo(height, 180);
+    };
+
+    const handleHide = (event: any) => {
+      setKeyboardSpace(0);
+      animateTo(0, event?.duration ?? 140);
+    };
+
+    const subs = [
+      Platform.OS === "ios"
+        ? Keyboard.addListener("keyboardWillChangeFrame", handleFrame)
+        : Keyboard.addListener("keyboardDidShow", handleShow),
+      Platform.OS === "ios"
+        ? Keyboard.addListener("keyboardWillHide", handleHide)
+        : Keyboard.addListener("keyboardDidHide", handleHide),
+    ];
+
+    return () => subs.forEach((sub) => sub.remove());
+  }, [insets.bottom, keyboardOffset]);
+
+  useEffect(() => {
+    if (!chatId || messages.length === 0) return;
+    const latest = messages[messages.length - 1];
+    if (!latest?.createdAt) return;
+    void saveChatLastRead(String(chatId), latest.createdAt);
+  }, [chatId, messages]);
+
+  const connectStream = useCallback(() => {
+    if (!chatId || !accessToken || !WS_BASE_URL) return;
+
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+
+    const url = `${WS_BASE_URL}/api/messages/live?chatId=${chatId}&token=${encodeURIComponent(
+      accessToken
+    )}`;
+    const socket = new WebSocket(url);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      // connected
+    };
+    socket.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as StreamEnvelope;
+        if (parsed.type === "message" && parsed.data) {
+          mergeMessages(parsed.data as Message);
+          scrollToBottom(true);
+        }
+      } catch {
+        // ignore malformed payloads
+      }
+    };
+    socket.onerror = () => {
+      // handled in close
+    };
+    socket.onclose = () => {
+      socketRef.current = null;
+      if (!shouldReconnectRef.current) return;
+      if (reconnectTimeoutRef.current) return;
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
+        connectStream();
+      }, 1500);
+    };
+  }, [accessToken, chatId, mergeMessages, scrollToBottom]);
+
+  useFocusEffect(
+    useCallback(() => {
+      shouldReconnectRef.current = true;
+      fetchMessages();
+      connectStream();
+      pollIntervalRef.current = setInterval(() => {
+        fetchMessages({ silent: true });
+      }, 12000);
+
+      return () => {
+        shouldReconnectRef.current = false;
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+        if (socketRef.current) {
+          socketRef.current.close();
+          socketRef.current = null;
+        }
+      };
+    }, [connectStream, fetchMessages])
+  );
+
+  const renderMessage: ListRenderItem<Message> = useCallback(
+    ({ item }) => {
+      const isMine = item.senderId === currentUser?.id;
+      const created = new Date(item.createdAt);
+      const timeLabel = Number.isNaN(created.getTime())
+        ? ""
+        : created.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const metaColor = isMine ? "#e7ecff" : isDark ? "#cdd2eb" : "#6b7280";
+
+      return (
+        <View style={[styles.messageRow, { justifyContent: isMine ? "flex-end" : "flex-start" }]}>
+          {!isMine && (
+            resolvedProfileImage ? (
+              <Image source={{ uri: resolvedProfileImage }} style={styles.avatarSmall} />
+            ) : (
+              <View style={styles.avatarSmall}>
+                <Text style={{ color: colors.text, fontWeight: "700" }}>{receiverInitial}</Text>
+              </View>
+            )
+          )}
+          <View
+            style={[
+              styles.bubbleBase,
+              isMine ? styles.bubbleMine : styles.bubbleTheirs,
+            ]}
+          >
+            <Text style={[styles.bubbleText, { color: isMine ? "#fff" : colors.text }]}>
+              {item.content}
+            </Text>
+            {timeLabel ? (
+              <Text style={[styles.bubbleMeta, { color: metaColor }]}>
+                {timeLabel}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      );
+    },
+    [colors.text, currentUser?.id, isDark, receiverInitial, resolvedProfileImage, styles]
+  );
+
+  const formatSeparatorLabel = useCallback((date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    if (diffDays === 0) return `Today ${formatTime(date)}`;
+    if (diffDays === 1) return `Yesterday ${formatTime(date)}`;
+    if (diffDays < 7) return `${date.toLocaleDateString([], { weekday: "long" })} ${formatTime(date)}`;
+
+    return `${date.toLocaleDateString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })} at ${formatTime(date)}`;
+  }, []);
+
+  const displayItems = useMemo<DisplayItem[]>(() => {
+    if (!messages.length) return [];
+    const items: DisplayItem[] = [];
+    const ordered = sortMessages(messages);
+    for (let i = 0; i < ordered.length; i += 1) {
+      const current = ordered[i];
+      const currentDate = new Date(current.createdAt);
+      const previous = ordered[i - 1];
+      const needsSeparator =
+        i === 0 ||
+        !previous ||
+        currentDate.getTime() - new Date(previous.createdAt).getTime() > 1000 * 60 * 60;
+
+      if (needsSeparator) {
+        items.push({
+          kind: "separator",
+          id: `sep-${current.id}`,
+          label: formatSeparatorLabel(currentDate),
+        });
+      }
+      items.push({ kind: "message", item: current });
+    }
+    return items;
+  }, [formatSeparatorLabel, messages]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!displayItems.length) return;
+    // ensure we land on the newest message when opening
+    requestAnimationFrame(() => scrollToBottom(false));
+  }, [displayItems, loading, scrollToBottom]);
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={{ color: colors.text }}>Loading chat...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+        <View style={[styles.chatBody, { justifyContent: "center", alignItems: "center" }]}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={{ marginTop: 12, color: colors.text }}>Loading chat...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  // ✅ Fixed layout so input bar moves above the keyboard on all devices
   return (
-    <>
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={safeAreaEdges}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={keyboardBehavior}
-        keyboardVerticalOffset={keyboardVerticalOffset}
-      >
+      <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+      <View style={styles.container}>
         <View style={styles.chatBody}>
-          {messages.length === 0 && (
-            <View style={styles.centered}>
-              <Text style={styles.note}>No prior messages.</Text>
+          {error ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
-          )}
+          ) : null}
 
           <FlatList
-            ref={flatListRef} // ✅ attach ref
-            data={messages}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={({ item }) => {
-              const isMine = item.senderId === currentUser?.id;
-              return (
-                <View style={[styles.messageRow, isMine ? { justifyContent: "flex-end" } : {}]}>
-                  {!isMine && (
-                    <>
-                      {resolvedProfileImage ? (
-                        <Image source={{ uri: resolvedProfileImage }} style={styles.messageAvatarPlaceholder} />
-                      ) : (
-                        <View style={styles.messageAvatarPlaceholder}>
-                          <Text style={styles.messageAvatarInitial}>{receiverInitial}</Text>
-                        </View>
-                      )}
-                    </>
-                  )}
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      isMine ? styles.myMessage : styles.theirMessage,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.messageText,
-                        isMine ? { color: "#fff" } : { color: colors.text },
-                      ]}
-                    >
-                      {item.content}
-                    </Text>
-                  </View>
+            ref={flatListRef}
+            data={displayItems}
+            keyExtractor={(item) => (item.kind === "separator" ? item.id : item.item.id.toString())}
+            renderItem={({ item, index, separators }) =>
+              item.kind === "separator" ? (
+                <View style={styles.separatorWrap}>
+                  <Text style={styles.separatorText}>{item.label}</Text>
                 </View>
-              );
-            }}
-            style={styles.messagesList}
-            contentContainerStyle={[styles.messagesContainer, { paddingBottom: listBottomPadding }]} // ✅ breathing room
-            keyboardShouldPersistTaps="handled" // ✅ keeps taps working while keyboard is open
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })} // ✅ auto-scroll when new content added
+              ) : (
+                renderMessage({ item: item.item, index, separators })
+              )
+            }
+            contentContainerStyle={[
+              styles.messagesContainer,
+              { paddingBottom: (keyboardSpace > 0 ? 2 : baseBottomSpace) + 12 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            onContentSizeChange={() => scrollToBottom(true)}
+            ListEmptyComponent={
+              <Text style={styles.placeholderText}>
+                Start the conversation with {name || "this user"}.
+              </Text>
+            }
           />
         </View>
 
-        <View style={[styles.composerWrapper, { paddingBottom: composerBottomInset }]}>
+        <Animated.View
+          style={[
+            styles.composerWrapper,
+            {
+              paddingBottom: keyboardSpace > 0 ? 2 : baseBottomSpace,
+              transform: [{ translateY: Animated.multiply(keyboardOffset, -1) }],
+            },
+          ]}
+        >
           <View style={styles.composerSurface}>
             <TextInput
               style={styles.input}
-              placeholder="Type a message..."
+              placeholder="Message"
               placeholderTextColor={colors.muted}
               value={newMessage}
               onChangeText={setNewMessage}
@@ -433,23 +633,26 @@ export default function ChatScreen() {
               accessibilityRole="button"
               accessibilityLabel="Send message"
               disabled={!canSend}
-              style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+              style={styles.sendButton}
             >
-              <Ionicons name="send" size={18} color="#fff" />
+              <Ionicons name="send" size={18} color={canSend ? "#fff" : colors.muted} />
             </TouchableOpacity>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </Animated.View>
+      </View>
+
+      <UserOverflowMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        targetUser={{ id: Number(receiverId ?? 0), name: name ?? "" }}
+        onBlocked={() => {
+          try {
+            (navigation as any).goBack?.();
+          } catch {
+            //
+          }
+        }}
+      />
     </SafeAreaView>
-    <UserOverflowMenu
-      visible={menuOpen}
-      onClose={() => setMenuOpen(false)}
-      targetUser={{ id: Number(receiverId), name: name ?? "" }}
-      onBlocked={() => {
-        try { (navigation as any).goBack?.(); } catch {}
-      }}
-    />
-    </>
   );
 }
-
