@@ -1,5 +1,14 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Image, useColorScheme } from "react-native";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+  StyleSheet,
+  Image,
+  useColorScheme,
+} from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useUser } from "../../../context/UserContext";
 
@@ -9,18 +18,25 @@ type Conversation = {
   id: string;
   name: string;
   receiverId: number;
-  receiverProfilePicture?: string | null; // ✅ new
+  receiverProfilePicture?: string | null;
   lastMessage?: string;
   lastTimestamp?: string;
 };
 
+type User = {
+  id: number;
+  profilePicture?: string | null;
+  visibility?: boolean;
+};
+
 export default function MessagesScreen() {
   const { currentUser, accessToken } = useUser();
+  const [users, setUsers] = useState<User[]>([]);
+  const [conversationsRaw, setConversationsRaw] = useState<Conversation[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ Respect system Light/Dark mode
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
 
@@ -54,14 +70,30 @@ export default function MessagesScreen() {
         error: { color: "#c00", marginBottom: 12 },
         retryButton: { backgroundColor: "#007BFF", padding: 10, borderRadius: 8 },
         retryText: { color: "white", fontWeight: "bold" },
-        loadingText: { color: isDark ? "#FFFFFF" : "#111111" },
       }),
     [isDark]
   );
 
-  const loadConversations = useCallback(async () => {
-    if (!currentUser || !accessToken) return;
+  // Load all users
+  const loadUsers = useCallback(async () => {
+    if (!accessToken) return [];
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to load users");
+      const data = (await response.json()) as User[];
+      setUsers(data);
+      return data;
+    } catch (err) {
+      console.error("Error loading users:", err);
+      return [];
+    }
+  }, [accessToken]);
 
+  // Load conversations
+  const loadConversations = useCallback(async () => {
+    if (!currentUser || !accessToken) return [];
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
@@ -70,103 +102,115 @@ export default function MessagesScreen() {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-
-      if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
-
+      if (!response.ok) throw new Error("Failed to load conversations");
       const data = (await response.json()) as Conversation[];
-      setConversations(data);
-      setError(null);
+      setConversationsRaw(data);
+      return data;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
+      return [];
     } finally {
       setLoading(false);
     }
   }, [currentUser, accessToken]);
 
+  // Filter conversations whenever users or raw conversations change
+  useEffect(() => {
+    if (!conversationsRaw.length) return;
+    const filtered = conversationsRaw.filter((conv) => {
+      const user = users.find((u) => u.id === conv.receiverId);
+      return user && user.visibility !== false; // must exist AND visible
+    });
+    setConversations(filtered);
+  }, [users, conversationsRaw]);
+
+  // Reload data whenever screen gains focus
   useFocusEffect(
     useCallback(() => {
-      loadConversations();
-    }, [loadConversations])
+      const fetchAll = async () => {
+        await loadUsers();
+        await loadConversations();
+      };
+      void fetchAll();
+    }, [loadUsers, loadConversations])
   );
 
-return (
-  <View style={styles.container}>
-    {loading && (
-      <View style={{ position: "absolute", top: 10, right: 10 }}>
-        <ActivityIndicator size="small" color="#007BFF" />
-      </View>
-    )}
+  return (
+    <View style={styles.container}>
+      {loading && (
+        <View style={{ position: "absolute", top: 10, right: 10 }}>
+          <ActivityIndicator size="small" color="#007BFF" />
+        </View>
+      )}
 
-    {error ? (
-      <View style={styles.centered}>
-        <Text style={styles.error}>{error}</Text>
-        <Pressable onPress={loadConversations} style={styles.retryButton}>
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      </View>
-    ) : conversations.length === 0 && !loading ? (
-      <View style={styles.centered}>
-        <Text style={styles.note}>You have no active chats yet.</Text>
-      </View>
-    ) : (
-      <FlatList
-        data={conversations}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
-          const imageUri = item.receiverProfilePicture
-            ? item.receiverProfilePicture.startsWith("http")
-              ? item.receiverProfilePicture
-              : `${API_BASE_URL}${item.receiverProfilePicture}`
-            : null;
+      {error ? (
+        <View style={styles.centered}>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable onPress={loadConversations} style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : conversations.length === 0 && !loading ? (
+        <View style={styles.centered}>
+          <Text style={styles.note}>You have no active chats yet.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={conversations}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => {
+            const imageUri = item.receiverProfilePicture
+              ? item.receiverProfilePicture.startsWith("http")
+                ? item.receiverProfilePicture
+                : `${API_BASE_URL}${item.receiverProfilePicture}`
+              : null;
 
-          return (
-            <Pressable
-              style={styles.chatItem}
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/messages/[chatId]",
-                  params: {
-                    chatId: item.id,
-                    name: item.name,
-                    receiverId: item.receiverId.toString(),
-                    profilePicture: item.receiverProfilePicture || "",
-                  },
-                })
-              }
-            >
-              <View style={styles.chatRow}>
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.avatar} />
-                ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarInitial}>
-                      {item.name[0]?.toUpperCase() || "?"}
-                    </Text>
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <View style={styles.chatHeaderRow}>
-                    <Text style={styles.name}>{item.name}</Text>
-                    {item.lastTimestamp && (
-                      <Text style={styles.time}>
-                        {new Date(item.lastTimestamp).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+            return (
+              <Pressable
+                style={styles.chatItem}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/messages/[chatId]",
+                    params: {
+                      chatId: item.id,
+                      name: item.name,
+                      receiverId: item.receiverId.toString(),
+                      profilePicture: item.receiverProfilePicture || "",
+                    },
+                  })
+                }
+              >
+                <View style={styles.chatRow}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}>
+                      <Text style={styles.avatarInitial}>
+                        {item.name[0]?.toUpperCase() || "?"}
                       </Text>
-                    )}
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.chatHeaderRow}>
+                      <Text style={styles.name}>{item.name}</Text>
+                      {item.lastTimestamp && (
+                        <Text style={styles.time}>
+                          {new Date(item.lastTimestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.preview}>{item.lastMessage || "Tap to chat"}</Text>
                   </View>
-                  <Text style={styles.preview}>
-                    {item.lastMessage || "Tap to chat"}
-                  </Text>
                 </View>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
-    )}
-  </View>
-);
+              </Pressable>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
 }
