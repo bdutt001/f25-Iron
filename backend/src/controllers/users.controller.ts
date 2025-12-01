@@ -82,10 +82,25 @@ export const createUser = async (req: Request, res: Response) => {
 };
 
 // ---------- Get All Users ----------
-export const getUsers = async (_req: Request, res: Response) => {
+export const getUsers = async (req: Request, res: Response) => {
   try {
+    const currentUserId = req.user?.id;
+    if (!currentUserId) return res.status(401).json({ error: "Unauthorized" });
+
     const users = await prisma.user.findMany({
-      where: { visibility: true },
+      where: {
+        visibility: true,
+        NOT: {
+          OR: [
+            // Exclude users that current user has blocked
+            { blocksReceived: { some: { blockerId: currentUserId } } },
+            // Exclude users that have blocked current user
+            { blocksMade: { some: { blockedId: currentUserId } } },
+          ],
+        },
+        // Exclude self defensively
+        id: { not: currentUserId },
+      },
       select: userWithTagsSelect,
     });
     res.json(users.map(serializeUser));
@@ -129,6 +144,7 @@ export const updateUser = async (req: Request, res: Response) => {
     : null;
   const visibilityRaw =
     typeof req.body.visibility === "boolean" ? req.body.visibility : undefined;
+  const profilePictureRaw = req.body.profilePicture;
 
   try {
     const data: Prisma.UserUpdateInput = {};
@@ -153,6 +169,13 @@ export const updateUser = async (req: Request, res: Response) => {
 
     if (typeof visibilityRaw === "boolean") {
       data.visibility = visibilityRaw;
+    }
+
+    if (profilePictureRaw === null) {
+      data.profilePicture = null;
+    } else if (typeof profilePictureRaw === "string") {
+      const trimmed = profilePictureRaw.trim();
+      if (trimmed) data.profilePicture = trimmed;
     }
 
     const user = await prisma.user.update({
@@ -319,5 +342,83 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("❌ Error uploading profile picture:", error);
     return res.status(500).json({ error: "Failed to upload profile picture" });
+  }
+};
+
+// ---------- Blocking ----------
+export const blockUser = async (req: Request, res: Response) => {
+  try {
+    const blockerId = req.user?.id;
+    if (!blockerId) return res.status(401).json({ error: "Unauthorized" });
+
+    const blockedId = Number(req.params.id);
+    if (!Number.isFinite(blockedId) || blockedId <= 0)
+      return res.status(400).json({ error: "Invalid user ID" });
+    if (blockedId === blockerId)
+      return res.status(400).json({ error: "Cannot block yourself" });
+
+    // Ensure target exists (optional but clearer responses)
+    const target = await prisma.user.findUnique({ where: { id: blockedId }, select: { id: true } });
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    const block = await prisma.block.upsert({
+      where: {
+        blockerId_blockedId: { blockerId, blockedId },
+      },
+      update: {},
+      create: { blockerId, blockedId },
+    });
+
+    return res.status(201).json({ success: true, block });
+  } catch (error: any) {
+    console.error("Failed to block user", error);
+    return res.status(500).json({ error: "Failed to block user" });
+  }
+};
+
+export const unblockUser = async (req: Request, res: Response) => {
+  try {
+    const blockerId = req.user?.id;
+    if (!blockerId) return res.status(401).json({ error: "Unauthorized" });
+
+    const blockedId = Number(req.params.id);
+    if (!Number.isFinite(blockedId) || blockedId <= 0)
+      return res.status(400).json({ error: "Invalid user ID" });
+    if (blockedId === blockerId)
+      return res.status(400).json({ error: "Cannot unblock yourself" });
+
+    await prisma.block.delete({
+      where: {
+        blockerId_blockedId: { blockerId, blockedId },
+      },
+    });
+
+    return res.status(204).send();
+  } catch (error: any) {
+    if (error?.code === "P2025") {
+      // Not found: treat as idempotent
+      return res.status(204).send();
+    }
+    console.error("Failed to unblock user", error);
+    return res.status(500).json({ error: "Failed to unblock user" });
+  }
+};
+
+export const listMyBlockedUsers = async (req: Request, res: Response) => {
+  try {
+    const blockerId = req.user?.id;
+    if (!blockerId) return res.status(401).json({ error: "Unauthorized" });
+
+    const blocks = await prisma.block.findMany({
+      where: { blockerId },
+      include: { blocked: { select: userWithTagsSelect } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const users = blocks.map((b) => serializeUser(b.blocked));
+    return res.json(users);
+  } catch (error) {
+    console.error("Failed to list blocked users", error);
+    return res.status(500).json({ error: "Failed to list blocked users" });
   }
 };

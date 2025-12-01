@@ -1,16 +1,20 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  Pressable,
   ActivityIndicator,
-  StyleSheet,
+  AppState,
+  FlatList,
   Image,
-  useColorScheme,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { Edge, SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../../context/UserContext";
+import { useAppTheme } from "../../../context/ThemeContext";
+import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -21,6 +25,8 @@ type Conversation = {
   receiverProfilePicture?: string | null;
   lastMessage?: string;
   lastTimestamp?: string;
+  lastSenderId?: number | null;
+  lastIncomingTimestamp?: string | null;
 };
 
 type User = {
@@ -30,48 +36,89 @@ type User = {
 };
 
 export default function MessagesScreen() {
-  const { currentUser, accessToken } = useUser();
+  const { currentUser, fetchWithAuth, accessToken } = useUser();
+  const safeAreaEdges: Edge[] = ["left", "right"];
+  const topPadding = 8;
   const [users, setUsers] = useState<User[]>([]);
   const [conversationsRaw, setConversationsRaw] = useState<Conversation[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const scheme = useColorScheme();
-  const isDark = scheme === "dark";
+  const [lastRead, setLastRead] = useState<Record<string, string>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const { isDark, colors } = useAppTheme();
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        container: { flex: 1, padding: 16, backgroundColor: isDark ? "#121212" : "#FFFFFF" },
-        centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+        safeArea: {
+          flex: 1,
+          backgroundColor: colors.background,
+        },
+        container: {
+          flex: 1,
+          paddingHorizontal: 16,
+          paddingTop: topPadding,
+          backgroundColor: colors.background,
+        },
+        topBar: {
+          flexDirection: "row",
+          alignItems: "flex-start",
+          marginBottom: 8,
+        },
+        syncBadge: {
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: isDark ? "#1f263a" : "#e8edff",
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 999,
+          gap: 8,
+        },
+        syncText: { color: isDark ? "#dbeafe" : "#1e293b", fontWeight: "600", fontSize: 12 },
+        syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+        centered: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 16 },
+        listContent: { paddingBottom: 28 },
         chatItem: {
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: isDark ? "#2A2A2A" : "#CCCCCC",
+          padding: 14,
+          borderRadius: 18,
+          backgroundColor: colors.card,
+          marginBottom: 12,
+          shadowColor: "#000",
+          shadowOpacity: isDark ? 0.3 : 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 5 },
+          elevation: 3,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
         },
         chatRow: { flexDirection: "row", alignItems: "center" },
         chatHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-        name: { fontWeight: "bold", fontSize: 16, color: isDark ? "#FFFFFF" : "#111111" },
-        preview: { color: isDark ? "#B5B5B5" : "gray", marginTop: 2 },
-        time: { color: isDark ? "#A0A0A0" : "#888", fontSize: 12 },
-        avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+        name: { fontWeight: "700", fontSize: 16, color: colors.text },
+        nameUnread: { fontWeight: "800" },
+        preview: { color: colors.muted, marginTop: 4, fontSize: 14 },
+        previewUnread: { color: colors.text, fontWeight: "600" },
+        timeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+        unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+        time: { color: isDark ? "#a5acc7" : "#6b7280", fontSize: 12 },
+        avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 12 },
         avatarPlaceholder: {
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: isDark ? "#2F2F2F" : "#DDDDDD",
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: isDark ? "#2b3147" : "#e5e7eb",
           justifyContent: "center",
           alignItems: "center",
           marginRight: 12,
         },
-        avatarInitial: { fontSize: 18, fontWeight: "bold", color: isDark ? "#E0E0E0" : "#555" },
-        note: { color: isDark ? "#BBBBBB" : "#777" },
-        error: { color: "#c00", marginBottom: 12 },
-        retryButton: { backgroundColor: "#007BFF", padding: 10, borderRadius: 8 },
-        retryText: { color: "white", fontWeight: "bold" },
+        avatarInitial: { fontSize: 18, fontWeight: "700", color: isDark ? "#f0f4ff" : "#374151" },
+        note: { color: isDark ? "#cfd3e5" : "#777", textAlign: "center" },
+        error: { color: "#c00", marginBottom: 12, textAlign: "center" },
+        retryButton: { backgroundColor: colors.accent, padding: 10, borderRadius: 12, marginTop: 8 },
+        retryText: { color: "#fff", fontWeight: "bold" },
+        loadingText: { color: colors.text },
       }),
-    [isDark]
+    [isDark, colors, topPadding]
   );
 
   // Load all users
@@ -92,40 +139,81 @@ export default function MessagesScreen() {
   }, [accessToken]);
 
   // Load conversations
-  const loadConversations = useCallback(async () => {
-    if (!currentUser || !accessToken) return [];
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (!response.ok) throw new Error("Failed to load conversations");
-      const data = (await response.json()) as Conversation[];
-      setConversationsRaw(data);
-      return data;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, accessToken]);
+  const loadConversations = useCallback(
+    async (options?: { silent?: boolean; fromPull?: boolean }) => {
+      if (!currentUser) return;
 
-  // Filter conversations whenever users or raw conversations change
+      const showLoading = !options?.silent;
+      const fromPull = options?.fromPull === true;
+      const showErrors = showLoading || fromPull;
+      if (showLoading) setLoading(true);
+      if (fromPull) setRefreshing(true);
+
+      try {
+        const response = await fetchWithAuth(
+          `${API_BASE_URL}/api/messages/conversations/${currentUser.id}`,
+          { headers: { "Content-Type": "application/json" } }
+        );
+
+        if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
+
+        const data = (await response.json()) as Conversation[];
+        const sorted = [...data].sort((a, b) => {
+          const aTime = a.lastTimestamp ? new Date(a.lastTimestamp).getTime() : 0;
+          const bTime = b.lastTimestamp ? new Date(b.lastTimestamp).getTime() : 0;
+          return bTime - aTime;
+        });
+
+        // Store raw conversations first (unfiltered)
+        setConversationsRaw(sorted);
+
+        const readMap = await getChatLastReadMap(sorted.map((c) => c.id));
+        setLastRead(readMap);
+        setError(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (showErrors) setError(message);
+        else console.warn("Background conversation refresh failed:", message);
+      } finally {
+        if (showLoading) setLoading(false);
+        if (fromPull) setRefreshing(false);
+      }
+    },
+    [currentUser, fetchWithAuth]
+  );
+
+  // Apply filtering AFTER both users and conversationsRaw have loaded
   useEffect(() => {
-    if (!conversationsRaw.length) return;
-    const filtered = conversationsRaw.filter((conv) => {
-      const user = users.find((u) => u.id === conv.receiverId);
-      return user && user.visibility !== false; // must exist AND visible
+    const usersMap = new Map(users.map(u => [u.id, u]));
+
+    // Prevent flicker: do not filter until users have loaded
+    if (users.length === 0) {
+      setConversations(conversationsRaw);
+      return;
+    }
+
+    const filtered = conversationsRaw.filter(conv => {
+      const otherUser = usersMap.get(conv.receiverId);
+      return otherUser && otherUser.visibility !== false;
     });
+
     setConversations(filtered);
   }, [users, conversationsRaw]);
 
-  // Reload data whenever screen gains focus
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        loadConversations({ silent: true });
+      }
+    });
+    return () => subscription.remove();
+  }, [loadConversations]);
+
+  const handleRefresh = useCallback(() => {
+    void loadConversations({ silent: true, fromPull: true });
+  }, [loadConversations]);
+
+  // Load everything when screen focuses
   useFocusEffect(
     useCallback(() => {
       const fetchAll = async () => {
@@ -136,81 +224,165 @@ export default function MessagesScreen() {
     }, [loadUsers, loadConversations])
   );
 
+  const formatTimestamp = useCallback((timestamp?: string | null) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+    if (diffDays === 1) {
+      return "Yesterday";
+    }
+    if (diffDays < 7) {
+      return date.toLocaleDateString([], { weekday: "long" });
+    }
+    return date.toLocaleDateString([], { month: "numeric", day: "numeric", year: "2-digit" });
+  }, []);
+
+  const markConversationRead = useCallback(async (chatId: string, timestamp?: string) => {
+    if (!chatId) return;
+    const iso = timestamp && !Number.isNaN(Date.parse(timestamp))
+      ? timestamp
+      : new Date().toISOString();
+    setLastRead(prev => ({ ...prev, [chatId]: iso }));
+    await saveChatLastRead(chatId, iso);
+  }, []);
+
   return (
-    <View style={styles.container}>
-      {loading && (
-        <View style={{ position: "absolute", top: 10, right: 10 }}>
-          <ActivityIndicator size="small" color="#007BFF" />
+    <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+      <View style={styles.container}>
+        <View style={styles.topBar}>
+          <View style={styles.syncBadge}>
+            <View style={[styles.syncDot, { opacity: loading ? 0.5 : 1 }]} />
+            <Text style={styles.syncText}>{loading ? "Syncing..." : "Up to date"}</Text>
+            {loading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+          </View>
         </View>
-      )}
 
-      {error ? (
-        <View style={styles.centered}>
-          <Text style={styles.error}>{error}</Text>
-          <Pressable onPress={loadConversations} style={styles.retryButton}>
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : conversations.length === 0 && !loading ? (
-        <View style={styles.centered}>
-          <Text style={styles.note}>You have no active chats yet.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={conversations}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => {
-            const imageUri = item.receiverProfilePicture
-              ? item.receiverProfilePicture.startsWith("http")
-                ? item.receiverProfilePicture
-                : `${API_BASE_URL}${item.receiverProfilePicture}`
-              : null;
+        {error ? (
+          <View style={styles.centered}>
+            <Text style={styles.error}>{error}</Text>
+            <Pressable onPress={() => loadConversations()} style={styles.retryButton}>
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : conversations.length === 0 && !loading ? (
+          <View style={styles.centered}>
+            <Text style={styles.note}>You have no active chats yet.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={conversations}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
+            renderItem={({ item }) => {
+              const imageUri = item.receiverProfilePicture
+                ? item.receiverProfilePicture.startsWith("http")
+                  ? item.receiverProfilePicture
+                  : `${API_BASE_URL}${item.receiverProfilePicture}`
+                : null;
 
-            return (
-              <Pressable
-                style={styles.chatItem}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(tabs)/messages/[chatId]",
-                    params: {
-                      chatId: item.id,
-                      name: item.name,
-                      receiverId: item.receiverId.toString(),
-                      profilePicture: item.receiverProfilePicture || "",
-                    },
-                  })
-                }
-              >
-                <View style={styles.chatRow}>
-                  {imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.avatar} />
-                  ) : (
-                    <View style={styles.avatarPlaceholder}>
-                      <Text style={styles.avatarInitial}>
-                        {item.name[0]?.toUpperCase() || "?"}
+              const timestampLabel = formatTimestamp(item.lastTimestamp);
+              const lastReadTimestamp = lastRead[item.id];
+              const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
+              const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
+              const lastIncomingTime = item.lastIncomingTimestamp
+                ? Date.parse(item.lastIncomingTimestamp)
+                : NaN;
+
+              const latestIncomingTimestamp =
+                Number.isFinite(lastIncomingTime)
+                  ? lastIncomingTime
+                  : item.lastSenderId !== currentUser?.id && Number.isFinite(lastMsgTime)
+                  ? lastMsgTime
+                  : NaN;
+
+              const hasUnreadFromOthers =
+                Number.isFinite(latestIncomingTimestamp) &&
+                (!Number.isFinite(lastReadTime) || latestIncomingTimestamp > lastReadTime);
+
+              const isUnread = hasUnreadFromOthers;
+
+              const handleOpenChat = () => {
+                void markConversationRead(item.id, item.lastTimestamp || undefined);
+
+                router.push({
+                  pathname: "/(tabs)/messages/[chatId]",
+                  params: {
+                    chatId: item.id,
+                    name: item.name,
+                    receiverId: item.receiverId.toString(),
+                    profilePicture: item.receiverProfilePicture || "",
+                  },
+                });
+              };
+
+              return (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.chatItem,
+                    pressed ? { transform: [{ translateY: 1 }], opacity: 0.96 } : null,
+                  ]}
+                  onPress={handleOpenChat}
+                >
+                  <View style={styles.chatRow}>
+                    {imageUri ? (
+                      <Image source={{ uri: imageUri }} style={styles.avatar} />
+                    ) : (
+                      <View style={styles.avatarPlaceholder}>
+                        <Text style={styles.avatarInitial}>
+                          {item.name[0]?.toUpperCase() || "?"}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.chatHeaderRow}>
+                        <Text
+                          style={[styles.name, isUnread ? styles.nameUnread : null]}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+
+                        {(timestampLabel || isUnread) && (
+                          <View style={styles.timeRow}>
+                            {isUnread ? <View style={styles.unreadDot} /> : null}
+                            {timestampLabel ? (
+                              <Text style={styles.time}>{timestampLabel}</Text>
+                            ) : null}
+                          </View>
+                        )}
+                      </View>
+
+                      <Text
+                        style={[styles.preview, isUnread ? styles.previewUnread : null]}
+                        numberOfLines={1}
+                      >
+                        {item.lastMessage || "Tap to chat"}
                       </Text>
                     </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.chatHeaderRow}>
-                      <Text style={styles.name}>{item.name}</Text>
-                      {item.lastTimestamp && (
-                        <Text style={styles.time}>
-                          {new Date(item.lastTimestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={styles.preview}>{item.lastMessage || "Tap to chat"}</Text>
                   </View>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
-      )}
-    </View>
+                </Pressable>
+              );
+            }}
+          />
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
