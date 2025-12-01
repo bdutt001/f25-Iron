@@ -1,12 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Image,
-  Keyboard,
+  KeyboardAvoidingView,
   Platform,
-  Easing,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +15,6 @@ import type { ListRenderItem } from "react-native";
 import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { useUser } from "../../../context/UserContext";
@@ -61,15 +58,12 @@ export default function ChatScreen() {
   const { currentUser, fetchWithAuth, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [keyboardSpace, setKeyboardSpace] = useState(0);
-  const keyboardOffset = useRef(new Animated.Value(0)).current;
 
   const flatListRef = useRef<FlatList<DisplayItem>>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -83,7 +77,7 @@ export default function ChatScreen() {
   const safeAreaEdges: Edge[] =
     Platform.OS === "ios" ? ["left", "right", "bottom"] : ["left", "right", "bottom"];
   const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
-  const baseBottomSpace = Math.max(insets.bottom, 0) + 2; // minimal gap above tab bar
+  const bottomInset = Math.max(insets.bottom, 8);
 
   const resolvedProfileImage = useMemo(() => {
     if (!profilePicture) return null;
@@ -166,7 +160,7 @@ export default function ChatScreen() {
         },
         composerWrapper: {
           paddingHorizontal: 16,
-          paddingBottom: baseBottomSpace,
+          paddingBottom: bottomInset,
           backgroundColor: "transparent",
         },
         composerSurface: {
@@ -214,7 +208,7 @@ export default function ChatScreen() {
         errorText: { color: isDark ? "#ffd7d5" : "#8b0000" },
         placeholderText: { color: colors.muted, textAlign: "center", marginTop: 12 },
       }),
-    [baseBottomSpace, canSend, colors, isDark, messages.length]
+    [bottomInset, canSend, colors, isDark, messages.length]
   );
 
   const scrollToBottom = useCallback(
@@ -351,45 +345,6 @@ export default function ChatScreen() {
       ),
     });
   }, [colors.accent, colors.background, colors.icon, colors.muted, colors.text, name, navigation, receiverInitial, resolvedProfileImage, styles]);
-
-  useEffect(() => {
-    const animateTo = (value: number, duration = 140) => {
-      Animated.timing(keyboardOffset, {
-        toValue: value,
-        duration,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
-    };
-
-    const handleFrame = (event: any) => {
-      const height = Math.max((event?.endCoordinates?.height ?? 0) - insets.bottom, 0);
-      setKeyboardSpace(height);
-      animateTo(height, event?.duration ?? 160);
-    };
-
-    const handleShow = (event: any) => {
-      const height = Math.max((event?.endCoordinates?.height ?? 0) - insets.bottom, 0);
-      setKeyboardSpace(height);
-      animateTo(height, 180);
-    };
-
-    const handleHide = (event: any) => {
-      setKeyboardSpace(0);
-      animateTo(0, event?.duration ?? 140);
-    };
-
-    const subs = [
-      Platform.OS === "ios"
-        ? Keyboard.addListener("keyboardWillChangeFrame", handleFrame)
-        : Keyboard.addListener("keyboardDidShow", handleShow),
-      Platform.OS === "ios"
-        ? Keyboard.addListener("keyboardWillHide", handleHide)
-        : Keyboard.addListener("keyboardDidHide", handleHide),
-    ];
-
-    return () => subs.forEach((sub) => sub.remove());
-  }, [insets.bottom, keyboardOffset]);
 
   useEffect(() => {
     if (!chatId || messages.length === 0) return;
@@ -569,8 +524,12 @@ export default function ChatScreen() {
   }
 
   return (
-      <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
-      <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
         <View style={styles.chatBody}>
           {error ? (
             <View style={styles.errorBanner}>
@@ -593,7 +552,7 @@ export default function ChatScreen() {
             }
             contentContainerStyle={[
               styles.messagesContainer,
-              { paddingBottom: (keyboardSpace > 0 ? 2 : baseBottomSpace) + 12 },
+              { paddingBottom: bottomInset + 12 },
             ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
@@ -606,15 +565,7 @@ export default function ChatScreen() {
           />
         </View>
 
-        <Animated.View
-          style={[
-            styles.composerWrapper,
-            {
-              paddingBottom: keyboardSpace > 0 ? 2 : baseBottomSpace,
-              transform: [{ translateY: Animated.multiply(keyboardOffset, -1) }],
-            },
-          ]}
-        >
+        <View style={styles.composerWrapper}>
           <View style={styles.composerSurface}>
             <TextInput
               style={styles.input}
@@ -638,8 +589,8 @@ export default function ChatScreen() {
               <Ionicons name="send" size={18} color={canSend ? "#fff" : colors.muted} />
             </TouchableOpacity>
           </View>
-        </Animated.View>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
 
       <UserOverflowMenu
         visible={menuOpen}
