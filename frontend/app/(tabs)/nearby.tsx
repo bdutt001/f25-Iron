@@ -383,7 +383,10 @@ export default function NearbyScreen() {
       return (
         <Pressable
           onPress={() =>
-            router.push({ pathname: "/(tabs)/user/[id]", params: { id: String(item.id) } })
+            router.push({ 
+              pathname: "/user/[id]",
+              params: { id: String(item.id) },
+              })
           }
           style={({ pressed }) => [
             styles.card,
