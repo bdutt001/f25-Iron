@@ -1,47 +1,40 @@
 .references_container{
     display: flex;
+    
+    align-content: center;
+    margin-top: 10vh;
+    margin-bottom: 10vh;
+    min-height: 84vh;
+    min-width: fit-content;
+    
+    flex-wrap: wrap;
     flex-direction: column;
-    gap: 1rem;
-    background: rgba(255,255,255,0.75);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    padding: 1.25rem;
-    margin: 2rem auto;
-    width: min(1100px, 92vw);
 }
 .reference_item {
+    margin: 1%;
     list-style: none;
-    max-width: 100%;
-    padding: 0.5rem 0.25rem;
+    max-width: 70%;
+    
+    max-height: fit-content;
+    
 }
 .reference_title::before {
     content: "➤ "; /* You can use →, ⇒, ➜, ➤, etc. */
-    color: var(--brand);  /* Customize the arrow color */
+    color: #007acc;  /* Customize the arrow color */
     font-size: 1.2em;
     margin-right: 8px;
   }
 
 .reference_title{
-    font-size: 1.15rem;
-    color: var(--text);
+    font-size: 1.5rem;
 }
 
 .reference_link{
-    padding-left: 1.75rem;
-    font-size: 1rem;
+    padding-left: 7%;
+    font-size: 1.2rem;
 }
 .glossary{
-    width: min(1100px, 92vw);
-    margin: 1.5rem auto 3rem;
-    background: rgba(255,255,255,0.75);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
+    max-width: 100%;
     overflow: hidden;
 }
 .glossary img{

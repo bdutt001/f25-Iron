@@ -4,36 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Team Iron - MingleMap</title>
-    <meta name="theme-color" content="#2563eb" />
-    <link rel="stylesheet" href="Stylesheets/modern.css">
     <link rel="stylesheet" href="Stylesheets/References.css">
     <link rel="stylesheet" href="Stylesheets/nav_stylesheet.css">
     <link rel="stylesheet" href="MediaQueries/Mobile_presentation.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 </head>
 <body>
-    <a class="skip-link" href="#main">Skip to content</a>
     
-    <header id="header" class="site-header">
-        <div class="logo_banner site-branding">
+    <header id="header">
+        <div class="logo_banner">
             <h1>MingleMap</h1>
             <h4>Explore, Chat, Connect - A New Way To Socialize</h4>
         </div>
         
     </header>
-    <div class="nav_bar" role="navigation" aria-label="Primary">
+    <div class="nav_bar">
         <ul class="nav_list">
             <li><a href="index.html">Home</a></li>
             <li><a href="The_Team.html">The Team</a></li>
             <li><a href="Presentations.html">Presentations</a></li>
             <li><a href="Labs.html">Labs</a></li>
             <li><a href="Deliverables.html">Deliverables</a></li>
-            <li><a href="References.html" aria-current="page">References</a></li>
+            <li><a href="References.html">References</a></li>
+            <li><a href="Poster.html">Poster</a></li>
 
         </ul>
     </div>
     
-    <button id="menuToggleButton" class="menu-toggle" aria-label="Open menu" aria-controls="mobile_nav_container" aria-expanded="false" onclick="toggleMenu()"><span class="material-icons">menu</span></button>
+    <span class="material-icons" id="hamburger" onclick="toggleMenu()">menu</span>
     <div class="mobile_navbar" id="mobile_nav_container">
         <ul class="mobile_navlist">
             <li><a href="index.html">Home</a></li>
@@ -41,12 +39,13 @@
             <li><a href="Presentations.html">Presentations</a></li>
             <li><a href="Labs.html">Labs</a></li>
             <li><a href="Deliverables.html">Deliverables</a></li>
-            <li><a href="References.html" aria-current="page">References</a></li>
+            <li><a href="References.html">References</a></li>
+            <li><a href="Poster.html">Poster</a></li>
         </ul>
     </div>
 
 
-    <div class="references_container prose" id="main">
+    <div class="references_container">
 
         <ul class="reference_item">
             <li class="reference_title"> <strong>Chandler, Adam. </strong> “Why a Third Life Is the Answer to America’s Loneliness Epidemic.” Time, 2 Jan. 2025</li>
@@ -81,7 +80,7 @@
         </ul>
 
         <ul class="reference_item">
-            <li class="reference_title"> <strong>Google.</strong> Firebase Hosting & Performance Monitoring. Google, 2025.</li>
+            <li class="reference_title"> <Google>Google.</strong> Firebase Hosting & Performance Monitoring. Google, 2025.</li>
             <li class="reference_link">
                <a href="https://firebase.google.com/">Link To The Referenced Document</a>. Accessed 22FEB. 25.
             </li>
