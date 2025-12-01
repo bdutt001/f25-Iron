@@ -105,9 +105,13 @@ export default function OtherUserProfileScreen() {
           <Text style={[styles.value, styles.nameValue]}>{displayName}</Text>
         </View>
 
-        <Text style={styles.label}>Email:</Text>
-        <Text style={styles.value}>{user.email}</Text>
-
+        {isSelf && (
+          <>
+            <Text style={styles.label}>Email:</Text>
+            <Text style={styles.value}>{user.email}</Text>
+          </>
+          )}
+        
         <View style={styles.divider} />
 
         <View style={styles.tagHeader}>

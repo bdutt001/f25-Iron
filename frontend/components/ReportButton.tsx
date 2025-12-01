@@ -21,7 +21,7 @@ export default function ReportButton({
   defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
+  const { currentUser, isLoggedIn, fetchWithAuth, accessToken } = useUser();
 
   const handleReport = async () => {
     // ✅ Check if user is logged in
