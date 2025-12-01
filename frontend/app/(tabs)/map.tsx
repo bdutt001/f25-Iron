@@ -344,6 +344,7 @@ export default function MapScreen() {
 
   const textColor = { color: colors.text };
   const mutedText = { color: colors.muted };
+  const selectedMatchPercent = selectedUser ? matchPercent(selectedUser) : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -456,29 +457,49 @@ export default function MapScreen() {
             </View>
 
             <View style={styles.calloutHeaderRow}>
-              <Text style={[styles.calloutTitle, textColor]}>{selectedUser.name || selectedUser.email}</Text>
-              {selectedUser.isCurrentUser && <Text style={[styles.calloutBadge, { backgroundColor: colors.accent }]}>You</Text>}
+              <View style={styles.calloutTextBlock}>
+                <View style={styles.calloutTitleRow}>
+                  <Text style={[styles.calloutTitle, textColor]} numberOfLines={1}>
+                    {selectedUser.name || selectedUser.email}
+                  </Text>
+                  {selectedUser.isCurrentUser && (
+                    <Text style={[styles.calloutBadge, { backgroundColor: colors.accent }]}>
+                      You
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.calloutSubtitle, mutedText]} numberOfLines={1}>
+                  {selectedUser.email}
+                </Text>
+                {!selectedUser.isCurrentUser && selectedMatchPercent !== null && (
+                  <View
+                    style={[
+                      styles.metaPill,
+                      styles.metaPillUnderText,
+                      {
+                        borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+                        backgroundColor: isDark ? "rgba(0,123,255,0.2)" : "rgba(0,123,255,0.08)",
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.metaText, { color: colors.accent }]}>
+                      {selectedMatchPercent}% match
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.calloutMetrics}>
+                <Text
+                  style={[
+                    styles.metricValueSmall,
+                    { color: trustColor(selectedUser.trustScore) },
+                  ]}
+                >
+                  Trust Score:{" "}
+                  <Text style={styles.trustScoreNumber}>{selectedUser.trustScore ?? "-"}</Text>
+                </Text>
+              </View>
             </View>
-
-            <Text style={[styles.calloutSubtitle, mutedText]}>{selectedUser.email}</Text>
-
-            {/* Color-coded trust score */}
-            <Text style={[styles.trustScoreName, textColor]}>
-              Trust Score:{" "}
-              <Text
-                style={[
-                  styles.trustScoreNumber,
-                  { color: trustColor(selectedUser.trustScore) },
-                ]}
-              >
-                {selectedUser.trustScore ?? "-"}
-              </Text>
-            </Text>
-
-            {/* Match percent */}
-            {!selectedUser.isCurrentUser && (
-              <Text style={[styles.calloutSubtitle, mutedText, { marginTop: 4 }]}>Match: {matchPercent(selectedUser)}%</Text>
-            )}
 
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
@@ -504,9 +525,10 @@ export default function MapScreen() {
                   onPress={() => startChat(selectedUser.id, selectedUser.name || selectedUser.email)}
                   style={[styles.calloutActionButton, { backgroundColor: colors.accent }]}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Message user"
                 >
                   <Ionicons name="chatbubble" size={18} color="#fff" />
-                  <Text style={styles.calloutActionLabel}>Message</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -667,8 +689,10 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd" },
   sheetClose: { color: "#66a8ff", fontWeight: "600" },
 
-  calloutHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  calloutTitle: { fontSize: 16, fontWeight: "600" },
+  calloutHeaderRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  calloutTextBlock: { flex: 1, minWidth: 0 },
+  calloutTitleRow: { flexDirection: "row", alignItems: "center" },
+  calloutTitle: { fontSize: 16, fontWeight: "600", flexShrink: 1 },
   calloutSubtitle: { fontSize: 13, color: "#666", marginTop: 2 },
   calloutBadge: {
     backgroundColor: "#66a8ff",
@@ -698,14 +722,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   calloutActionButton: {
-    flexDirection: "row",
-    alignItems: "center",
+    width: 44,
+    height: 44,
     borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  calloutActionLabel: { color: "#fff", marginLeft: 8, fontWeight: "700", fontSize: 15 },
   calloutActionMenu: {
     width: 40,
     height: 40,
@@ -714,8 +736,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  trustScoreName: { textAlign: "right", fontSize: 15, marginTop: 6 },
+  calloutMetrics: { alignItems: "flex-end", minWidth: 120, marginLeft: 12, gap: 6 },
+  metricValueSmall: { fontSize: 14, fontWeight: "700", textAlign: "right" },
   trustScoreNumber: { fontSize: 15, fontWeight: "700" },
+  metaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  metaPillUnderText: { marginTop: 6 },
+  metaText: { fontSize: 12, fontWeight: "600" },
   
   inlineActionsWrap: { overflow: 'hidden', flexDirection: 'row', alignItems: 'center', marginRight: 6 },
   inlineActionsWrapClosed: { width: 0, opacity: 0 },
