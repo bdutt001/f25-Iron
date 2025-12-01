@@ -4,7 +4,11 @@ import { useAppTheme } from "../../../context/ThemeContext";
 export default function MessagesLayout() {
   const { isDark } = useAppTheme();
   const headerBaseStyle = { backgroundColor: isDark ? "#0f172a" : "#f7f8fb" };
-  const headerTitleStyle = { color: isDark ? "#ffffff" : "#0f172a", fontWeight: "700", fontSize: 17 };
+  const headerTitleStyle = {
+    color: isDark ? "#ffffff" : "#0f172a",
+    fontWeight: "700" as const,
+    fontSize: 17,
+  };
   const headerTintColor = isDark ? "#ffffff" : "#0f172a";
 
   return (
@@ -19,7 +23,6 @@ export default function MessagesLayout() {
           headerTitleStyle,
           headerTintColor,
           headerTitleAlign: "left",
-          headerBackTitleVisible: false,
         }}
       />
       <Stack.Screen
@@ -32,7 +35,6 @@ export default function MessagesLayout() {
           headerTitleStyle,
           headerTintColor,
           headerTitleAlign: "left",
-          headerBackTitleVisible: false,
         }}
       />
     </Stack>
