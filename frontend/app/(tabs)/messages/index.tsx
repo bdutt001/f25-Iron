@@ -29,10 +29,18 @@ type Conversation = {
   lastIncomingTimestamp?: string | null;
 };
 
+type User = {
+  id: number;
+  profilePicture?: string | null;
+  visibility?: boolean;
+};
+
 export default function MessagesScreen() {
-  const { currentUser, fetchWithAuth } = useUser();
+  const { currentUser, fetchWithAuth, accessToken } = useUser();
   const safeAreaEdges: Edge[] = ["left", "right"];
   const topPadding = 8;
+  const [users, setUsers] = useState<User[]>([]);
+  const [conversationsRaw, setConversationsRaw] = useState<Conversation[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +121,24 @@ export default function MessagesScreen() {
     [isDark, colors, topPadding]
   );
 
+  // Load all users
+  const loadUsers = useCallback(async () => {
+    if (!accessToken) return [];
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) throw new Error("Failed to load users");
+      const data = (await response.json()) as User[];
+      setUsers(data);
+      return data;
+    } catch (err) {
+      console.error("Error loading users:", err);
+      return [];
+    }
+  }, [accessToken]);
+
+  // Load conversations
   const loadConversations = useCallback(
     async (options?: { silent?: boolean; fromPull?: boolean }) => {
       if (!currentUser) return;
@@ -124,11 +150,10 @@ export default function MessagesScreen() {
       if (fromPull) setRefreshing(true);
 
       try {
-        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/conversations/${currentUser.id}`, {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+        const response = await fetchWithAuth(
+          `${API_BASE_URL}/api/messages/conversations/${currentUser.id}`,
+          { headers: { "Content-Type": "application/json" } }
+        );
 
         if (!response.ok) throw new Error(`Failed to load conversations (${response.status})`);
 
@@ -138,17 +163,17 @@ export default function MessagesScreen() {
           const bTime = b.lastTimestamp ? new Date(b.lastTimestamp).getTime() : 0;
           return bTime - aTime;
         });
-        setConversations(sorted);
+
+        // Store raw conversations first (unfiltered)
+        setConversationsRaw(sorted);
+
         const readMap = await getChatLastReadMap(sorted.map((c) => c.id));
         setLastRead(readMap);
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (showErrors) {
-          setError(message);
-        } else {
-          console.warn("Background conversation refresh failed:", message);
-        }
+        if (showErrors) setError(message);
+        else console.warn("Background conversation refresh failed:", message);
       } finally {
         if (showLoading) setLoading(false);
         if (fromPull) setRefreshing(false);
@@ -156,6 +181,24 @@ export default function MessagesScreen() {
     },
     [currentUser, fetchWithAuth]
   );
+
+  // Apply filtering AFTER both users and conversationsRaw have loaded
+  useEffect(() => {
+    const usersMap = new Map(users.map(u => [u.id, u]));
+
+    // Prevent flicker: do not filter until users have loaded
+    if (users.length === 0) {
+      setConversations(conversationsRaw);
+      return;
+    }
+
+    const filtered = conversationsRaw.filter(conv => {
+      const otherUser = usersMap.get(conv.receiverId);
+      return otherUser && otherUser.visibility !== false;
+    });
+
+    setConversations(filtered);
+  }, [users, conversationsRaw]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -170,14 +213,15 @@ export default function MessagesScreen() {
     void loadConversations({ silent: true, fromPull: true });
   }, [loadConversations]);
 
+  // Load everything when screen focuses
   useFocusEffect(
     useCallback(() => {
-      loadConversations();
-      const interval = setInterval(() => {
-        loadConversations({ silent: true });
-      }, 4000);
-      return () => clearInterval(interval);
-    }, [loadConversations])
+      const fetchAll = async () => {
+        await loadUsers();
+        await loadConversations();
+      };
+      void fetchAll();
+    }, [loadUsers, loadConversations])
   );
 
   const formatTimestamp = useCallback((timestamp?: string | null) => {
@@ -203,8 +247,10 @@ export default function MessagesScreen() {
 
   const markConversationRead = useCallback(async (chatId: string, timestamp?: string) => {
     if (!chatId) return;
-    const iso = timestamp && !Number.isNaN(Date.parse(timestamp)) ? timestamp : new Date().toISOString();
-    setLastRead((prev) => ({ ...prev, [chatId]: iso }));
+    const iso = timestamp && !Number.isNaN(Date.parse(timestamp))
+      ? timestamp
+      : new Date().toISOString();
+    setLastRead(prev => ({ ...prev, [chatId]: iso }));
     await saveChatLastRead(chatId, iso);
   }, []);
 
@@ -249,23 +295,31 @@ export default function MessagesScreen() {
                   ? item.receiverProfilePicture
                   : `${API_BASE_URL}${item.receiverProfilePicture}`
                 : null;
+
               const timestampLabel = formatTimestamp(item.lastTimestamp);
               const lastReadTimestamp = lastRead[item.id];
               const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
               const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
-              const lastIncomingTime = item.lastIncomingTimestamp ? Date.parse(item.lastIncomingTimestamp) : NaN;
-              const latestIncomingTimestamp = Number.isFinite(lastIncomingTime)
-                ? lastIncomingTime
-                : item.lastSenderId !== currentUser?.id && Number.isFinite(lastMsgTime)
-                ? lastMsgTime
+              const lastIncomingTime = item.lastIncomingTimestamp
+                ? Date.parse(item.lastIncomingTimestamp)
                 : NaN;
+
+              const latestIncomingTimestamp =
+                Number.isFinite(lastIncomingTime)
+                  ? lastIncomingTime
+                  : item.lastSenderId !== currentUser?.id && Number.isFinite(lastMsgTime)
+                  ? lastMsgTime
+                  : NaN;
+
               const hasUnreadFromOthers =
                 Number.isFinite(latestIncomingTimestamp) &&
                 (!Number.isFinite(lastReadTime) || latestIncomingTimestamp > lastReadTime);
+
               const isUnread = hasUnreadFromOthers;
 
               const handleOpenChat = () => {
                 void markConversationRead(item.id, item.lastTimestamp || undefined);
+
                 router.push({
                   pathname: "/(tabs)/messages/[chatId]",
                   params: {
@@ -290,22 +344,35 @@ export default function MessagesScreen() {
                       <Image source={{ uri: imageUri }} style={styles.avatar} />
                     ) : (
                       <View style={styles.avatarPlaceholder}>
-                        <Text style={styles.avatarInitial}>{item.name[0]?.toUpperCase() || "?"}</Text>
+                        <Text style={styles.avatarInitial}>
+                          {item.name[0]?.toUpperCase() || "?"}
+                        </Text>
                       </View>
                     )}
+
                     <View style={{ flex: 1 }}>
                       <View style={styles.chatHeaderRow}>
-                        <Text style={[styles.name, isUnread ? styles.nameUnread : null]} numberOfLines={1}>
+                        <Text
+                          style={[styles.name, isUnread ? styles.nameUnread : null]}
+                          numberOfLines={1}
+                        >
                           {item.name}
                         </Text>
-                        {timestampLabel || isUnread ? (
+
+                        {(timestampLabel || isUnread) && (
                           <View style={styles.timeRow}>
                             {isUnread ? <View style={styles.unreadDot} /> : null}
-                            {timestampLabel ? <Text style={styles.time}>{timestampLabel}</Text> : null}
+                            {timestampLabel ? (
+                              <Text style={styles.time}>{timestampLabel}</Text>
+                            ) : null}
                           </View>
-                        ) : null}
+                        )}
                       </View>
-                      <Text style={[styles.preview, isUnread ? styles.previewUnread : null]} numberOfLines={1}>
+
+                      <Text
+                        style={[styles.preview, isUnread ? styles.previewUnread : null]}
+                        numberOfLines={1}
+                      >
                         {item.lastMessage || "Tap to chat"}
                       </Text>
                     </View>
