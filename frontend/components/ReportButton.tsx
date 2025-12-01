@@ -21,7 +21,7 @@ export default function ReportButton({
   defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, accessToken } = useUser();
+  const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
 
   const handleReport = async () => {
     // ✅ Check if user is logged in
@@ -61,7 +61,7 @@ export default function ReportButton({
   };
 
   const submitReport = async (reason: string, severityOverride?: number) => {
-    if (!currentUser || !accessToken) return;
+    if (!currentUser) return;
 
     setIsReporting(true);
 
@@ -72,11 +72,10 @@ export default function ReportButton({
           : defaultSeverity;
 
       // ✅ Send the report to the backend
-      const response = await fetch(`${API_BASE_URL}/api/report`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           reportedId: reportedUserId,
@@ -96,9 +95,7 @@ export default function ReportButton({
 
       // ✅ Refresh trust score from backend after report
       try {
-        const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const trustResponse = await fetchWithAuth(`${API_BASE_URL}/api/users/${reportedUserId}/trust`);
         if (trustResponse.ok) {
           const trustData = (await trustResponse.json()) as { trustScore?: number };
           if (typeof trustData.trustScore === "number") {

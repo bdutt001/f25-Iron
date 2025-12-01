@@ -1,24 +1,17 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
-import { useColorScheme } from "@/hooks/useColorScheme";
 import { UserProvider } from "../context/UserContext";
+import { ThemeProvider as AppThemeProvider, useAppTheme } from "../context/ThemeContext";
+import { ThemeProvider } from "@react-navigation/native";
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-  });
-
-  if (!loaded) {
-    return null; // wait until font is loaded
-  }
+function RootStack() {
+  const { navigationTheme, statusBarStyle } = useAppTheme();
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navigationTheme}>
       <UserProvider>
         <Stack>
           {/* Index now redirects to login */}
@@ -30,7 +23,23 @@ export default function RootLayout() {
           <Stack.Screen name="+not-found" />
         </Stack>
       </UserProvider>
-      <StatusBar style="auto" />
+      <StatusBar style={statusBarStyle} />
     </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  const [loaded] = useFonts({
+    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+  });
+
+  if (!loaded) {
+    return null; // wait until font is loaded
+  }
+
+  return (
+    <AppThemeProvider>
+      <RootStack />
+    </AppThemeProvider>
   );
 }
