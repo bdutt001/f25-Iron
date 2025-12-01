@@ -58,7 +58,7 @@ export default function ChatScreen() {
     returnToMessages?: string;
   }>();
   const navigation = useNavigation();
-  const { currentUser, fetchWithAuth, accessToken } = useUser();
+  const { currentUser, fetchWithAuth, setStatus, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
   const tabHeaderOptions = useTabHeaderOptions();
   const insets = useSafeAreaInsets();
@@ -70,6 +70,8 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invisibilityWarningDismissed, setInvisibilityWarningDismissed] = useState(false); // state for warning banner
+  const [visibilityConfirmed, setVisibilityConfirmed] = useState(false); // ✅ state for confirmation banner
 
   const flatListRef = useRef<FlatList<DisplayItem>>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -214,9 +216,40 @@ export default function ChatScreen() {
           marginBottom: 8,
           padding: 12,
           borderRadius: 12,
-          backgroundColor: isDark ? "#3a2f2f" : "#fff5f5",
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+        },
+        warningBanner: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginHorizontal: 16,
+          marginBottom: 8,
+          padding: 12,
+          borderRadius: 12,
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+        },
+        warningText: {
+          flex: 1,
+          color: colors.text,
+          marginRight: 12,
+          fontWeight: "600",
+          textAlign: "center",
+        },
+        confirmationBanner: {
+          backgroundColor: colors.card,
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: isDark ? "#5a4242" : "#f5c2c0",
+          borderColor: colors.border,
+          padding: 8,
+          borderRadius: 8,
+          marginHorizontal: 12,
+          marginBottom: 8,
+        },
+        confirmationText: {
+          color: colors.text,
+          fontWeight: "600",
+          textAlign: "center",
         },
         errorText: { color: isDark ? "#ffd7d5" : "#8b0000" },
         placeholderText: { color: colors.muted, textAlign: "center", marginTop: 12 },
@@ -548,6 +581,37 @@ export default function ChatScreen() {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+          {!currentUser?.visibility && !invisibilityWarningDismissed && (
+            <View style={styles.warningBanner}>
+              <Text style={styles.warningText}>
+                You are invisible.{" "}
+                <Text
+                  style={{ fontWeight: "600", color: colors.accent }}
+                  onPress={() => {
+                    setStatus("Visible"); // toggle visibility
+                    setInvisibilityWarningDismissed(true); // hide warning
+                    setVisibilityConfirmed(true); // show confirmation
+                    setTimeout(() => setVisibilityConfirmed(false), 3000); // hide after 3s
+                  }}
+                >
+                  Turn on visibility
+                </Text>{" "}
+                to allow other users to see your messages!
+              </Text>
+
+              <TouchableOpacity onPress={() => setInvisibilityWarningDismissed(true)}>
+                <Ionicons name="close" size={20} color={colors.icon} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {visibilityConfirmed && (
+            <View style={styles.confirmationBanner}>
+              <Text style={styles.confirmationText}>
+                You are now visible to other users!
+              </Text>
+            </View>
+          )}
 
           <FlatList
             ref={flatListRef}
