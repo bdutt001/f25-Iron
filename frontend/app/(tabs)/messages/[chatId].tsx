@@ -21,6 +21,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { useUser } from "../../../context/UserContext";
 import UserOverflowMenu from "../../../components/UserOverflowMenu";
+import { useTabHeaderOptions } from "../../../hooks/useTabHeaderOptions";
 import { saveChatLastRead } from "@/utils/chatReadStorage";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -59,6 +60,7 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const { currentUser, fetchWithAuth, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
+  const tabHeaderOptions = useTabHeaderOptions();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
@@ -311,8 +313,7 @@ export default function ChatScreen() {
   useLayoutEffect(() => {
     if (!name) return;
     navigation.setOptions({
-      headerStyle: { backgroundColor: colors.background },
-      headerShadowVisible: false,
+      ...tabHeaderOptions,
       headerTitleAlign: "left",
       headerBackTitleVisible: false,
       headerTitleContainerStyle: { marginLeft: Platform.OS === "android" ? -4 : 0 },
@@ -324,7 +325,7 @@ export default function ChatScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
+          <Ionicons name="chevron-back" size={22} color={tabHeaderOptions.headerTintColor} />
         </TouchableOpacity>
       ),
       headerTitle: () => (
@@ -351,11 +352,11 @@ export default function ChatScreen() {
           accessibilityRole="button"
           accessibilityLabel="Chat actions"
         >
-          <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
+          <Ionicons name="ellipsis-vertical" size={20} color={tabHeaderOptions.headerTintColor} />
         </TouchableOpacity>
       ),
     });
-  }, [colors.accent, colors.background, colors.icon, colors.muted, colors.text, name, navigation, receiverInitial, resolvedProfileImage, styles]);
+  }, [name, navigation, receiverInitial, resolvedProfileImage, styles, tabHeaderOptions]);
 
   useEffect(() => {
     if (!chatId || messages.length === 0) return;

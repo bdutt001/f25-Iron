@@ -1,15 +1,8 @@
 import { Stack } from "expo-router";
-import { useAppTheme } from "../../../context/ThemeContext";
+import { useTabHeaderOptions } from "../../../hooks/useTabHeaderOptions";
 
 export default function MessagesLayout() {
-  const { isDark } = useAppTheme();
-  const headerBaseStyle = { backgroundColor: isDark ? "#0f172a" : "#f7f8fb" };
-  const headerTitleStyle = {
-    color: isDark ? "#ffffff" : "#0f172a",
-    fontWeight: "700" as const,
-    fontSize: 17,
-  };
-  const headerTintColor = isDark ? "#ffffff" : "#0f172a";
+  const headerOptions = useTabHeaderOptions();
 
   return (
     <Stack>
@@ -18,10 +11,7 @@ export default function MessagesLayout() {
         options={{
           title: "Messages",
           headerShown: true,
-          headerShadowVisible: false,
-          headerStyle: headerBaseStyle,
-          headerTitleStyle,
-          headerTintColor,
+          ...headerOptions,
           headerTitleAlign: "left",
         }}
       />
@@ -30,10 +20,7 @@ export default function MessagesLayout() {
         options={{
           title: "Chat",
           headerShown: true,
-          headerShadowVisible: false,
-          headerStyle: headerBaseStyle,
-          headerTitleStyle,
-          headerTintColor,
+          ...headerOptions,
           headerTitleAlign: "left",
         }}
       />
