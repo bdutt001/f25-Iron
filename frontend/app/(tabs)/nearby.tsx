@@ -5,7 +5,7 @@
  */
 
 import * as Location from "expo-location";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Button,
@@ -17,12 +17,16 @@ import {
   Pressable,
   Alert,
   TouchableOpacity,
+  Platform,
 } from "react-native";
+import type { AlertOptions, ListRenderItemInfo } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
+import { useAppTheme } from "../../context/ThemeContext";
 import {
   ApiUser,
   NearbyUser,
@@ -31,7 +35,6 @@ import {
   scatterUsersAround,
 } from "../../utils/geo";
 import { rankNearbyUsers } from "../../utils/rank";
-import ReportButton from "../../components/ReportButton";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -48,7 +51,19 @@ const normalizeTags = (tags: unknown): string[] =>
     ? tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
     : [];
 
+const trustColorForScore = (score: number) => {
+  if (score >= 90) return "#28a745";
+  if (score >= 70) return "#7ED957";
+  if (score >= 51) return "#FFC107";
+  return "#DC3545";
+};
+
 export default function NearbyScreen() {
+  const { colors, isDark } = useAppTheme();
+  const alertAppearance = useMemo<AlertOptions>(
+    () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
+    [isDark]
+  );
   const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
     latitude: ODU_CENTER.latitude,
     longitude: ODU_CENTER.longitude,
@@ -62,6 +77,7 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuTarget, setMenuTarget] = useState<ApiUser | null>(null);
 
   const {
     status,
@@ -71,6 +87,7 @@ export default function NearbyScreen() {
     currentUser,
     prefetchedUsers,
     setPrefetchedUsers,
+    fetchWithAuth,
   } = useUser();
 
   /**
@@ -165,9 +182,7 @@ export default function NearbyScreen() {
           return;
         }
 
-        const response = await fetch(`${API_BASE_URL}/users`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users`);
         if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
 
         const data = (await response.json()) as ApiUser[];
@@ -187,7 +202,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    [accessToken, setPrefetchedUsers, buildRankedList]
+    [accessToken, fetchWithAuth, setPrefetchedUsers, buildRankedList]
   );
 
   /**
@@ -196,9 +211,7 @@ export default function NearbyScreen() {
   const refreshTrustScore = useCallback(
     async (userId: number) => {
       try {
-        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/${userId}`);
         if (!response.ok) throw new Error(`Failed to fetch user ${userId} (${response.status})`);
         const updatedUser = (await response.json()) as ApiUser;
 
@@ -213,7 +226,7 @@ export default function NearbyScreen() {
         console.error("Failed to refresh trust score:", err);
       }
     },
-    [accessToken]
+    [fetchWithAuth]
   );
 
   /**
@@ -292,57 +305,238 @@ export default function NearbyScreen() {
   /**
    * Start a new chat session (fetch latest receiver first).
    */
-  const startChat = async (receiverId: number, receiverName: string) => {
-    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
+  const startChat = useCallback(
+    async (receiverId: number, receiverName: string) => {
+      if (!currentUser)
+        return Alert.alert(
+          "Not logged in",
+          "Please log in to start a chat.",
+          undefined,
+          alertAppearance
+        );
 
-    try {
-      // Fetch latest receiver (for name/picture)
-      const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      let latestUser: ApiUser | null = null;
-      if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
+      try {
+        // Fetch latest receiver (for name/picture)
+        const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`);
+        let latestUser: ApiUser | null = null;
+        if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
-      // Create or get chat session
-      const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({
-          participants: [currentUser.id, receiverId],
-        }),
-      });
-      if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
+        // Create or get chat session
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/session`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            participants: [currentUser.id, receiverId],
+          }),
+        });
+        if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
 
-      const data = (await response.json()) as { chatId: number };
-      const { chatId } = data;
+        const data = (await response.json()) as { chatId: number };
+        const { chatId } = data;
 
-      // Navigate with latest user info
-      router.push({
-        pathname: "/(tabs)/messages/[chatId]",
-        params: {
-          chatId: String(chatId),
-          name: latestUser?.name || receiverName,
-          receiverId: String(receiverId),
-          profilePicture: (latestUser?.profilePicture as string) || "",
-        },
-      });
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to start chat. Please try again.");
-    }
-  };
+        // Navigate with latest user info
+        router.push({
+          pathname: "/(tabs)/messages/[chatId]",
+          params: {
+            chatId: String(chatId),
+            name: latestUser?.name || receiverName,
+            receiverId: String(receiverId),
+            profilePicture: (latestUser?.profilePicture as string) || "",
+            returnToMessages: "1",
+          },
+        });
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error", "Failed to start chat. Please try again.", undefined, alertAppearance);
+      }
+    },
+    [alertAppearance, currentUser, fetchWithAuth]
+  );
+
+  // Blocked list now shown in Profile tab; local loader removed
+  // Unblock flow moved to Profile tab
+
+  // Removed old inline toggle; actions now in overflow menu
 
   // Loading and error UI
   const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
+  const textColor = useMemo(() => ({ color: colors.text }), [colors.text]);
+  const mutedText = useMemo(() => ({ color: colors.muted }), [colors.muted]);
+
+  const renderUserCard = useCallback(
+    ({ item, index }: ListRenderItemInfo<NearbyWithDistance>) => {
+      const imageUri =
+        item.profilePicture && item.profilePicture.startsWith("http")
+          ? item.profilePicture
+          : item.profilePicture
+          ? `${API_BASE_URL}${item.profilePicture}`
+          : null;
+
+      const trustScore = item.trustScore ?? 0;
+      const trustColor = trustColorForScore(trustScore);
+      const matchPercent = typeof item.score === "number" ? Math.round(item.score * 100) : null;
+      const userTags = normalizeTags(item.interestTags);
+
+      // ⬇️ Make the whole card pressable to open the user's profile (keeps Tabs visible)
+      return (
+        <Pressable
+          onPress={() =>
+            router.push({ pathname: "/(tabs)/user/[id]", params: { id: String(item.id) } })
+          }
+          style={({ pressed }) => [
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: isDark ? "#000" : "#0f172a",
+            },
+            index === 0 && [styles.cardFeatured, { borderColor: colors.accent }],
+            pressed && { opacity: 0.96 },
+          ]}
+        >
+          <View style={styles.cardTop}>
+            <View style={styles.avatarRow}>
+              <View style={[styles.avatarShell, { borderColor: colors.border }]}>
+                {imageUri ? (
+                  <ExpoImage
+                    source={{ uri: imageUri }}
+                    style={styles.avatar}
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.avatar,
+                      styles.avatarPlaceholder,
+                      { backgroundColor: isDark ? "#2c3653" : "#e2e8f0" },
+                    ]}
+                  >
+                    <Text style={[styles.avatarInitial, textColor]}>
+                      {item.name?.[0]?.toUpperCase() ?? "?"}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.nameBlock}>
+                <Text style={[styles.cardTitle, textColor]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                {matchPercent !== null && (
+                  <View
+                    style={[
+                      styles.metaPill,
+                      styles.matchPill,
+                      {
+                        borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+                        backgroundColor: isDark ? "rgba(0,123,255,0.2)" : "rgba(0,123,255,0.08)",
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.metaText, { color: colors.accent }]}>
+                      {matchPercent}% match
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.metricsColumn}>
+              <Text style={[styles.metricValue, textColor]}>
+                {formatDistance(item.distanceMeters)}
+              </Text>
+              <Text style={[styles.metricValueSmall, { color: trustColor }]}>
+                Trust Score: <Text style={{ color: trustColor }}>{trustScore}</Text>
+              </Text>
+            </View>
+          </View>
+
+          {userTags.length > 0 && (
+            <View style={styles.tagsRow}>
+              {userTags.map((tag) => (
+                <View
+                  key={tag}
+                  style={[
+                    styles.tagChip,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,123,255,0.06)",
+                    },
+                  ]}
+                >
+                  <Text style={[styles.tagText, { color: colors.accent }]}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.cardFooter}>
+            {/* Chat stays a separate, tappable target */}
+            <Pressable
+              onPress={() => startChat(item.id, item.name || item.email)}
+              style={({ pressed }) => [
+                styles.iconButton,
+                styles.primaryIconButton,
+                { backgroundColor: colors.accent },
+                pressed && styles.iconButtonPressed,
+              ]}
+            >
+              <Ionicons
+                name="chatbubble"
+                size={18}
+                color="white"
+                style={
+                  Platform.OS === "android"
+                    ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                    : undefined
+                }
+              />
+            </Pressable>
+
+            <View style={{ flex: 1 }} />
+
+            {/* Overflow (•••) opens block/report etc. */}
+            <TouchableOpacity
+              onPress={() => setMenuTarget(item as unknown as ApiUser)}
+              style={[
+                styles.iconButton,
+                {
+                  backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+                  borderColor: colors.border,
+                },
+              ]}
+              activeOpacity={0.8}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Ionicons
+                name="ellipsis-vertical"
+                size={18}
+                color={colors.icon}
+                style={
+                  Platform.OS === "android"
+                    ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                    : undefined
+                }
+              />
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      );
+    },
+    [colors, isDark, mutedText, startChat, textColor]
+  );
 
   if (showInitialLoader) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.note}>Locating you and finding nearby users...</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={[styles.note, mutedText]}>Locating you and finding nearby users...</Text>
       </View>
     );
   }
@@ -364,19 +558,25 @@ export default function NearbyScreen() {
   if (!location) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.note}>Location unavailable. Pull to refresh to retry.</Text>
+        <Text style={[styles.note, mutedText]}>Location unavailable. Pull to refresh to retry.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Visibility: {status}</Text>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: colors.card, borderColor: colors.border, shadowColor: isDark ? "#000" : "#0f172a" },
+        ]}
+      >
+        <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
         <TouchableOpacity
           style={[
             styles.visibilityToggle,
+            { backgroundColor: colors.accent },
             status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
             isStatusUpdating && styles.visibilityToggleDisabled,
           ]}
@@ -396,12 +596,13 @@ export default function NearbyScreen() {
             </Text>
           )}
         </TouchableOpacity>
+        {/* Blocked list moved to Profile tab */}
       </View>
 
       {loading && hasLoadedOnceRef.current && (
         <View style={styles.inlineLoader}>
-          <ActivityIndicator size="small" color="#007BFF" />
-          <Text style={styles.inlineLoaderText}>Updating nearby users…</Text>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={[styles.inlineLoaderText, mutedText]}>Updating nearby users…</Text>
         </View>
       )}
 
@@ -412,137 +613,56 @@ export default function NearbyScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.centered}>
-            <Text style={styles.note}>No other users nearby right now.</Text>
+            <Text style={[styles.note, mutedText]}>No other users nearby right now.</Text>
           </View>
         }
-        renderItem={({ item, index }) => {
-          const imageUri =
-            item.profilePicture && item.profilePicture.startsWith("http")
-              ? item.profilePicture
-              : item.profilePicture
-              ? `${API_BASE_URL}${item.profilePicture}`
-              : null;
-
-          // Dynamic color based on trust score
-          const scoreTS = item.trustScore ?? 0;
-          let trustColor = "#007BFF";
-          if (scoreTS >= 90) trustColor = "#28a745";
-          else if (scoreTS >= 70) trustColor = "#7ED957";
-          else if (scoreTS >= 51) trustColor = "#FFC107";
-          else trustColor = "#DC3545";
-
-          return (
-            <Pressable
-              onPress={() =>
-                router.push({ pathname: "/user/[id]", params: { id: String(item.id) } })
-              }
-              style={({ pressed }) => [
-                styles.card,
-                index === 0 && styles.closestCard,
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <View style={styles.cardHeader}>
-                <View style={styles.userInfo}>
-                  {imageUri ? (
-                    <ExpoImage
-                      source={{ uri: imageUri }}
-                      style={styles.avatar}
-                      cachePolicy="memory-disk"
-                      transition={0}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Text style={styles.avatarInitial}>
-                        {item.name?.[0]?.toUpperCase() ?? "?"}
-                      </Text>
-                    </View>
-                  )}
-                  <View>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                    {/* ✅ show score-only % match */}
-                    {typeof item.score === "number" && (
-                      <Text style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
-                        {Math.round(item.score * 100)}% match
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
-              </View>
-
-              {item.interestTags.length > 0 && (
-                <View style={styles.cardTagsWrapper}>
-                  {item.interestTags.map((tag) => (
-                    <View key={tag} style={styles.cardTagChip}>
-                      <Text style={styles.cardTagText}>{tag}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Bottom action bar */}
-              <View style={styles.cardFooter}>
-                {/* Chat button */}
-                <Pressable
-                  onPress={() => startChat(item.id, item.name || item.email)}
-                  style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
-                >
-                  <Ionicons name="chatbubble" size={18} color="white" />
-                </Pressable>
-
-                {/* Report + Trust score */}
-                <View style={styles.reportContainer}>
-                  <ReportButton
-                    reportedUserId={item.id}
-                    reportedUserName={item.name}
-                    size="small"
-                    onReportSuccess={() => {
-                      refreshTrustScore(item.id);
-                    }}
-                  />
-                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
-                    Trust Score: {scoreTS}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          );
+        renderItem={renderUserCard}
+        contentContainerStyle={[styles.listContent, users.length === 0 && styles.flexGrow]}
+        showsVerticalScrollIndicator={false}
+      />
+      <UserOverflowMenu
+        visible={!!menuTarget}
+        onClose={() => setMenuTarget(null)}
+        targetUser={menuTarget}
+        onBlocked={(uid) => {
+          setUsers((prev) => prev.filter((u) => u.id !== uid));
+          setPrefetchedUsers((prev) => (prev ? prev.filter((u) => u.id !== uid) : prev));
         }}
-        contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
+        onReported={(uid) => {
+          void refreshTrustScore(uid);
+        }}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#f5f7fa" },
+  container: { flex: 1, padding: 16 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
-  note: { marginTop: 12, fontSize: 16, textAlign: "center", color: "#555" },
+  note: { marginTop: 12, fontSize: 16, textAlign: "center" },
   error: { marginBottom: 12, fontSize: 16, textAlign: "center", color: "#c00" },
   header: {
     marginBottom: 16,
-    padding: 12,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 14,
     backgroundColor: "#fff",
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    elevation: 2,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
   visibilityToggle: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 22,
     minWidth: 120,
     alignItems: "center",
-    backgroundColor: "#007BFF",
   },
   visibilityShow: {},
   visibilityHide: {},
@@ -554,58 +674,81 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginBottom: 12,
   },
-  inlineLoaderText: { marginLeft: 8, fontSize: 13, color: "#555" },
+  inlineLoaderText: { marginLeft: 8, fontSize: 13 },
+  listContent: { paddingBottom: 24 },
+  flexGrow: { flexGrow: 1 },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    marginBottom: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
-  closestCard: { borderWidth: 1, borderColor: "#007BFF" },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  userInfo: { flexDirection: "row", alignItems: "center" },
-  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
-  avatarPlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
-  avatarInitial: { fontSize: 18, fontWeight: "bold", color: "#555" },
-  cardTitle: { fontSize: 18, fontWeight: "600" },
-  cardDistance: { fontSize: 16, fontWeight: "500", color: "#007BFF" },
-  cardTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
-  cardTagChip: {
-    backgroundColor: "#e6f0ff",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 14,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
-
-  /* Bottom buttons layout */
-  cardFooter: {
-    marginTop: 16,
+  cardFeatured: { borderWidth: 1 },
+  cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
   },
-  chatButton: {
+  avatarRow: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
+  avatarShell: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 2,
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  avatar: { width: "100%", height: "100%", borderRadius: 14 },
+  avatarPlaceholder: { justifyContent: "center", alignItems: "center" },
+  avatarInitial: { fontSize: 18, fontWeight: "700", color: "#555" },
+  nameBlock: { flex: 1, minWidth: 0 },
+  cardTitle: { fontSize: 18, fontWeight: "700" },
+  metaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 6,
+  },
+  matchPill: {},
+  metaText: { fontSize: 12, fontWeight: "600" },
+  metricsColumn: { marginLeft: 12, alignItems: "flex-end", minWidth: 96, gap: 4 },
+  metricValue: { fontSize: 16, fontWeight: "700", textAlign: "right" },
+  metricValueSmall: { fontSize: 14, fontWeight: "700", textAlign: "right" },
+  tagsRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
+  tagChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  tagText: { fontSize: 12, fontWeight: "700" },
+  divider: { height: StyleSheet.hairlineWidth, marginTop: 12, marginBottom: 10 },
+  cardFooter: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  iconButton: {
     width: 44,
     height: 44,
-    backgroundColor: "#007BFF",
     borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  reportContainer: { alignItems: "center" },
-  trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
-  flexGrow: { flexGrow: 1 },
+  primaryIconButton: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  iconButtonPressed: { opacity: 0.9 },
 });

@@ -75,7 +75,7 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { currentUser, setCurrentUser, accessToken, setPrefetchedUsers } = useUser();
+  const { currentUser, setCurrentUser, accessToken, setPrefetchedUsers, fetchWithAuth } = useUser();
 
   const [nameInput, setNameInput] = useState(currentUser?.name?.trim() ?? "");
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -117,7 +117,7 @@ export default function OnboardingScreen() {
       setTagError(null);
 
       try {
-        const tags = await fetchTagCatalog(accessToken);
+        const tags = await fetchTagCatalog(fetchWithAuth);
         if (!cancelled) setAvailableTags(tags);
       } catch (error) {
         if (!cancelled) {
@@ -134,7 +134,7 @@ export default function OnboardingScreen() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken]);
+  }, [accessToken, fetchWithAuth]);
 
   const tagOptions = useMemo(() => {
     if (availableTags.length) return availableTags;
@@ -198,9 +198,8 @@ export default function OnboardingScreen() {
       const form = new FormData();
       form.append("image", { uri, name: "profile.jpg", type: mimeType } as any);
 
-      const res = await fetch(uploadUrl, {
+      const res = await fetchWithAuth(uploadUrl, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
         body: form,
       });
 
@@ -225,7 +224,7 @@ export default function OnboardingScreen() {
       console.error("Error uploading image:", error);
       Alert.alert("Upload failed", "Please try again later.");
     }
-  }, [accessToken, currentUser, setCurrentUser]);
+  }, [accessToken, currentUser, fetchWithAuth, setCurrentUser]);
 
   const handleContinue = async () => {
     if (!currentUser || !accessToken) return;
@@ -241,23 +240,18 @@ export default function OnboardingScreen() {
     setTagError(null);
 
     try {
-      const updated = await updateUserProfile(
-        currentUser.id,
-        { name: trimmedName, interestTags: selectedTags },
-        accessToken
-      );
+      const updated = await updateUserProfile(currentUser.id, { name: trimmedName, interestTags: selectedTags }, fetchWithAuth);
 
-      setCurrentUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              ...updated,
-              interestTags: updated.interestTags ?? prev.interestTags,
-              profilePicture: updated.profilePicture ?? prev.profilePicture,
-              visibility: updated.visibility ?? prev.visibility,
-            }
-          : updated
-      );
+      const nextUser = currentUser
+        ? {
+            ...currentUser,
+            ...updated,
+            interestTags: updated.interestTags ?? currentUser.interestTags,
+            profilePicture: updated.profilePicture ?? currentUser.profilePicture,
+            visibility: updated.visibility ?? currentUser.visibility,
+          }
+        : updated;
+      setCurrentUser(nextUser);
 
       setPrefetchedUsers(null);
       router.replace("/(tabs)/profile");
@@ -473,7 +467,7 @@ const styles = StyleSheet.create({
   },
   tagCount: {
     fontSize: 13,
-    color: "#1f5fbf",
+    color: "#66a8ff",
   },
   tagSearchWrapper: {
     flexDirection: "row",
@@ -535,7 +529,7 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   tagOptionTextSelected: {
-    color: "#1f5fbf",
+    color: "#66a8ff",
     fontWeight: "600",
   },
   selectedTagsWrapper: {
@@ -552,7 +546,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   selectedChipText: {
-    color: "#1f5fbf",
+    color: "#66a8ff",
     fontSize: 14,
     fontWeight: "500",
   },
