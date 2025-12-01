@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Edge, SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
@@ -31,9 +31,8 @@ type Conversation = {
 
 export default function MessagesScreen() {
   const { currentUser, fetchWithAuth } = useUser();
-  const insets = useSafeAreaInsets();
   const safeAreaEdges: Edge[] = ["left", "right"];
-  const topPadding = 0;
+  const topPadding = 8;
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
