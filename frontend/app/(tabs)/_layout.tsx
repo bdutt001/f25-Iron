@@ -40,6 +40,7 @@ export default function TabLayout() {
           name="messages"
           options={{
             title: "Messages",
+            headerShown: false,
             tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbox-ellipses-outline" color={color} size={size} />
           ),

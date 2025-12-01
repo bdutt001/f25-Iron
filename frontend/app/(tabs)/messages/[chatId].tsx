@@ -16,6 +16,8 @@ import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-co
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { useUser } from "../../../context/UserContext";
 import UserOverflowMenu from "../../../components/UserOverflowMenu";
@@ -58,6 +60,8 @@ export default function ChatScreen() {
   const { currentUser, fetchWithAuth, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const tabBarHeight = useBottomTabBarHeight();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -78,6 +82,9 @@ export default function ChatScreen() {
     Platform.OS === "ios" ? ["left", "right", "bottom"] : ["left", "right", "bottom"];
   const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
   const bottomInset = Math.max(insets.bottom, 8);
+  const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + tabBarHeight : 0;
+  const composerBottomPadding = Math.max(bottomInset, 10);
+  const listBottomPadding = composerBottomPadding + 12;
 
   const resolvedProfileImage = useMemo(() => {
     if (!profilePicture) return null;
@@ -119,6 +126,7 @@ export default function ChatScreen() {
         messagesContainer: {
           paddingHorizontal: 16,
           paddingTop: 6,
+          paddingBottom: listBottomPadding,
           flexGrow: 1,
           justifyContent: messages.length ? "flex-end" : "center",
         },
@@ -160,8 +168,11 @@ export default function ChatScreen() {
         },
         composerWrapper: {
           paddingHorizontal: 16,
-          paddingBottom: bottomInset,
-          backgroundColor: "transparent",
+          paddingTop: 8,
+          paddingBottom: composerBottomPadding,
+          backgroundColor: colors.background,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
         },
         composerSurface: {
           flexDirection: "row",
@@ -208,7 +219,7 @@ export default function ChatScreen() {
         errorText: { color: isDark ? "#ffd7d5" : "#8b0000" },
         placeholderText: { color: colors.muted, textAlign: "center", marginTop: 12 },
       }),
-    [bottomInset, canSend, colors, isDark, messages.length]
+    [canSend, colors, composerBottomPadding, isDark, listBottomPadding, messages.length]
   );
 
   const scrollToBottom = useCallback(
@@ -528,7 +539,7 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <View style={styles.chatBody}>
           {error ? (
@@ -550,10 +561,7 @@ export default function ChatScreen() {
                 renderMessage({ item: item.item, index, separators })
               )
             }
-            contentContainerStyle={[
-              styles.messagesContainer,
-              { paddingBottom: bottomInset + 12 },
-            ]}
+            contentContainerStyle={styles.messagesContainer}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             onContentSizeChange={() => scrollToBottom(true)}

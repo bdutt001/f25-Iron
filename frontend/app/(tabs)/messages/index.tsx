@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
@@ -30,6 +31,9 @@ type Conversation = {
 
 export default function MessagesScreen() {
   const { currentUser, fetchWithAuth } = useUser();
+  const insets = useSafeAreaInsets();
+  const safeAreaEdges: Edge[] = ["left", "right"];
+  const topPadding = 0;
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,19 +44,21 @@ export default function MessagesScreen() {
   const styles = useMemo(
     () =>
       StyleSheet.create({
+        safeArea: {
+          flex: 1,
+          backgroundColor: colors.background,
+        },
         container: {
           flex: 1,
           paddingHorizontal: 16,
-          paddingTop: 8,
+          paddingTop: topPadding,
           backgroundColor: colors.background,
         },
         topBar: {
           flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
+          alignItems: "flex-start",
+          marginBottom: 8,
         },
-        heading: { fontSize: 24, fontWeight: "800", color: colors.text },
         syncBadge: {
           flexDirection: "row",
           alignItems: "center",
@@ -105,7 +111,7 @@ export default function MessagesScreen() {
         retryText: { color: "#fff", fontWeight: "bold" },
         loadingText: { color: colors.text },
       }),
-    [isDark, colors]
+    [isDark, colors, topPadding]
   );
 
   const loadConversations = useCallback(
@@ -204,113 +210,113 @@ export default function MessagesScreen() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topBar}>
-        <Text style={styles.heading}>Messages</Text>
-        <View style={styles.syncBadge}>
-          <View style={[styles.syncDot, { opacity: loading ? 0.5 : 1 }]} />
-          <Text style={styles.syncText}>{loading ? "Syncing..." : "Up to date"}</Text>
-          {loading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+    <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+      <View style={styles.container}>
+        <View style={styles.topBar}>
+          <View style={styles.syncBadge}>
+            <View style={[styles.syncDot, { opacity: loading ? 0.5 : 1 }]} />
+            <Text style={styles.syncText}>{loading ? "Syncing..." : "Up to date"}</Text>
+            {loading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+          </View>
         </View>
-      </View>
 
-      {error ? (
-        <View style={styles.centered}>
-          <Text style={styles.error}>{error}</Text>
-          <Pressable onPress={() => loadConversations()} style={styles.retryButton}>
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : conversations.length === 0 && !loading ? (
-        <View style={styles.centered}>
-          <Text style={styles.note}>You have no active chats yet.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={conversations}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
-            />
-          }
-          renderItem={({ item }) => {
-            const imageUri = item.receiverProfilePicture
-              ? item.receiverProfilePicture.startsWith("http")
-                ? item.receiverProfilePicture
-                : `${API_BASE_URL}${item.receiverProfilePicture}`
-              : null;
-            const timestampLabel = formatTimestamp(item.lastTimestamp);
-            const lastReadTimestamp = lastRead[item.id];
-            const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
-            const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
-            const lastIncomingTime = item.lastIncomingTimestamp ? Date.parse(item.lastIncomingTimestamp) : NaN;
-            const latestIncomingTimestamp = Number.isFinite(lastIncomingTime)
-              ? lastIncomingTime
-              : item.lastSenderId !== currentUser?.id && Number.isFinite(lastMsgTime)
-              ? lastMsgTime
-              : NaN;
-            const hasUnreadFromOthers =
-              Number.isFinite(latestIncomingTimestamp) &&
-              (!Number.isFinite(lastReadTime) || latestIncomingTimestamp > lastReadTime);
-            const isUnread = hasUnreadFromOthers;
+        {error ? (
+          <View style={styles.centered}>
+            <Text style={styles.error}>{error}</Text>
+            <Pressable onPress={() => loadConversations()} style={styles.retryButton}>
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : conversations.length === 0 && !loading ? (
+          <View style={styles.centered}>
+            <Text style={styles.note}>You have no active chats yet.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={conversations}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
+            renderItem={({ item }) => {
+              const imageUri = item.receiverProfilePicture
+                ? item.receiverProfilePicture.startsWith("http")
+                  ? item.receiverProfilePicture
+                  : `${API_BASE_URL}${item.receiverProfilePicture}`
+                : null;
+              const timestampLabel = formatTimestamp(item.lastTimestamp);
+              const lastReadTimestamp = lastRead[item.id];
+              const lastMsgTime = item.lastTimestamp ? Date.parse(item.lastTimestamp) : NaN;
+              const lastReadTime = lastReadTimestamp ? Date.parse(lastReadTimestamp) : NaN;
+              const lastIncomingTime = item.lastIncomingTimestamp ? Date.parse(item.lastIncomingTimestamp) : NaN;
+              const latestIncomingTimestamp = Number.isFinite(lastIncomingTime)
+                ? lastIncomingTime
+                : item.lastSenderId !== currentUser?.id && Number.isFinite(lastMsgTime)
+                ? lastMsgTime
+                : NaN;
+              const hasUnreadFromOthers =
+                Number.isFinite(latestIncomingTimestamp) &&
+                (!Number.isFinite(lastReadTime) || latestIncomingTimestamp > lastReadTime);
+              const isUnread = hasUnreadFromOthers;
 
-            const handleOpenChat = () => {
-              void markConversationRead(item.id, item.lastTimestamp || undefined);
-              router.push({
-                pathname: "/(tabs)/messages/[chatId]",
-                params: {
-                  chatId: item.id,
-                  name: item.name,
-                  receiverId: item.receiverId.toString(),
-                  profilePicture: item.receiverProfilePicture || "",
-                },
-              });
-            };
+              const handleOpenChat = () => {
+                void markConversationRead(item.id, item.lastTimestamp || undefined);
+                router.push({
+                  pathname: "/(tabs)/messages/[chatId]",
+                  params: {
+                    chatId: item.id,
+                    name: item.name,
+                    receiverId: item.receiverId.toString(),
+                    profilePicture: item.receiverProfilePicture || "",
+                  },
+                });
+              };
 
-            return (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.chatItem,
-                  pressed ? { transform: [{ translateY: 1 }], opacity: 0.96 } : null,
-                ]}
-                onPress={handleOpenChat}
-              >
-                <View style={styles.chatRow}>
-                  {imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.avatar} />
-                  ) : (
-                    <View style={styles.avatarPlaceholder}>
-                      <Text style={styles.avatarInitial}>{item.name[0]?.toUpperCase() || "?"}</Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.chatHeaderRow}>
-                      <Text style={[styles.name, isUnread ? styles.nameUnread : null]} numberOfLines={1}>
-                        {item.name}
+              return (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.chatItem,
+                    pressed ? { transform: [{ translateY: 1 }], opacity: 0.96 } : null,
+                  ]}
+                  onPress={handleOpenChat}
+                >
+                  <View style={styles.chatRow}>
+                    {imageUri ? (
+                      <Image source={{ uri: imageUri }} style={styles.avatar} />
+                    ) : (
+                      <View style={styles.avatarPlaceholder}>
+                        <Text style={styles.avatarInitial}>{item.name[0]?.toUpperCase() || "?"}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.chatHeaderRow}>
+                        <Text style={[styles.name, isUnread ? styles.nameUnread : null]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        {timestampLabel || isUnread ? (
+                          <View style={styles.timeRow}>
+                            {isUnread ? <View style={styles.unreadDot} /> : null}
+                            {timestampLabel ? <Text style={styles.time}>{timestampLabel}</Text> : null}
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.preview, isUnread ? styles.previewUnread : null]} numberOfLines={1}>
+                        {item.lastMessage || "Tap to chat"}
                       </Text>
-                      {timestampLabel || isUnread ? (
-                        <View style={styles.timeRow}>
-                          {isUnread ? <View style={styles.unreadDot} /> : null}
-                          {timestampLabel ? <Text style={styles.time}>{timestampLabel}</Text> : null}
-                        </View>
-                      ) : null}
                     </View>
-                    <Text style={[styles.preview, isUnread ? styles.previewUnread : null]} numberOfLines={1}>
-                      {item.lastMessage || "Tap to chat"}
-                    </Text>
                   </View>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
-      )}
-    </View>
+                </Pressable>
+              );
+            }}
+          />
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
-
