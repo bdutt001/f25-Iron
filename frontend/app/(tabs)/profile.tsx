@@ -30,6 +30,8 @@ const MAX_INTEREST_TAGS = 10;
 // ✅ Profile status options (now includes "Idle")
 const STATUS_OPTIONS = ["Looking to Mingle", "Idle", "Do Not Disturb"] as const;
 
+type StatusMode = "PRESET" | "CUSTOM";
+
 const normalizeQuery = (value: string): string => value.trim().toLowerCase();
 
 const computeFuzzyScore = (
@@ -78,7 +80,15 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 };
 
 export default function ProfileScreen() {
-  const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers, fetchWithAuth, logout } = useUser();
+  const {
+    status,
+    currentUser,
+    setCurrentUser,
+    accessToken,
+    setPrefetchedUsers,
+    fetchWithAuth,
+    logout,
+  } = useUser();
   const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
   const alertAppearance = useMemo<AlertOptions>(
     () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
@@ -116,6 +126,14 @@ export default function ProfileScreen() {
   const [profileStatus, setProfileStatus] = useState<string>("Looking to Mingle");
   const [savingProfileStatus] = useState(false); // reserved for future backend support
   const [statusError, setStatusError] = useState<string | null>(null);
+
+  const isInitialPreset = STATUS_OPTIONS.includes(profileStatus as any);
+  const [statusMode, setStatusMode] = useState<StatusMode>(
+    isInitialPreset ? "PRESET" : "CUSTOM"
+  );
+  const [customStatus, setCustomStatus] = useState<string>(
+    isInitialPreset ? "" : profileStatus
+  );
 
   const applyUserUpdate = (updated: CurrentUser) => {
     if (!currentUser) {
@@ -210,6 +228,7 @@ export default function ProfileScreen() {
     setBlockedLoading(true);
     loadBlocked().finally(() => setBlockedLoading(false));
   }, [currentUser, loadBlocked]);
+
   useFocusEffect(
     React.useCallback(() => {
       let active = true;
@@ -280,7 +299,11 @@ export default function ProfileScreen() {
     setNameError(null);
 
     try {
-      const updated = await updateUserProfile(currentUser.id, { name: trimmed }, fetchWithAuth);
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { name: trimmed },
+        fetchWithAuth
+      );
       applyUserUpdate(updated);
       setNameInput(updated.name ?? trimmed);
       setIsEditingName(false);
@@ -419,7 +442,12 @@ export default function ProfileScreen() {
       Alert.alert("Removed", "Profile picture removed.", undefined, alertAppearance);
     } catch (error) {
       console.error("Error removing profile picture:", error);
-      Alert.alert("Unable to remove picture", "Please try again later.", undefined, alertAppearance);
+      Alert.alert(
+        "Unable to remove picture",
+        "Please try again later.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
@@ -442,7 +470,12 @@ export default function ProfileScreen() {
 
   const profilePictureActions = useMemo<OverflowAction[]>(() => {
     const actions: OverflowAction[] = [
-      { key: "camera", label: "Take Photo", icon: "camera-outline", onPress: () => void takePhoto() },
+      {
+        key: "camera",
+        label: "Take Photo",
+        icon: "camera-outline",
+        onPress: () => void takePhoto(),
+      },
       {
         key: "library",
         label: "Choose From Library",
@@ -475,9 +508,7 @@ export default function ProfileScreen() {
       return;
     }
 
-    const next = isRemoving
-      ? previous.filter((t) => t !== tag)
-      : [...previous, tag];
+    const next = isRemoving ? previous.filter((t) => t !== tag) : [...previous, tag];
     const sortedNext = sortTags(next);
 
     setSelectedTags(sortedNext);
@@ -485,7 +516,11 @@ export default function ProfileScreen() {
     setTagError(null);
 
     try {
-      const updated = await updateUserProfile(currentUser.id, { interestTags: sortedNext }, fetchWithAuth);
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { interestTags: sortedNext },
+        fetchWithAuth
+      );
       applyUserUpdate(updated);
       setSelectedTags(updated.interestTags ?? []);
     } catch (error) {
@@ -498,11 +533,30 @@ export default function ProfileScreen() {
     }
   };
 
-  // ✅ Change profile status handler (client-only)
+  // ✅ Change profile status to a PRESET (client-only)
   const handleChangeProfileStatus = (value: string) => {
-    if (value === profileStatus) return;
+    if (value === profileStatus && statusMode === "PRESET") return;
+    setStatusMode("PRESET");
+    setCustomStatus("");
     setProfileStatus(value);
     setStatusError(null);
+  };
+
+  // ✅ Switch to CUSTOM mode
+  const handleSelectCustomStatus = () => {
+    setStatusMode("CUSTOM");
+    setStatusError(null);
+
+    if (!customStatus.trim()) {
+      const seed =
+        profileStatus && !STATUS_OPTIONS.includes(profileStatus as any)
+          ? profileStatus
+          : "Looking to Mingle";
+      setCustomStatus(seed);
+      setProfileStatus(seed);
+    } else {
+      setProfileStatus(customStatus);
+    }
   };
 
   const displayedSelectedTags = useMemo(
@@ -593,9 +647,7 @@ export default function ProfileScreen() {
                         active && styles.themeChipActive,
                         {
                           borderColor: colors.border,
-                          backgroundColor: isDark
-                            ? colors.background
-                            : "#fff",
+                          backgroundColor: isDark ? colors.background : "#fff",
                         },
                         active && {
                           backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
@@ -736,11 +788,13 @@ export default function ProfileScreen() {
           <Text style={[styles.label, primaryText]}>Visibility:</Text>
           <Text style={[styles.value, primaryText]}>{status}</Text>
 
-          {/* ✅ New profile Status row (client-only) */}
+          {/* ✅ Profile Status row with Custom option (client-only) */}
           <Text style={[styles.label, primaryText]}>Status:</Text>
+
           <View style={styles.statusRow}>
+            {/* Preset options */}
             {STATUS_OPTIONS.map((opt) => {
-              const active = profileStatus === opt;
+              const active = statusMode === "PRESET" && profileStatus === opt;
               return (
                 <TouchableOpacity
                   key={opt}
@@ -771,7 +825,59 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               );
             })}
+
+            {/* 4️⃣ Custom option */}
+            <TouchableOpacity
+              onPress={handleSelectCustomStatus}
+              disabled={savingProfileStatus}
+              style={[
+                styles.statusChip,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: isDark ? colors.background : "#fff",
+                },
+                statusMode === "CUSTOM" && {
+                  backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
+                  borderColor: colors.accent,
+                },
+                savingProfileStatus && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.statusChipText,
+                  { color: statusMode === "CUSTOM" ? colors.accent : colors.text },
+                ]}
+              >
+                Custom
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Text input appears only when Custom is active */}
+          {statusMode === "CUSTOM" && (
+            <TextInput
+              value={customStatus}
+              onChangeText={(text) => {
+                setCustomStatus(text);
+                setProfileStatus(text);
+                if (statusError) setStatusError(null);
+              }}
+              placeholder="Type your status (e.g., Running errands, Moving furniture)…"
+              placeholderTextColor={colors.muted}
+              style={[
+                styles.statusCustomInput,
+                {
+                  borderColor: colors.border,
+                  color: colors.text,
+                  backgroundColor: isDark ? colors.background : "#fff",
+                },
+              ]}
+              maxLength={80}
+            />
+          )}
+
           {statusError && (
             <Text style={[styles.errorText, { marginTop: 4 }]}>
               {statusError}
@@ -821,9 +927,7 @@ export default function ProfileScreen() {
                   style={[
                     styles.selectedChip,
                     {
-                      backgroundColor: isDark
-                        ? colors.background
-                        : "#e6f0ff",
+                      backgroundColor: isDark ? colors.background : "#e6f0ff",
                       borderColor: colors.border,
                     },
                   ]}
@@ -918,9 +1022,7 @@ export default function ProfileScreen() {
                                 borderColor: colors.border,
                               },
                               selected && {
-                                backgroundColor: isDark
-                                  ? "#0f172a"
-                                  : "#e6f0ff",
+                                backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
                                 borderColor: colors.accent,
                               },
                             ]}
@@ -1325,4 +1427,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   statusChipText: { fontSize: 14, fontWeight: "600" },
+  statusCustomInput: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
 });
