@@ -39,6 +39,7 @@ model User {
   gender         Gender?
   emailVerified  Boolean    @default(false)
   isAdmin        Boolean    @default(false)
+  profileStatus  String?    @db.VarChar(160)
 
   // Relations
   messagesSent     Message[]         @relation("SentMessages")
