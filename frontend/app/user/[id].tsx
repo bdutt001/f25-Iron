@@ -345,7 +345,7 @@ export default function OtherUserProfileScreen() {
                 {profileStatus}
               </Text>
             </View>
-
+            {/* Only show message button when viewing someone else */}
             {!isSelf && (
               <Pressable
                 onPress={() =>
