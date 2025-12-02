@@ -385,7 +385,7 @@ export default function NearbyScreen() {
           onPress={() =>
             router.push({ 
               pathname: "/user/[id]",
-              params: { id: String(item.id) },
+              params: { id: String(item.id), from: "nearby" }, 
               })
           }
           style={({ pressed }) => [
