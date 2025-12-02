@@ -409,11 +409,14 @@ export default function MapScreen() {
         onReported={() => {
           // optional extra behavior after report; leave empty or add toast if desired
         }}
-        onViewProfile={(uid) => {
-          // Only ever called for non-self users (UserOverflowMenu already guards this)
+        onViewProfile={(userId) => {
+          // 👈 userId is a parameter here, coming from UserOverflowMenu
           setMenuTarget(null);
           setSelectedUser(null);
-          router.push(`/user/${uid}`);
+          router.push({
+            pathname: "/user/[id]",
+            params: { id: String(userId), from: "map" },  // 👈 important
+          });
         }}
       />
 

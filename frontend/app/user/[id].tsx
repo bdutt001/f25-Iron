@@ -42,7 +42,9 @@ const trustColorForScore = (score: number) => {
 };
 
 export default function OtherUserProfileScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, from } = useLocalSearchParams<{ id?: string; from?: string }>();
+  const cameFromMessages = from === "messages";
+
   const navigation = useNavigation();
   const { colors, isDark } = useAppTheme();
   const { accessToken, currentUser, fetchWithAuth } = useUser();
@@ -142,7 +144,6 @@ export default function OtherUserProfileScreen() {
             name: finalName,
             receiverId: String(receiverId),
             profilePicture: finalProfilePicture,
-            returnToMessages: "1",
           },
         });
       } catch (err) {
@@ -155,7 +156,7 @@ export default function OtherUserProfileScreen() {
         );
       }
     },
-    [alertAppearance, currentUser, fetchWithAuth]
+    [alertAppearance, cameFromMessages, currentUser, fetchWithAuth]
   );
 
   // Set the header title to "<Name>'s Profile" (or just "Profile" as a fallback)
@@ -389,13 +390,21 @@ export default function OtherUserProfileScreen() {
           }
           onBlocked={() => {
             setMenuVisible(false);
-            router.back();
-          }}
-          onReported={() => {
-            setMenuVisible(false);
-          }}
-        />
-      )}
+                 // 🔀 Decide where to go based on where we came from
+          if (from === "map") {
+            router.replace("/(tabs)/map");
+          } else if (from === "nearby") {
+            router.replace("/(tabs)/nearby");
+          } else {
+            // default: Messages tab (covers coming from chat screen)
+            router.replace("/(tabs)/messages");
+          }
+        }}
+        onReported={() => {
+          setMenuVisible(false);
+        }}
+      />
+    )}
     </SafeAreaView>
   );
 }

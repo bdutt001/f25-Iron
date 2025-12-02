@@ -634,7 +634,16 @@ export default function NearbyScreen() {
         onReported={(uid) => {
           void refreshTrustScore(uid);
         }}
-      />
+        onViewProfile={(userId) => {
+        // Close the menu first
+        setMenuTarget(null);
+        // Navigate to the same profile screen you use when pressing the card
+        router.push({
+          pathname: "/user/[id]",
+          params: { id: String(userId), from: "nearby" },  // 👈 mark origin
+          });
+          }}
+          />
     </View>
   );
 }
