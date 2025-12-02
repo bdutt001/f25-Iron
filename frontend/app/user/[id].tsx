@@ -41,6 +41,27 @@ const trustColorForScore = (score: number) => {
   return "#DC3545";
 };
 
+// Map profileStatus text to a dot color
+const getStatusAppearance = (
+  rawStatus: string,
+  accentColor: string
+) => {
+  const s = rawStatus.toLowerCase();
+
+  if (s.includes("do not disturb") || s.includes("dnd")) {
+    return { dotColor: "#ef4444", label: rawStatus }; // red
+  }
+  if (s.includes("idle")) {
+    return { dotColor: "#facc15", label: rawStatus }; // yellow
+  }
+  if (s.includes("looking to mingle")) {
+    return { dotColor: "#22c55e", label: rawStatus }; // green
+  }
+
+  // Custom status → use app accent color
+  return { dotColor: accentColor, label: rawStatus };
+};
+
 export default function OtherUserProfileScreen() {
   const { id, from } = useLocalSearchParams<{ id?: string; from?: string }>();
   const cameFromMessages = from === "messages";
@@ -214,8 +235,15 @@ export default function OtherUserProfileScreen() {
   // ✅ Safely normalize profileStatus from backend (including custom)
   const rawStatus =
     typeof user.profileStatus === "string" ? user.profileStatus.trim() : "";
-  const profileStatus =
-    rawStatus.length > 0 ? rawStatus : "Looking to Mingle";
+  const profileStatusRaw =
+    (user as any).profileStatus && (user as any).profileStatus.trim().length > 0
+      ? (user as any).profileStatus
+      : "Looking to Mingle"; // default for viewed profiles too
+
+  const { dotColor: statusDotColor, label: profileStatus } = getStatusAppearance(
+    profileStatusRaw,
+    colors.accent
+  );
 
   const trustScore = user.trustScore ?? 0;
   const trustColor = trustColorForScore(trustScore);
@@ -300,17 +328,24 @@ export default function OtherUserProfileScreen() {
           {/* Status row: big status text + message icon button (for other users) */}
           <Text style={[styles.label, primaryText]}>Status:</Text>
           <View style={styles.statusRow}>
-            <Text
-              style={[
-                styles.statusValueLarge,
-                { color: colors.accent },
-              ]}
-              numberOfLines={2}
-            >
-              {profileStatus}
-            </Text>
+            <View style={styles.statusTextContainer}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: statusDotColor },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusValueLarge,
+                  { color: colors.accent },
+                ]}
+                numberOfLines={2}
+              >
+                {profileStatus}
+              </Text>
+            </View>
 
-            {/* Only show message button when viewing someone else */}
             {!isSelf && (
               <Pressable
                 onPress={() =>
@@ -549,5 +584,17 @@ const styles = StyleSheet.create({
   statusMessageButtonPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
+  },
+  statusTextContainer: {
+  flex: 1,
+  flexDirection: "row",
+  alignItems: "center",
+  marginRight: 12,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
   },
 });
