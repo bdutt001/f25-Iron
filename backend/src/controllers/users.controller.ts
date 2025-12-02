@@ -154,6 +154,12 @@ export const updateUser = async (req: Request, res: Response) => {
   const visibilityRaw =
     typeof req.body.visibility === "boolean" ? req.body.visibility : undefined;
   const profilePictureRaw = req.body.profilePicture;
+  const profileStatusRaw =
+  typeof req.body.profileStatus === "string"
+    ? req.body.profileStatus.trim()
+    : req.body.profileStatus === null
+    ? null
+    : undefined;
 
   try {
     const data: Prisma.UserUpdateInput = {};
@@ -187,6 +193,13 @@ export const updateUser = async (req: Request, res: Response) => {
       if (trimmed) data.profilePicture = trimmed;
     }
 
+    if (profileStatusRaw === null) {
+      // allow clearing the status (set to NULL in DB)
+      data.profileStatus = null;
+    } else if (typeof profileStatusRaw === "string" && profileStatusRaw.length > 0) {
+      // set to a non-empty custom or preset status
+      data.profileStatus = profileStatusRaw;
+    }
     const user = await prisma.user.update({
       where: { id: userId },
       data,
