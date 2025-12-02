@@ -104,25 +104,26 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     [persistTokens]
   );
 
-  const logout = useCallback(
-    async (message?: string) => {
-      refreshPromiseRef.current = null;
-      setCurrentUser(null);
-      setPrefetchedUsers(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-      setStatusRaw("Hidden");
-      setAuthStatus("unauthenticated");
-      await persistTokens(null, null);
-      if (message) {
-        Alert.alert("Session expired", message);
-      }
-      // 🔁 Hard-reset navigation and go to login so no back arrow appears
-      router.dismissAll?.();
-      router.replace("/login");
-    },
-    [persistTokens]
-  );
+    const logout = useCallback(
+      async (message?: string) => {
+        refreshPromiseRef.current = null;
+        setCurrentUser(null);
+        setPrefetchedUsers(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+        setStatusRaw("Hidden");
+        setAuthStatus("unauthenticated");
+        await persistTokens(null, null);
+
+        if (message) {
+          Alert.alert("Session expired", message);
+        }
+
+        // ✅ Just navigate to login; remove the back arrow via Stack options
+        router.replace("/login");
+      },
+      [persistTokens]
+    );
 
   const refreshAccessToken = useCallback(async (): Promise<string> => {
     if (!refreshToken) {
