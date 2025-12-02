@@ -20,14 +20,16 @@ import { useUser, type CurrentUser } from "../../context/UserContext";
 import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
 import type { ApiUser } from "../../utils/geo";
 import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
-import OverflowMenu, { type OverflowAction } from "../../components/ui/OverflowMenu";
+import OverflowMenu, {
+  type OverflowAction,
+} from "../../components/ui/OverflowMenu";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
 
 const MAX_INTEREST_TAGS = 10;
 
-// ✅ Profile status options (now includes "Idle")
+// ✅ Profile status options
 const STATUS_OPTIONS = ["Looking to Mingle", "Idle", "Do Not Disturb"] as const;
 
 type StatusMode = "PRESET" | "CUSTOM";
@@ -44,7 +46,8 @@ const computeFuzzyScore = (
   const directMatchIndex = normalizedCandidate.indexOf(normalizedQuery);
   if (directMatchIndex !== -1) {
     const penalty =
-      directMatchIndex * 5 + (normalizedCandidate.length - normalizedQuery.length);
+      directMatchIndex * 5 +
+      (normalizedCandidate.length - normalizedQuery.length);
     return 200 - penalty;
   }
 
@@ -89,7 +92,8 @@ export default function ProfileScreen() {
     fetchWithAuth,
     logout,
   } = useUser();
-  const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
+  const { colors, mode: themeMode, setMode: setThemeMode, isDark } =
+    useAppTheme();
   const alertAppearance = useMemo<AlertOptions>(
     () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
     [isDark]
@@ -122,17 +126,19 @@ export default function ProfileScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // ✅ Profile Status (client-only for now; default "Looking to Mingle")
-  const [profileStatus, setProfileStatus] = useState<string>("Looking to Mingle");
-  const [savingProfileStatus] = useState(false); // reserved for future backend support
+  // ✅ Profile Status (now synced with backend)
+  const initialStatus = currentUser?.profileStatus ?? "Looking to Mingle";
+  const [profileStatus, setProfileStatus] =
+    useState<string>(initialStatus);
+  const [savingProfileStatus, setSavingProfileStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  const isInitialPreset = STATUS_OPTIONS.includes(profileStatus as any);
+  const isInitialPreset = STATUS_OPTIONS.includes(initialStatus as any);
   const [statusMode, setStatusMode] = useState<StatusMode>(
     isInitialPreset ? "PRESET" : "CUSTOM"
   );
   const [customStatus, setCustomStatus] = useState<string>(
-    isInitialPreset ? "" : profileStatus
+    isInitialPreset ? "" : initialStatus
   );
 
   const applyUserUpdate = (updated: CurrentUser) => {
@@ -153,9 +159,22 @@ export default function ProfileScreen() {
         typeof updated.visibility === "boolean"
           ? updated.visibility
           : currentUser.visibility,
-      // ❌ profileStatus intentionally NOT here yet (no backend support)
+      profileStatus:
+        typeof updated.profileStatus === "string"
+          ? updated.profileStatus
+          : currentUser.profileStatus,
     });
   };
+
+  // ✅ Keep local status in sync if currentUser changes (e.g., after refresh/login)
+  useEffect(() => {
+    if (!currentUser) return;
+    const serverStatus = currentUser.profileStatus ?? "Looking to Mingle";
+    setProfileStatus(serverStatus);
+    const isPreset = STATUS_OPTIONS.includes(serverStatus as any);
+    setStatusMode(isPreset ? "PRESET" : "CUSTOM");
+    setCustomStatus(isPreset ? "" : serverStatus);
+  }, [currentUser?.profileStatus, currentUser]);
 
   useEffect(() => {
     setSelectedTags(currentUser?.interestTags ?? []);
@@ -178,8 +197,6 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!expanded) setTagSearch("");
   }, [expanded]);
-
-  // ❌ No syncing profileStatus with currentUser (backend doesn't support it yet)
 
   useEffect(() => {
     let cancelled = false;
@@ -243,9 +260,12 @@ export default function ProfileScreen() {
 
   const handleUnblock = async (userId: number) => {
     try {
-      const res = await fetchWithAuth(`${API_BASE_URL}/api/users/${userId}/block`, {
-        method: "DELETE",
-      });
+      const res = await fetchWithAuth(
+        `${API_BASE_URL}/api/users/${userId}/block`,
+        {
+          method: "DELETE",
+        }
+      );
       if (res.ok || res.status === 204) {
         setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
       }
@@ -370,13 +390,19 @@ export default function ProfileScreen() {
       Alert.alert("Success", "Profile picture updated!", undefined, alertAppearance);
     } catch (error) {
       console.error("Error uploading image:", error);
-      Alert.alert("Upload failed", "Please try again later.", undefined, alertAppearance);
+      Alert.alert(
+        "Upload failed",
+        "Please try again later.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
   const pickImageFromLibrary = async () => {
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert(
           "Permission required",
@@ -398,13 +424,19 @@ export default function ProfileScreen() {
       await uploadSelectedAsset(result.assets[0]);
     } catch (error) {
       console.error("Error picking image from library:", error);
-      Alert.alert("Unable to open library", "Please try again.", undefined, alertAppearance);
+      Alert.alert(
+        "Unable to open library",
+        "Please try again.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
   const takePhoto = async () => {
     try {
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      const permissionResult =
+        await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert(
           "Permission required",
@@ -425,7 +457,12 @@ export default function ProfileScreen() {
       await uploadSelectedAsset(result.assets[0]);
     } catch (error) {
       console.error("Error capturing photo:", error);
-      Alert.alert("Unable to open camera", "Please try again.", undefined, alertAppearance);
+      Alert.alert(
+        "Unable to open camera",
+        "Please try again.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
@@ -458,7 +495,11 @@ export default function ProfileScreen() {
       "This will revert to your initials across the app.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => void removeProfilePicture() },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => void removeProfilePicture(),
+        },
       ],
       alertAppearance
     );
@@ -533,16 +574,49 @@ export default function ProfileScreen() {
     }
   };
 
-  // ✅ Change profile status to a PRESET (client-only)
+  // ✅ Save profile status to backend
+  const saveProfileStatus = async (value: string) => {
+    if (!currentUser) return;
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setStatusError("Status cannot be empty.");
+      return;
+    }
+
+    setSavingProfileStatus(true);
+    setStatusError(null);
+
+    try {
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { profileStatus: trimmed },
+        fetchWithAuth
+      );
+      applyUserUpdate(updated as CurrentUser);
+      const finalStatus = updated.profileStatus ?? trimmed;
+      setProfileStatus(finalStatus);
+      if (statusMode === "CUSTOM") {
+        setCustomStatus(finalStatus);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update status";
+      setStatusError(message);
+    } finally {
+      setSavingProfileStatus(false);
+    }
+  };
+
+  // ✅ Change profile status to a PRESET (saves immediately)
   const handleChangeProfileStatus = (value: string) => {
     if (value === profileStatus && statusMode === "PRESET") return;
     setStatusMode("PRESET");
     setCustomStatus("");
     setProfileStatus(value);
-    setStatusError(null);
+    void saveProfileStatus(value);
   };
 
-  // ✅ Switch to CUSTOM mode
+  // ✅ Switch to CUSTOM mode (save when user finishes editing)
   const handleSelectCustomStatus = () => {
     setStatusMode("CUSTOM");
     setStatusError(null);
@@ -788,7 +862,7 @@ export default function ProfileScreen() {
           <Text style={[styles.label, primaryText]}>Visibility:</Text>
           <Text style={[styles.value, primaryText]}>{status}</Text>
 
-          {/* ✅ Profile Status row with Custom option (client-only) */}
+          {/* ✅ Profile Status row with Custom option (now backend-synced) */}
           <Text style={[styles.label, primaryText]}>Status:</Text>
 
           <View style={styles.statusRow}>
@@ -875,6 +949,8 @@ export default function ProfileScreen() {
                 },
               ]}
               maxLength={80}
+              onEndEditing={() => void saveProfileStatus(customStatus)}
+              onSubmitEditing={() => void saveProfileStatus(customStatus)}
             />
           )}
 
@@ -1197,7 +1273,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 15,
+    textAlign: "center",
+  },
   label: { fontSize: 16, fontWeight: "600", marginTop: 10 },
   labelCount: { fontSize: 13, color: "#66a8ff", fontWeight: "500" },
   value: { fontSize: 16, color: "#333" },
@@ -1219,7 +1300,11 @@ const styles = StyleSheet.create({
     color: "#333",
     backgroundColor: "#fff",
   },
-  nameActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 12 },
+  nameActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 12,
+  },
   nameActionButton: { marginLeft: 12 },
   nameActionButtonFirst: { marginLeft: 0 },
   nameError: { marginTop: 8 },
@@ -1234,7 +1319,11 @@ const styles = StyleSheet.create({
   savingIndicator: { marginRight: 8 },
   toggleText: { color: "#007BFF", fontWeight: "600" },
   emptyTags: { marginTop: 8, fontSize: 14, color: "#666" },
-  selectedTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
+  selectedTagsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+  },
   selectedChip: {
     backgroundColor: "#e6f0ff",
     paddingHorizontal: 12,
