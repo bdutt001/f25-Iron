@@ -32,6 +32,18 @@ const MAX_INTEREST_TAGS = 10;
 // ✅ Profile status options
 const STATUS_OPTIONS = ["Looking to Mingle", "Idle", "Do Not Disturb"] as const;
 
+// ✅ Helper: map status text → dot color (same idea as [id].tsx)
+const getStatusDotColor = (status: string, accent: string) => {
+  const s = status.toLowerCase();
+
+  if (s.includes("do not disturb") || s.includes("dnd")) return "#ef4444"; // red
+  if (s.includes("idle")) return "#facc15"; // yellow
+  if (s.includes("looking to mingle")) return "#22c55e"; // green
+
+  // Custom / unknown → accent color
+  return accent;
+};
+
 type StatusMode = "PRESET" | "CUSTOM";
 
 const normalizeQuery = (value: string): string => value.trim().toLowerCase();
@@ -128,8 +140,7 @@ export default function ProfileScreen() {
 
   // ✅ Profile Status (now synced with backend)
   const initialStatus = currentUser?.profileStatus ?? "Looking to Mingle";
-  const [profileStatus, setProfileStatus] =
-    useState<string>(initialStatus);
+  const [profileStatus, setProfileStatus] = useState<string>(initialStatus);
   const [savingProfileStatus, setSavingProfileStatus] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
 
@@ -387,7 +398,12 @@ export default function ProfileScreen() {
         }
       }
 
-      Alert.alert("Success", "Profile picture updated!", undefined, alertAppearance);
+      Alert.alert(
+        "Success",
+        "Profile picture updated!",
+        undefined,
+        alertAppearance
+      );
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert(
@@ -476,7 +492,12 @@ export default function ProfileScreen() {
       );
       applyUserUpdate(updated);
       setProfilePicture(null);
-      Alert.alert("Removed", "Profile picture removed.", undefined, alertAppearance);
+      Alert.alert(
+        "Removed",
+        "Profile picture removed.",
+        undefined,
+        alertAppearance
+      );
     } catch (error) {
       console.error("Error removing profile picture:", error);
       Alert.alert(
@@ -888,19 +909,32 @@ export default function ProfileScreen() {
                   ]}
                   accessibilityRole="button"
                 >
-                  <Text
-                    style={[
-                      styles.statusChipText,
-                      { color: active ? colors.accent : colors.text },
-                    ]}
-                  >
-                    {opt}
-                  </Text>
+                  <View style={styles.statusChipInner}>
+                    <View
+                      style={[
+                        styles.statusDotTiny,
+                        {
+                          backgroundColor: getStatusDotColor(
+                            opt,
+                            colors.accent
+                          ),
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.statusChipText,
+                        { color: active ? colors.accent : colors.text },
+                      ]}
+                    >
+                      {opt}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
 
-            {/* 4️⃣ Custom option */}
+            {/* Custom option */}
             <TouchableOpacity
               onPress={handleSelectCustomStatus}
               disabled={savingProfileStatus}
@@ -918,40 +952,70 @@ export default function ProfileScreen() {
               ]}
               accessibilityRole="button"
             >
-              <Text
-                style={[
-                  styles.statusChipText,
-                  { color: statusMode === "CUSTOM" ? colors.accent : colors.text },
-                ]}
-              >
-                Custom
-              </Text>
+              <View style={styles.statusChipInner}>
+                <View
+                  style={[
+                    styles.statusDotTiny,
+                    {
+                      backgroundColor: getStatusDotColor(
+                        statusMode === "CUSTOM" ? profileStatus : "custom",
+                        colors.accent
+                      ),
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.statusChipText,
+                    {
+                      color:
+                        statusMode === "CUSTOM" ? colors.accent : colors.text,
+                    },
+                  ]}
+                >
+                  Custom
+                </Text>
+              </View>
             </TouchableOpacity>
           </View>
 
           {/* Text input appears only when Custom is active */}
           {statusMode === "CUSTOM" && (
-            <TextInput
-              value={customStatus}
-              onChangeText={(text) => {
-                setCustomStatus(text);
-                setProfileStatus(text);
-                if (statusError) setStatusError(null);
-              }}
-              placeholder="Type your status (e.g., Running errands, Moving furniture)…"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.statusCustomInput,
-                {
-                  borderColor: colors.border,
-                  color: colors.text,
-                  backgroundColor: isDark ? colors.background : "#fff",
-                },
-              ]}
-              maxLength={80}
-              onEndEditing={() => void saveProfileStatus(customStatus)}
-              onSubmitEditing={() => void saveProfileStatus(customStatus)}
-            />
+            <View style={styles.statusCustomRow}>
+              <View
+                style={[
+                  styles.statusDotTiny,
+                  {
+                    backgroundColor: getStatusDotColor(
+                      customStatus || profileStatus,
+                      colors.accent
+                    ),
+                  },
+                ]}
+              />
+              <TextInput
+                value={customStatus}
+                onChangeText={(text) => {
+                  setCustomStatus(text);
+                  setProfileStatus(text);
+                  if (statusError) setStatusError(null);
+                }}
+                placeholder="Type your status (e.g., Running errands, Going Shopping)…"
+                placeholderTextColor={colors.muted}
+                style={[
+                  styles.statusCustomInput,
+                  {
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: isDark ? colors.background : "#fff",
+                    flex: 1,
+                  },
+                ]}
+                maxLength={80}
+                onEndEditing={() => void saveProfileStatus(customStatus)}
+                onSubmitEditing={() => void saveProfileStatus(customStatus)}
+              />
+            </View>
           )}
 
           {statusError && (
@@ -1516,8 +1580,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   statusChipText: { fontSize: 14, fontWeight: "600" },
-  statusCustomInput: {
+  statusChipInner: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusDotTiny: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusCustomRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 8,
+  },
+  statusCustomInput: {
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
