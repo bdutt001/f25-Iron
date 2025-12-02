@@ -117,6 +117,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       if (message) {
         Alert.alert("Session expired", message);
       }
+      // 🔁 Hard-reset navigation and go to login so no back arrow appears
+      router.dismissAll?.();
       router.replace("/login");
     },
     [persistTokens]
