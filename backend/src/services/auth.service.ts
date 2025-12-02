@@ -84,6 +84,7 @@ export const toAuthenticatedUser = (user: {
   profilePicture?: string | null;
   interestTags?: { name: string }[];
   visibility?: boolean;
+  profileStatus?: string | null; 
 }): AuthenticatedUser => ({
   id: user.id,
   email: user.email ?? null,
@@ -95,6 +96,7 @@ export const toAuthenticatedUser = (user: {
       )
     : [],
   visibility: user.visibility ?? false,
+  profileStatus: user.profileStatus ?? null,
 });
 
 /**

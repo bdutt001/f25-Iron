@@ -52,7 +52,6 @@ export default function OtherUserProfileScreen() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [menuVisible, setMenuVisible] = useState(false);
 
   const alertAppearance = useMemo<AlertOptions>(
@@ -211,10 +210,13 @@ export default function OtherUserProfileScreen() {
 
   const displayName =
     user.name && user.name.trim().length > 0 ? user.name : user.email;
+
+  // ✅ Safely normalize profileStatus from backend (including custom)
+  const rawStatus =
+    typeof user.profileStatus === "string" ? user.profileStatus.trim() : "";
   const profileStatus =
-    (user as any).profileStatus && (user as any).profileStatus.trim().length > 0
-      ? (user as any).profileStatus
-      : "Looking to Mingle"; // default for viewed profiles too
+    rawStatus.length > 0 ? rawStatus : "Looking to Mingle";
+
   const trustScore = user.trustScore ?? 0;
   const trustColor = trustColorForScore(trustScore);
 
@@ -390,21 +392,21 @@ export default function OtherUserProfileScreen() {
           }
           onBlocked={() => {
             setMenuVisible(false);
-                 // 🔀 Decide where to go based on where we came from
-          if (from === "map") {
-            router.replace("/(tabs)/map");
-          } else if (from === "nearby") {
-            router.replace("/(tabs)/nearby");
-          } else {
-            // default: Messages tab (covers coming from chat screen)
-            router.replace("/(tabs)/messages");
-          }
-        }}
-        onReported={() => {
-          setMenuVisible(false);
-        }}
-      />
-    )}
+            // 🔀 Decide where to go based on where we came from
+            if (from === "map") {
+              router.replace("/(tabs)/map");
+            } else if (from === "nearby") {
+              router.replace("/(tabs)/nearby");
+            } else {
+              // default: Messages tab (covers coming from chat screen)
+              router.replace("/(tabs)/messages");
+            }
+          }}
+          onReported={() => {
+            setMenuVisible(false);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
