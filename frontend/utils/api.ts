@@ -65,7 +65,12 @@ const resolveProfilePictureUrl = (path: unknown): string | null => {
   return `${API_BASE_URL}${path}`;
 };
 
-// ✅ Updated user parser (includes trustScore + profilePicture)
+// ✅ Small helper for authenticated GETs
+const buildAuthHeaders = (token: string): Record<string, string> => ({
+  Authorization: `Bearer ${token}`,
+});
+
+// ✅ Updated user parser (includes trustScore + profilePicture + profileStatus)
 export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   id: parseUserId(payload.id),
   username:
@@ -78,6 +83,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),
   visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
+  profileStatus: normalizeOptionalString(payload.profileStatus),
 });
 
 const extractErrorMessage = async (response: Response): Promise<string> => {
@@ -122,6 +128,7 @@ export type UpdateUserProfilePayload = {
   interestTags?: string[];
   visibility?: boolean;
   profilePicture?: string | null;
+  profileStatus?: string | null;
 };
 
 // ✅ Update user profile details (name, tags, etc.)
@@ -136,6 +143,7 @@ export const updateUserProfile = async (
   if ("interestTags" in payload) body.interestTags = payload.interestTags;
   if ("visibility" in payload) body.visibility = payload.visibility;
   if ("profilePicture" in payload) body.profilePicture = payload.profilePicture;
+  if ("profileStatus" in payload) body.profileStatus = payload.profileStatus;
 
   if (Object.keys(body).length === 0) {
     throw new Error("No profile fields provided.");
