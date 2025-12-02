@@ -171,9 +171,9 @@ export default function MapScreen() {
       if (!currentUser) return;
       try {
         // Fetch latest receiver for display info
-      const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`, {
-        skipAuth: !accessToken,
-      });
+        const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`, {
+          skipAuth: !accessToken,
+        });
         let latestUser: ApiUser | null = null;
         if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
@@ -245,8 +245,6 @@ export default function MapScreen() {
     const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
     setNearbyUsers(scattered);
   }, [prefetchedUsers, nearbyUsers.length, currentUserId, center.latitude, center.longitude]);
-
-  // Removed markerTracks effect
 
   // Helpers for UI coloring
   const trustColor = (score?: number) => {
@@ -346,6 +344,12 @@ export default function MapScreen() {
   const mutedText = { color: colors.muted };
   const selectedMatchPercent = selectedUser ? matchPercent(selectedUser) : null;
 
+  // ✅ Safe display name for the selected user (no email shown)
+  const selectedDisplayName =
+    selectedUser && selectedUser.name && selectedUser.name.trim().length > 0
+      ? selectedUser.name.trim()
+      : "Anonymous";
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <MapView
@@ -376,7 +380,7 @@ export default function MapScreen() {
         {nearbyUsers.map((user) => {
           return (
             <Marker
-              key={`${user.id}-${markersVersion}-${user.profilePicture ?? 'nop'}`}
+              key={`${user.id}-${markersVersion}-${user.profilePicture ?? "nop"}`}
               coordinate={user.coords}
               onPress={() => setSelectedUser(user)}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -395,10 +399,21 @@ export default function MapScreen() {
         targetUser={menuTarget}
         onBlocked={(uid) => {
           setNearbyUsers((prevUsers: NearbyUser[]) => prevUsers.filter((user) => user.id !== uid));
-          setPrefetchedUsers((prevUsers) => (prevUsers ? prevUsers.filter((user) => user.id !== uid) : prevUsers));
+          setPrefetchedUsers((prevUsers) =>
+            prevUsers ? prevUsers.filter((user) => user.id !== uid) : prevUsers
+          );
           setMarkersVersion((v) => v + 1);
           void loadUsers();
           setSelectedUser(null);
+        }}
+        onReported={() => {
+          // optional extra behavior after report; leave empty or add toast if desired
+        }}
+        onViewProfile={(uid) => {
+          // Only ever called for non-self users (UserOverflowMenu already guards this)
+          setMenuTarget(null);
+          setSelectedUser(null);
+          router.push(`/user/${uid}`);
         }}
       />
 
@@ -416,7 +431,10 @@ export default function MapScreen() {
               source={{ uri: selectedUserAvatarUri }}
               style={[
                 styles.floatingImage,
-                { borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946", backgroundColor: colors.card },
+                {
+                  borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946",
+                  backgroundColor: colors.card,
+                },
               ]}
               cachePolicy="memory-disk"
               transition={0}
@@ -426,10 +444,15 @@ export default function MapScreen() {
             <View
               style={[
                 styles.floatingPlaceholder,
-                { borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946", backgroundColor: colors.card },
+                {
+                  borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946",
+                  backgroundColor: colors.card,
+                },
               ]}
             >
-              <Text style={[styles.floatingInitials, { color: isDark ? colors.text : "#555" }]}>{userInitial(selectedUser)}</Text>
+              <Text style={[styles.floatingInitials, { color: isDark ? colors.text : "#555" }]}>
+                {userInitial(selectedUser)}
+              </Text>
             </View>
           )}
         </View>
@@ -446,7 +469,12 @@ export default function MapScreen() {
           <View
             style={[
               styles.sheet,
-              { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth, shadowColor: isDark ? "#000" : "#000" },
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderWidth: StyleSheet.hairlineWidth,
+                shadowColor: isDark ? "#000" : "#000",
+              },
             ]}
           >
             <View style={styles.sheetHeader}>
@@ -460,7 +488,7 @@ export default function MapScreen() {
               <View style={styles.calloutTextBlock}>
                 <View style={styles.calloutTitleRow}>
                   <Text style={[styles.calloutTitle, textColor]} numberOfLines={1}>
-                    {selectedUser.name || selectedUser.email}
+                    {selectedDisplayName}
                   </Text>
                   {selectedUser.isCurrentUser && (
                     <Text style={[styles.calloutBadge, { backgroundColor: colors.accent }]}>
@@ -468,17 +496,19 @@ export default function MapScreen() {
                     </Text>
                   )}
                 </View>
-                <Text style={[styles.calloutSubtitle, mutedText]} numberOfLines={1}>
-                  {selectedUser.email}
-                </Text>
+                {/* Email removed from map tab for all users */}
                 {!selectedUser.isCurrentUser && selectedMatchPercent !== null && (
                   <View
                     style={[
                       styles.metaPill,
                       styles.metaPillUnderText,
                       {
-                        borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
-                        backgroundColor: isDark ? "rgba(0,123,255,0.2)" : "rgba(0,123,255,0.08)",
+                        borderColor: isDark
+                          ? "rgba(255,255,255,0.08)"
+                          : "rgba(0,0,0,0.05)",
+                        backgroundColor: isDark
+                          ? "rgba(0,123,255,0.2)"
+                          : "rgba(0,123,255,0.08)",
                       },
                     ]}
                   >
@@ -496,7 +526,9 @@ export default function MapScreen() {
                   ]}
                 >
                   Trust Score:{" "}
-                  <Text style={styles.trustScoreNumber}>{selectedUser.trustScore ?? "-"}</Text>
+                  <Text style={styles.trustScoreNumber}>
+                    {selectedUser.trustScore ?? "-"}
+                  </Text>
                 </Text>
               </View>
             </View>
@@ -504,8 +536,18 @@ export default function MapScreen() {
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
-                  <View key={tag} style={[styles.calloutTagChip, { backgroundColor: isDark ? colors.background : "#e6f0ff" }]}>
-                    <Text style={[styles.calloutTagText, { color: colors.accent }]}>{tag}</Text>
+                  <View
+                    key={tag}
+                    style={[
+                      styles.calloutTagChip,
+                      { backgroundColor: isDark ? colors.background : "#e6f0ff" },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.calloutTagText, { color: colors.accent }]}
+                    >
+                      {tag}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -517,13 +559,20 @@ export default function MapScreen() {
               </Text>
             )}
 
-            {/* Action bar: message + more menu (report/block) */}
+            {/* Action bar: message + more menu (view profile / report / block) */}
             {!selectedUser.isCurrentUser && (
-              <>
               <View style={styles.calloutActionsRow}>
                 <TouchableOpacity
-                  onPress={() => startChat(selectedUser.id, selectedUser.name || selectedUser.email)}
-                  style={[styles.calloutActionButton, { backgroundColor: colors.accent }]}
+                  onPress={() =>
+                    startChat(
+                      selectedUser.id,
+                      selectedDisplayName
+                    )
+                  }
+                  style={[
+                    styles.calloutActionButton,
+                    { backgroundColor: colors.accent },
+                  ]}
                   activeOpacity={0.85}
                   accessibilityRole="button"
                   accessibilityLabel="Message user"
@@ -537,25 +586,29 @@ export default function MapScreen() {
                   style={styles.calloutActionMenu}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
+                  <Ionicons
+                    name="ellipsis-vertical"
+                    size={20}
+                    color={colors.icon}
+                  />
                 </TouchableOpacity>
               </View>
-              </>
             )}
           </View>
-
-          {/* Popover moved to screen root for proper z-ordering */}
         </>
       )}
-
-      {/* Inline actions are rendered inside the sheet above */}
 
       {/* 🔘 Controls (lift when sheet is open) */}
       <View
         style={[
           styles.controls,
-          { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth, shadowColor: isDark ? "#000" : "#000" },
-          selectedUser ? { display: 'none' } : null,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderWidth: StyleSheet.hairlineWidth,
+            shadowColor: isDark ? "#000" : "#000",
+          },
+          selectedUser ? { display: "none" } : null,
         ]}
       >
         <Text style={[styles.statusText, textColor]}>Visibility: {status}</Text>
@@ -580,7 +633,9 @@ export default function MapScreen() {
             </Text>
           )}
         </TouchableOpacity>
-        {!!errorMsg && <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>}
+        {!!errorMsg && (
+          <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>
+        )}
       </View>
     </View>
   );
@@ -665,7 +720,14 @@ const styles = StyleSheet.create({
   floatingInitials: { fontSize: 50, fontWeight: "700", color: "#555" },
 
   // Bottom sheet
-  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.15)" },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
   sheet: {
     position: "absolute",
     left: 12,
@@ -689,7 +751,11 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd" },
   sheetClose: { color: "#66a8ff", fontWeight: "600" },
 
-  calloutHeaderRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  calloutHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
   calloutTextBlock: { flex: 1, minWidth: 0 },
   calloutTitleRow: { flexDirection: "row", alignItems: "center" },
   calloutTitle: { fontSize: 16, fontWeight: "600", flexShrink: 1 },
@@ -704,7 +770,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  calloutTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
+  calloutTagsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
   calloutTagChip: {
     backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
@@ -750,10 +820,15 @@ const styles = StyleSheet.create({
   },
   metaPillUnderText: { marginTop: 6 },
   metaText: { fontSize: 12, fontWeight: "600" },
-  
-  inlineActionsWrap: { overflow: 'hidden', flexDirection: 'row', alignItems: 'center', marginRight: 6 },
+
+  inlineActionsWrap: {
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 6,
+  },
   inlineActionsWrapClosed: { width: 0, opacity: 0 },
-  inlineActionsWrapOpen: { width: 'auto', opacity: 1 },
+  inlineActionsWrapOpen: { width: "auto", opacity: 1 },
   inlineActionDanger: {
     color: "#dc3545",
     fontWeight: "700",
@@ -768,8 +843,4 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  
 });
-
-
-
