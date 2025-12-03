@@ -4,6 +4,7 @@ import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } fro
 import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
+import { useAppTheme } from "../context/ThemeContext";
 import OverflowMenu from "../components/ui/OverflowMenu";
 
 type AuthSuccess = {
@@ -42,6 +43,10 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const { setCurrentUser, setTokens, setPrefetchedUsers } = useUser();
   const [signupSuccessVisible, setSignupSuccessVisible] = useState(false);
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [authModalTitle, setAuthModalTitle] = useState("");
+  const [authModalMessage, setAuthModalMessage] = useState("");
+  const { colors, isDark } = useAppTheme();
 
   const preloadVisibleUsers = async (accessToken: string) => {
     try {
@@ -81,17 +86,23 @@ export default function LoginScreen() {
       }
 
       const data = (await response.json()) as HealthResponse;
-      Alert.alert("Backend online", data.status ?? "ok");
+      setAuthModalTitle("Backend online");
+      setAuthModalMessage(data.status ?? "ok");
+      setAuthModalVisible(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert("Backend test failed", message);
+      setAuthModalTitle("Backend test failed");
+      setAuthModalMessage(message);
+      setAuthModalVisible(true);
     }
   };
 
   const handleLogin = async () => {
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed || !password) {
-      Alert.alert("Login", "Please enter email and password");
+      setAuthModalTitle("Login");
+      setAuthModalMessage("Please enter email and password.");
+      setAuthModalVisible(true);
       return;
     }
     try {
@@ -115,14 +126,18 @@ export default function LoginScreen() {
       router.replace("/(tabs)/profile");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert("Login failed", message);
+      setAuthModalTitle("Login failed");
+      setAuthModalMessage(message);
+      setAuthModalVisible(true);
     }
   };
 
   const handleSignup = async () => {
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed || !password) {
-      Alert.alert("Create Account", "Please enter email and password");
+      setAuthModalTitle("Create Account");
+      setAuthModalMessage("Please enter email and password.");
+      setAuthModalVisible(true);
       return;
     }
     try {
@@ -159,51 +174,95 @@ export default function LoginScreen() {
     router.replace("/onboarding");
   }, []);
 
+  const closeAuthModal = useCallback(() => {
+    setAuthModalVisible(false);
+  }, []);
+
   return (
-    <View style={styles.container}>
-      {/* Logo */}
-      <Image
-        source={require("../assets/images/MingleMap-title.png")}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.logoRow}>
+        <Image
+          source={require("../assets/images/MingleMap-title.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </View>
 
-      {/* Input fields */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        placeholderTextColor="#888"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        placeholderTextColor="#888"
-        secureTextEntry
-        textContentType="password"
-        autoComplete="password"
-      />
+      <View style={styles.cardContainer}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: isDark ? "#000" : "#0f172a",
+            },
+          ]}
+        >
+          <Text style={[styles.label, { color: colors.muted }]}>Email</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="you@example.com"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            placeholderTextColor={colors.muted}
+          />
 
-      {/* Primary button (Login) */}
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}>
-        <Text style={styles.primaryText}>Login</Text>
-      </TouchableOpacity>
+          <Text style={[styles.label, { color: colors.muted }]}>Password</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="Enter your password"
+            value={password}
+            onChangeText={setPassword}
+            placeholderTextColor={colors.muted}
+            secureTextEntry
+            textContentType="password"
+            autoComplete="password"
+          />
 
-      {/* Secondary button (Go to Signup) */}
-      <TouchableOpacity style={styles.secondaryBtn} onPress={handleSignup}>
-        <Text style={styles.secondaryText}>Create Account</Text>
-      </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: colors.accent }]}
+            onPress={handleLogin}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryText}>Login</Text>
+          </TouchableOpacity>
 
-      {__DEV__ && (
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleTestConnection}>
-          <Text style={styles.secondaryText}>Test Backend Connection</Text>
-        </TouchableOpacity>
-      )}
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: colors.border }]}
+            onPress={handleSignup}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.secondaryText, { color: colors.text }]}>Create Account</Text>
+          </TouchableOpacity>
+
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.linkBtn}
+              onPress={handleTestConnection}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.linkText, { color: colors.accent }]}>Test Backend Connection</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
       <OverflowMenu
         visible={signupSuccessVisible}
@@ -220,6 +279,21 @@ export default function LoginScreen() {
           },
         ]}
       />
+      <OverflowMenu
+        visible={authModalVisible}
+        onClose={closeAuthModal}
+        title={authModalTitle || "Notice"}
+        message={authModalMessage}
+        showCancel={false}
+        actions={[
+          {
+            key: "ok",
+            label: "Okay",
+            icon: "checkmark-circle-outline",
+            onPress: closeAuthModal,
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -230,49 +304,67 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
-    backgroundColor: "#121212",
+  },
+  logoRow: {
+    alignItems: "center",
+    marginBottom: 12,
   },
   logo: {
     width: 280,
     height: 100,
-    marginBottom: 30,
   },
+  cardContainer: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  label: { fontSize: 13, fontWeight: "600", marginTop: 6, marginBottom: 6 },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    marginBottom: 12,
-    padding: 10,
-    borderRadius: 6,
-    backgroundColor: "#fff",
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
     width: "100%",
-    color: "#000",
+    fontSize: 15,
   },
   primaryBtn: {
-    backgroundColor: "#007BFF", // blue
-    paddingVertical: 12,
-    borderRadius: 6,
-    marginTop: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 4,
     width: "100%",
     alignItems: "center",
   },
   primaryText: {
     color: "#fff",
+    fontWeight: "700",
     fontSize: 16,
-    fontWeight: "bold",
   },
   secondaryBtn: {
-    borderColor: "#ccc",
     borderWidth: 1,
     paddingVertical: 12,
-    borderRadius: 6,
-    marginTop: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 12,
     width: "100%",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
   },
   secondaryText: {
-    color: "#333",
-    fontSize: 16,
+    fontWeight: "700",
+    fontSize: 15,
   },
+  linkBtn: { alignItems: "center", paddingVertical: 12 },
+  linkText: { fontWeight: "700", fontSize: 14 },
 });
 
