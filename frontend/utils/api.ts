@@ -176,3 +176,18 @@ export const updateUserVisibility = async (
   const data = (await response.json()) as JsonRecord;
   return toCurrentUser(data);
 };
+
+export const deleteAccount = async (
+  userId: number,
+  fetcher: AuthorizedFetch
+): Promise<void> => {
+  const response = await fetcher(`${API_BASE_URL}/users/${userId}`, {
+    method: "DELETE",
+  });
+
+  if (response.status === 204) return;
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+};

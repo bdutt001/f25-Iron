@@ -107,3 +107,28 @@ export const findUsersByTag = async (tagName: string): Promise<SerializedUser[]>
 
   return users.map(serializeUser);
 };
+
+export const deleteUserAndRelations = async (userId: number): Promise<void> => {
+  await prisma.$transaction(async (tx) => {
+    await tx.message.deleteMany({ where: { senderId: userId } });
+    await tx.wave.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } });
+    await tx.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } });
+    await tx.block.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } });
+    await tx.userLocation.deleteMany({ where: { userId } });
+    await tx.chatParticipant.deleteMany({ where: { userId } });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { interestTags: { set: [] } },
+    });
+
+    // Clean up chat sessions that no longer have participants after removal
+    await tx.chatSession.deleteMany({
+      where: {
+        participants: { none: {} },
+      },
+    });
+
+    await tx.user.delete({ where: { id: userId } });
+  });
+};

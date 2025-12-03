@@ -17,7 +17,7 @@ import type { AlertOptions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useUser, type CurrentUser } from "../../context/UserContext";
-import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
+import { fetchTagCatalog, updateUserProfile, API_BASE_URL, deleteAccount } from "@/utils/api";
 import type { ApiUser } from "../../utils/geo";
 import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
 import OverflowMenu, { type OverflowAction } from "../../components/ui/OverflowMenu";
@@ -92,6 +92,7 @@ export default function ProfileScreen() {
   const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
   const [blockedLoading, setBlockedLoading] = useState(false);
   const [showThemeOptions, setShowThemeOptions] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ✅ Profile Picture State
   const [profilePicture, setProfilePicture] = useState<string | null>(
@@ -280,6 +281,37 @@ export default function ProfileScreen() {
     setPrefetchedUsers(null);
     void logout();
   };
+
+  const performDeleteAccount = useCallback(async () => {
+    if (!currentUser) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteAccount(currentUser.id, fetchWithAuth);
+      setPrefetchedUsers(null);
+      await logout();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to delete account";
+      Alert.alert("Unable to delete account", message, undefined, alertAppearance);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [alertAppearance, currentUser, fetchWithAuth, logout, setPrefetchedUsers]);
+
+  const confirmDeleteAccount = useCallback(() => {
+    if (!currentUser || isDeleting) return;
+
+    Alert.alert(
+      "Delete your account?",
+      "This removes your profile, messages, waves, and blocks. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => void performDeleteAccount() },
+      ],
+      alertAppearance
+    );
+  }, [alertAppearance, currentUser, isDeleting, performDeleteAccount]);
 
   // ✅ Stable version for Android + iOS
   const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
@@ -846,6 +878,26 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      <View style={[styles.dangerCard, cardSurface]}>
+        <Text style={[styles.sectionTitle, styles.dangerTitle]}>Delete Account</Text>
+        <Text style={[styles.helperText, mutedText]}>
+          This removes your profile, messages, waves, and blocks. This cannot be undone.
+        </Text>
+        <TouchableOpacity
+          style={[styles.deleteButton, isDeleting && styles.disabledAction]}
+          onPress={confirmDeleteAccount}
+          disabled={isDeleting}
+          accessibilityRole="button"
+          accessibilityLabel="Delete my account"
+        >
+          {isDeleting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.deleteButtonText}>Delete Account</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.logout}>
         <TouchableOpacity
           style={[styles.logoutPill, cardSurface]}
@@ -979,6 +1031,30 @@ const styles = StyleSheet.create({
   unblockLink: { color: "#dc3545", fontWeight: "700" },
   link: { color: "#007BFF", fontWeight: "600" },
   linkDisabled: { opacity: 0.5 },
+  dangerCard: {
+    marginTop: 24,
+    width: "100%",
+    maxWidth: 580,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e6e6e6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  dangerTitle: { color: "#b91c1c" },
+  deleteButton: {
+    marginTop: 12,
+    backgroundColor: "#b91c1c",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  deleteButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });
 
 

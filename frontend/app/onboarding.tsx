@@ -1,44 +1,36 @@
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
-  Button,
   TouchableOpacity,
-  ActivityIndicator,
-  Image,
+  View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-// Use standard fetch + FormData for uploads to avoid legacy module types
+import { Ionicons } from "@expo/vector-icons";
 
 import { useUser } from "../context/UserContext";
-import {
-  API_BASE_URL,
-  fetchTagCatalog,
-  updateUserProfile,
-} from "@/utils/api";
+import { API_BASE_URL, fetchTagCatalog, updateUserProfile } from "@/utils/api";
+import { ThemeMode, useAppTheme } from "../context/ThemeContext";
+import OverflowMenu, { type OverflowAction } from "../components/ui/OverflowMenu";
 
 const MAX_INTEREST_TAGS = 10;
 
 const sortTags = (tags: string[]): string[] => [...tags].sort((a, b) => a.localeCompare(b));
-
 const normalizeQuery = (value: string): string => value.trim().toLowerCase();
 
-const computeFuzzyScore = (
-  normalizedQuery: string,
-  candidate: string
-): number | null => {
+const computeFuzzyScore = (normalizedQuery: string, candidate: string): number | null => {
   const normalizedCandidate = candidate.toLowerCase();
   if (!normalizedQuery) return null;
 
   const directMatchIndex = normalizedCandidate.indexOf(normalizedQuery);
   if (directMatchIndex !== -1) {
-    const penalty =
-      directMatchIndex * 5 + (normalizedCandidate.length - normalizedQuery.length);
+    const penalty = directMatchIndex * 5 + (normalizedCandidate.length - normalizedQuery.length);
     return 200 - penalty;
   }
 
@@ -76,17 +68,20 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 export default function OnboardingScreen() {
   const router = useRouter();
   const { currentUser, setCurrentUser, accessToken, setPrefetchedUsers, fetchWithAuth } = useUser();
+  const { colors, isDark, mode: themeMode, setMode: setThemeMode } = useAppTheme();
 
   const [nameInput, setNameInput] = useState(currentUser?.name?.trim() ?? "");
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagSearch, setTagSearch] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>(
-    currentUser?.interestTags ?? []
-  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(currentUser?.interestTags ?? []);
   const [loadingTags, setLoadingTags] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [hasTouchedName, setHasTouchedName] = useState(false);
+  const lastUserIdRef = useRef<number | null>(currentUser?.id ?? null);
+  const [showThemeOptions, setShowThemeOptions] = useState(false);
 
   const [profilePicture, setProfilePicture] = useState<string | null>(
     currentUser?.profilePicture
@@ -95,6 +90,7 @@ export default function OnboardingScreen() {
         : `${API_BASE_URL}${currentUser.profilePicture}`
       : null
   );
+  const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
 
   useEffect(() => {
     if (!currentUser || !accessToken) {
@@ -104,9 +100,20 @@ export default function OnboardingScreen() {
 
   useEffect(() => {
     if (!currentUser) return;
-    setNameInput(currentUser.name?.trim() ?? "");
+
+    if (lastUserIdRef.current !== currentUser.id) {
+      lastUserIdRef.current = currentUser.id;
+      setHasTouchedName(false);
+      setNameInput(currentUser.name?.trim() ?? "");
+      setSelectedTags(currentUser.interestTags ?? []);
+      return;
+    }
+
     setSelectedTags(currentUser.interestTags ?? []);
-  }, [currentUser]);
+    if (!hasTouchedName && typeof currentUser.name === "string") {
+      setNameInput(currentUser.name.trim());
+    }
+  }, [currentUser, hasTouchedName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,8 +128,7 @@ export default function OnboardingScreen() {
         if (!cancelled) setAvailableTags(tags);
       } catch (error) {
         if (!cancelled) {
-          const message =
-            error instanceof Error ? error.message : "Unable to load tags";
+          const message = error instanceof Error ? error.message : "Unable to load tags";
           setTagError(message);
         }
       } finally {
@@ -142,10 +148,7 @@ export default function OnboardingScreen() {
   }, [availableTags, selectedTags]);
 
   const searchTerm = tagSearch.trim();
-  const filteredTagOptions = useMemo(
-    () => fuzzyFilter(tagOptions, searchTerm),
-    [tagOptions, searchTerm]
-  );
+  const filteredTagOptions = useMemo(() => fuzzyFilter(tagOptions, searchTerm), [tagOptions, searchTerm]);
 
   const limitReached = selectedTags.length >= MAX_INTEREST_TAGS;
 
@@ -158,20 +161,34 @@ export default function OnboardingScreen() {
       return;
     }
 
-    const next = isRemoving
-      ? selectedTags.filter((t) => t !== tag)
-      : [...selectedTags, tag];
+    const next = isRemoving ? selectedTags.filter((t) => t !== tag) : [...selectedTags, tag];
     setSelectedTags(sortTags(next));
   };
+
+  const applyUserUpdate = useCallback(
+    (updated: any) => {
+      if (!currentUser) {
+        setCurrentUser(updated);
+        return;
+      }
+
+      setCurrentUser({
+        ...currentUser,
+        ...updated,
+        interestTags: updated?.interestTags ?? currentUser.interestTags,
+        profilePicture: updated?.profilePicture ?? currentUser.profilePicture,
+        visibility:
+          typeof updated?.visibility === "boolean" ? updated.visibility : currentUser.visibility,
+      });
+    },
+    [currentUser, setCurrentUser]
+  );
 
   const uploadImage = useCallback(async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert(
-          "Permission required",
-          "You must grant photo access to upload a profile picture."
-        );
+        Alert.alert("Permission required", "You must grant photo access to upload a profile picture.");
         return;
       }
 
@@ -194,10 +211,10 @@ export default function OnboardingScreen() {
       }
 
       const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
-
       const form = new FormData();
       form.append("image", { uri, name: "profile.jpg", type: mimeType } as any);
 
+      setIsUploading(true);
       const res = await fetchWithAuth(uploadUrl, {
         method: "POST",
         body: form,
@@ -214,17 +231,17 @@ export default function OnboardingScreen() {
           : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
 
         setProfilePicture(newUrl);
-        if (currentUser) {
-          setCurrentUser({ ...currentUser, profilePicture: newUrl });
-        }
+        applyUserUpdate({ profilePicture: newUrl });
       }
 
       Alert.alert("Success", "Profile picture updated!");
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert("Upload failed", "Please try again later.");
+    } finally {
+      setIsUploading(false);
     }
-  }, [accessToken, currentUser, fetchWithAuth, setCurrentUser]);
+  }, [accessToken, applyUserUpdate, currentUser, fetchWithAuth]);
 
   const handleContinue = async () => {
     if (!currentUser || !accessToken) return;
@@ -240,80 +257,306 @@ export default function OnboardingScreen() {
     setTagError(null);
 
     try {
-      const updated = await updateUserProfile(currentUser.id, { name: trimmedName, interestTags: selectedTags }, fetchWithAuth);
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { name: trimmedName, interestTags: selectedTags },
+        fetchWithAuth
+      );
 
-      const nextUser = currentUser
-        ? {
-            ...currentUser,
-            ...updated,
-            interestTags: updated.interestTags ?? currentUser.interestTags,
-            profilePicture: updated.profilePicture ?? currentUser.profilePicture,
-            visibility: updated.visibility ?? currentUser.visibility,
-          }
-        : updated;
-      setCurrentUser(nextUser);
-
+      applyUserUpdate(updated);
       setPrefetchedUsers(null);
       router.replace("/(tabs)/profile");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to save profile";
+      const message = error instanceof Error ? error.message : "Failed to save profile";
       Alert.alert("Onboarding", message);
     } finally {
       setSaving(false);
     }
   };
 
-  const displayedSelectedTags = useMemo(
-    () => sortTags(selectedTags),
-    [selectedTags]
-  );
+  const displayedSelectedTags = useMemo(() => sortTags(selectedTags), [selectedTags]);
+
+  const mutedText = { color: colors.muted };
+  const primaryText = { color: colors.text };
+  const cardSurface = {
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    shadowColor: isDark ? "#000" : "#000",
+  };
+  const inputSurface = {
+    backgroundColor: isDark ? colors.background : "#fff",
+    borderColor: colors.border,
+    color: colors.text,
+  };
+
+  const takePhoto = useCallback(async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          "Permission required",
+          "Camera access is needed to take a profile picture."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const mimeType = asset.mimeType || "image/jpeg";
+
+      if (!currentUser || !accessToken) {
+        Alert.alert("Error", "You must be logged in to upload a profile picture.");
+        return;
+      }
+
+      const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
+      const form = new FormData();
+      form.append("image", { uri, name: "profile.jpg", type: mimeType } as any);
+
+      setIsUploading(true);
+      const res = await fetchWithAuth(uploadUrl, {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+
+      const data = (await res.json()) as { profilePicture?: string };
+      if (data.profilePicture) {
+        const newUrl = data.profilePicture.startsWith("http")
+          ? `${data.profilePicture}?t=${Date.now()}`
+          : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
+
+        setProfilePicture(newUrl);
+        applyUserUpdate({ profilePicture: newUrl });
+      }
+
+      Alert.alert("Success", "Profile picture updated!");
+    } catch (error) {
+      console.error("Error capturing photo:", error);
+      Alert.alert("Unable to open camera", "Please try again.", undefined);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [accessToken, applyUserUpdate, currentUser, fetchWithAuth]);
+
+  const removeProfilePicture = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { profilePicture: null },
+        fetchWithAuth
+      );
+      applyUserUpdate(updated);
+      setProfilePicture(null);
+      Alert.alert("Removed", "Profile picture removed.");
+    } catch (error) {
+      console.error("Error removing profile picture:", error);
+      Alert.alert("Unable to remove picture", "Please try again later.");
+    }
+  }, [applyUserUpdate, currentUser, fetchWithAuth]);
+
+  const confirmRemoveProfilePicture = useCallback(() => {
+    if (!profilePicture) return;
+    Alert.alert(
+      "Remove profile picture?",
+      "This will revert to your initials across the app.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => void removeProfilePicture() },
+      ]
+    );
+  }, [profilePicture, removeProfilePicture]);
+
+  const profilePictureActions = useMemo<OverflowAction[]>(() => {
+    const actions: OverflowAction[] = [
+      { key: "camera", label: "Take Photo", icon: "camera-outline", onPress: () => void takePhoto() },
+      {
+        key: "library",
+        label: "Choose From Library",
+        icon: "images-outline",
+        onPress: () => void uploadImage(),
+      },
+    ];
+
+    if (profilePicture) {
+      actions.push({
+        key: "remove",
+        label: "Remove Photo",
+        icon: "trash-outline",
+        destructive: true,
+        onPress: confirmRemoveProfilePicture,
+      });
+    }
+
+    return actions;
+  }, [confirmRemoveProfilePicture, profilePicture, takePhoto, uploadImage]);
+
+  const themeOptions: { key: ThemeMode; label: string }[] = [
+    { key: "system", label: "System" },
+    { key: "light", label: "Light" },
+    { key: "dark", label: "Dark" },
+  ];
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Welcome to MingleMap!</Text>
-      <Text style={styles.subtitle}>
-        Complete your profile so people nearby know who you are.
-      </Text>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <View style={styles.hero}>
+        <Text style={[styles.title, primaryText]}>Welcome to MingleMap</Text>
+        <Text style={[styles.subtitle, mutedText]}>
+          Finish your profile so people nearby can recognize you.
+        </Text>
+      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Profile Picture</Text>
+      <View style={[styles.section, cardSurface]}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, primaryText]}>Profile Picture</Text>
+        </View>
+
         <View style={styles.pictureWrapper}>
           {profilePicture ? (
-            <Image source={{ uri: profilePicture }} style={styles.profilePicture} />
+            <Image
+              source={{ uri: profilePicture }}
+              style={[styles.profilePicture, { borderColor: colors.border }]}
+            />
           ) : (
-            <View style={[styles.profilePicture, styles.picturePlaceholder]}>
-              <Text style={styles.placeholderText}>No Picture</Text>
+            <View
+              style={[
+                styles.profilePicture,
+                styles.picturePlaceholder,
+                { borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.placeholderText, primaryText]}>No Picture</Text>
             </View>
           )}
-          <Button title="Upload Photo" onPress={uploadImage} />
+          <TouchableOpacity
+            style={[
+              styles.profileUploadFab,
+              { backgroundColor: colors.accent },
+              (isUploading || saving) && styles.disabledAction,
+            ]}
+            onPress={() => setPhotoMenuVisible(true)}
+            disabled={isUploading || saving}
+            accessibilityRole="button"
+            accessibilityLabel="Profile picture options"
+          >
+            {isUploading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Ionicons name="camera" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Display Name</Text>
+      <View style={[styles.section, cardSurface]}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, primaryText]}>Appearance</Text>
+          <TouchableOpacity
+            onPress={() => setShowThemeOptions((v) => !v)}
+            accessibilityRole="button"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Ionicons name={isDark ? "moon" : "sunny"} size={22} color={colors.accent} />
+          </TouchableOpacity>
+        </View>
+        {showThemeOptions && (
+          <>
+            <Text style={[styles.helperText, mutedText]}>
+              Choose Light or Dark, or follow your device setting.
+            </Text>
+            <View style={styles.themeRow}>
+              {themeOptions.map((opt) => {
+                const active = themeMode === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[
+                      styles.themeChip,
+                      active && styles.themeChipActive,
+                      { borderColor: colors.border, backgroundColor: isDark ? colors.background : "#fff" },
+                      active && { backgroundColor: isDark ? "#0f172a" : "#e6f0ff" },
+                    ]}
+                    onPress={() => setThemeMode(opt.key)}
+                    accessibilityRole="button"
+                  >
+                    <Text
+                      style={[
+                        styles.themeChipText,
+                        active && styles.themeChipTextActive,
+                        { color: active ? colors.accent : colors.text },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
+      </View>
+
+      <View style={[styles.section, cardSurface]}>
+        <Text style={[styles.sectionTitle, primaryText]}>Display Name</Text>
+        <Text style={[styles.helperText, mutedText]}>
+          This is how you appear to others. Keep it recognizable.
+        </Text>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              color: colors.text,
+              borderColor: colors.border,
+              backgroundColor: inputSurface.backgroundColor,
+            },
+          ]}
           placeholder="Enter your name"
+          placeholderTextColor={colors.muted}
           value={nameInput}
           onChangeText={(value) => {
             setNameError(null);
+            setHasTouchedName(true);
             setNameInput(value);
           }}
           autoCapitalize="words"
           autoComplete="name"
           returnKeyType="done"
         />
-        {nameError && <Text style={styles.errorText}>{nameError}</Text>}
+        {nameError && <Text style={[styles.errorText, { color: "#c00" }]}>{nameError}</Text>}
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, cardSurface]}>
         <View style={styles.tagHeader}>
-          <Text style={styles.sectionTitle}>Interest Tags</Text>
-          <Text style={styles.tagCount}>{`${selectedTags.length}/${MAX_INTEREST_TAGS}`}</Text>
+          <View>
+            <Text style={[styles.sectionTitle, primaryText]}>Interest Tags</Text>
+            <Text style={[styles.helperText, mutedText]}>Pick what describes you best.</Text>
+          </View>
+          <Text style={[styles.tagCount, { color: colors.accent }]}>
+            {`${selectedTags.length}/${MAX_INTEREST_TAGS}`}
+          </Text>
         </View>
 
-        <View style={styles.tagSearchWrapper}>
+        <View
+          style={[
+            styles.tagSearchWrapper,
+            { backgroundColor: inputSurface.backgroundColor, borderColor: colors.border },
+          ]}
+        >
+          <Ionicons name="search" size={16} color={colors.muted} style={{ marginRight: 6 }} />
           <TextInput
             value={tagSearch}
             onChangeText={setTagSearch}
@@ -321,22 +564,24 @@ export default function OnboardingScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
-            style={styles.tagSearchInput}
+            style={[styles.tagSearchInput, { color: colors.text }]}
+            placeholderTextColor={colors.muted}
           />
           {searchTerm.length > 0 && (
             <TouchableOpacity
               onPress={() => setTagSearch("")}
               style={styles.tagSearchClear}
+              accessibilityRole="button"
             >
-              <Text style={styles.tagSearchClearText}>Clear</Text>
+              <Text style={[styles.tagSearchClearText, { color: colors.accent }]}>Clear</Text>
             </TouchableOpacity>
           )}
         </View>
 
         {loadingTags ? (
           <View style={styles.catalogLoading}>
-            <ActivityIndicator size="small" color="#007BFF" />
-            <Text style={styles.catalogLoadingText}>Loading tag catalog…</Text>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={[styles.catalogLoadingText, mutedText]}>Loading tag catalog.</Text>
           </View>
         ) : (
           <View style={styles.catalogGrid}>
@@ -349,7 +594,11 @@ export default function OnboardingScreen() {
                   key={tag}
                   style={[
                     styles.tagOption,
-                    selected && styles.tagOptionSelected,
+                    { borderColor: colors.border, backgroundColor: inputSurface.backgroundColor },
+                    selected && [
+                      styles.tagOptionSelected,
+                      { borderColor: colors.accent, backgroundColor: isDark ? "#0f172a" : "#e6f0ff" },
+                    ],
                     disabled && styles.tagOptionDisabled,
                   ]}
                   disabled={saving}
@@ -358,7 +607,8 @@ export default function OnboardingScreen() {
                   <Text
                     style={[
                       styles.tagOptionText,
-                      selected && styles.tagOptionTextSelected,
+                      { color: colors.text },
+                      selected && [styles.tagOptionTextSelected, { color: colors.accent }],
                     ]}
                   >
                     {tag}
@@ -368,13 +618,19 @@ export default function OnboardingScreen() {
             })}
           </View>
         )}
-        {tagError && <Text style={styles.errorText}>{tagError}</Text>}
+        {tagError && <Text style={[styles.errorText, { color: "#c00" }]}>{tagError}</Text>}
 
         {displayedSelectedTags.length > 0 && (
           <View style={styles.selectedTagsWrapper}>
             {displayedSelectedTags.map((tag) => (
-              <View key={tag} style={styles.selectedChip}>
-                <Text style={styles.selectedChipText}>{tag}</Text>
+              <View
+                key={tag}
+                style={[
+                  styles.selectedChip,
+                  { backgroundColor: isDark ? colors.background : "#e6f0ff", borderColor: colors.border },
+                ]}
+              >
+                <Text style={[styles.selectedChipText, { color: colors.accent }]}>{tag}</Text>
               </View>
             ))}
           </View>
@@ -382,20 +638,39 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.actions}>
-        <Button
-          title={saving ? "Saving..." : "Continue"}
+        <TouchableOpacity
+          style={[
+            styles.primaryButton,
+            { backgroundColor: colors.accent },
+            (saving || isUploading) && styles.disabledAction,
+          ]}
           onPress={handleContinue}
-          disabled={saving}
-        />
+          disabled={saving || isUploading}
+          accessibilityRole="button"
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Text style={styles.primaryButtonText}>Continue</Text>
+              <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
+            </>
+          )}
+        </TouchableOpacity>
       </View>
+      <OverflowMenu
+        visible={photoMenuVisible}
+        onClose={() => setPhotoMenuVisible(false)}
+        title="Profile picture"
+        actions={profilePictureActions}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
-    backgroundColor: "#f5f7fa",
+    padding: 20,
   },
   title: {
     fontSize: 24,
@@ -409,6 +684,10 @@ const styles = StyleSheet.create({
     color: "#666",
     marginBottom: 24,
   },
+  hero: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
   section: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -419,6 +698,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   sectionTitle: {
     fontSize: 18,
@@ -434,6 +719,7 @@ const styles = StyleSheet.create({
     borderRadius: 70,
     marginBottom: 12,
     backgroundColor: "#ddd",
+    borderWidth: StyleSheet.hairlineWidth,
   },
   picturePlaceholder: {
     justifyContent: "center",
@@ -442,6 +728,34 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: "#555",
     fontWeight: "600",
+  },
+  uploadButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  uploadButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  profileUploadFab: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
   },
   input: {
     marginTop: 12,
@@ -453,6 +767,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#333",
     backgroundColor: "#fff",
+  },
+  helperText: {
+    marginTop: 6,
+    fontSize: 13,
+    color: "#666",
   },
   errorText: {
     marginTop: 8,
@@ -544,6 +863,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginRight: 8,
     marginBottom: 8,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   selectedChipText: {
     color: "#66a8ff",
@@ -553,4 +873,37 @@ const styles = StyleSheet.create({
   actions: {
     marginBottom: 24,
   },
+  primaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  primaryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  disabledAction: {
+    opacity: 0.6,
+  },
+  themeRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  themeChip: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  themeChipActive: { borderColor: "#2563eb", backgroundColor: "#e6f0ff" },
+  themeChipText: { fontWeight: "700", color: "#111827" },
+  themeChipTextActive: { color: "#66a8ff" },
 });
