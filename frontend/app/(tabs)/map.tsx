@@ -20,6 +20,27 @@ import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 // Overlay implementation removed in favor of native sprites
 
+const DARK_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#111827" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#f1f5f9" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#a5f3fc" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#283548" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#e2e8f0" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2d3a4f" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2937" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f8fafc" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#14213d" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#e2e8f0" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+];
+
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 const BASE_AVATAR_SIZE = 46;
 const BASE_AVATAR_BORDER = 3;
@@ -80,6 +101,7 @@ export default function MapScreen() {
   const isMountedRef = useRef(true);
   const userFetchAbortRef = useRef<AbortController | null>(null);
   const hasAnimatedRegion = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Removed markerTracks; no longer needed
   const [markersVersion, setMarkersVersion] = useState(0);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
@@ -98,12 +120,20 @@ export default function MapScreen() {
   } = useUser();
   const currentUserId = currentUser?.id;
 
+  const stopUserPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
       userFetchAbortRef.current?.abort();
+      stopUserPolling();
     };
-  }, []);
+  }, [stopUserPolling]);
 
   const selfUser: SelectedUser | null = currentUser
     ? {
@@ -337,9 +367,22 @@ export default function MapScreen() {
   // Always refresh user list when the map tab gains focus (covers block/unblock changes)
   useFocusEffect(
     useCallback(() => {
-      if (!currentUser) return;
-      void loadUsers();
-    }, [currentUser, loadUsers])
+      let cancelled = false;
+
+      const tick = () => {
+        if (cancelled) return;
+        void loadUsers();
+      };
+
+      stopUserPolling();
+      tick();
+      pollTimerRef.current = setInterval(tick, 8000);
+
+      return () => {
+        cancelled = true;
+        stopUserPolling();
+      };
+    }, [loadUsers, stopUserPolling])
   );
 
   const textColor = { color: colors.text };
@@ -357,6 +400,10 @@ export default function MapScreen() {
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
+        userInterfaceStyle={isDark ? "dark" : "light"}
+        customMapStyle={isDark ? DARK_MAP_STYLE : []}
+        showsPointsOfInterest
+        showsBuildings
       >
         {/* 👤 Current user */}
         {selfUser && (
