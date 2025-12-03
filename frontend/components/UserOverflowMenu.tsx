@@ -12,9 +12,11 @@ type Props = {
   targetUser: { id: number; name?: string | null; email?: string | null } | null;
   onBlocked?: (userId: number) => void;
   onReported?: (userId: number) => void;
+  // ✅ Optional handler for "View Profile" (e.g., from map tab)
+  onViewProfile?: (userId: number) => void;
 };
 
-export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported }: Props) {
+export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported, onViewProfile }: Props) {
   const { currentUser, fetchWithAuth } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
   const { isDark } = useAppTheme();
@@ -93,11 +95,35 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
   };
 
   const name = (persisted?.name ?? targetUser?.name ?? targetUser?.email) || "User";
+  const effectiveId = persisted?.id ?? targetUser?.id;
 
-  const actions: OverflowAction[] = [
+  // Only show "View Profile" when:
+  // - we have an id
+  // - a handler was provided
+  // - and it's not the current user
+  const canViewProfile =
+    !!onViewProfile &&
+    typeof effectiveId === "number" &&
+    (!currentUser || currentUser.id !== effectiveId);
+
+  const actions: OverflowAction[] = [];
+
+  if (canViewProfile) {
+    actions.push({
+      key: "view-profile",
+      label: `View ${name}'s Profile`,
+      icon: "person-circle-outline",
+      onPress: () => {
+        if (!effectiveId) return;
+        onViewProfile?.(effectiveId);
+      },
+    });
+  }
+
+  actions.push(
     { key: "report", label: `Report ${name}`, destructive: true, onPress: doReport, icon: "flag-outline" },
     { key: "block", label: `Block ${name}`, destructive: true, onPress: doBlock, icon: "hand-left-outline" },
-  ];
+  );
 
   return <OverflowMenu visible={visible} onClose={onClose} title={name} actions={actions} />;
 }

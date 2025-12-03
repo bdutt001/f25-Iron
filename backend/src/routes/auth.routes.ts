@@ -58,10 +58,11 @@ const userAuthSelect = {
   name: true,
   password: true,
   tokenVersion: true,
-  profilePicture: true, // ✅ added
-  interestTags: { select: { name: true } }, // ✅ added
+  profilePicture: true, // added
+  interestTags: { select: { name: true } }, // added
   createdAt: true,
   visibility: true,
+  profileStatus: true,
 } as const;
 
 type UserAuthRecord = {
@@ -74,6 +75,7 @@ type UserAuthRecord = {
   interestTags?: { name: string }[];
   createdAt: Date;
   visibility: boolean;
+  profileStatus?: string | null;
 };
 
 /**
@@ -100,6 +102,7 @@ const buildAuthResponse = (user: UserAuthRecord) => {
       profilePicture: user.profilePicture ?? null,
       interestTags: user.interestTags ?? [],
       visibility: user.visibility,
+      profileStatus: user.profileStatus ?? null,
     }),
   };
 };
@@ -241,7 +244,7 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
         id: true,
         email: true,
         name: true,
-        status: true,
+        profileStatus: true, 
         visibility: true,
         profilePicture: true,
         interestTags: { select: { name: true } },

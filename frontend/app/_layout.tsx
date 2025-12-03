@@ -16,7 +16,14 @@ function RootStack() {
         <Stack>
           {/* Index now redirects to login */}
           <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ title: "Login" }} />
+          <Stack.Screen
+            name="login"
+            options={{
+              title: "Login",
+              headerBackVisible: false, // 🚫 hide back arrow
+              gestureEnabled: false,    // 🚫 disable swipe-back on iOS
+            }}
+          />
           <Stack.Screen name="signup" options={{ title: "Signup" }} />
           <Stack.Screen name="onboarding" options={{ title: "Set up your profile" }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

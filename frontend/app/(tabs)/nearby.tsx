@@ -379,9 +379,16 @@ export default function NearbyScreen() {
       const matchPercent = typeof item.score === "number" ? Math.round(item.score * 100) : null;
       const userTags = normalizeTags(item.interestTags);
 
+      // ⬇️ Make the whole card pressable to open the user's profile (keeps Tabs visible)
       return (
-        <View
-          style={[
+        <Pressable
+          onPress={() =>
+            router.push({ 
+              pathname: "/user/[id]",
+              params: { id: String(item.id), from: "nearby" }, 
+              })
+          }
+          style={({ pressed }) => [
             styles.card,
             {
               backgroundColor: colors.card,
@@ -389,6 +396,7 @@ export default function NearbyScreen() {
               shadowColor: isDark ? "#000" : "#0f172a",
             },
             index === 0 && [styles.cardFeatured, { borderColor: colors.accent }],
+            pressed && { opacity: 0.96 },
           ]}
         >
           <View style={styles.cardTop}>
@@ -472,6 +480,7 @@ export default function NearbyScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.cardFooter}>
+            {/* Chat stays a separate, tappable target */}
             <Pressable
               onPress={() => startChat(item.id, item.name || item.email)}
               style={({ pressed }) => [
@@ -495,6 +504,7 @@ export default function NearbyScreen() {
 
             <View style={{ flex: 1 }} />
 
+            {/* Overflow (•••) opens block/report etc. */}
             <TouchableOpacity
               onPress={() => setMenuTarget(item as unknown as ApiUser)}
               style={[
@@ -519,7 +529,7 @@ export default function NearbyScreen() {
               />
             </TouchableOpacity>
           </View>
-        </View>
+        </Pressable>
       );
     },
     [colors, isDark, mutedText, startChat, textColor]
@@ -624,7 +634,16 @@ export default function NearbyScreen() {
         onReported={(uid) => {
           void refreshTrustScore(uid);
         }}
-      />
+        onViewProfile={(userId) => {
+        // Close the menu first
+        setMenuTarget(null);
+        // Navigate to the same profile screen you use when pressing the card
+        router.push({
+          pathname: "/user/[id]",
+          params: { id: String(userId), from: "nearby" },  // 👈 mark origin
+          });
+          }}
+          />
     </View>
   );
 }
@@ -745,4 +764,3 @@ const styles = StyleSheet.create({
   },
   iconButtonPressed: { opacity: 0.9 },
 });
-
