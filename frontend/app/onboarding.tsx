@@ -92,6 +92,8 @@ export default function OnboardingScreen() {
   );
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
   const [photoSuccessVisible, setPhotoSuccessVisible] = useState(false);
+  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
+  const [removeSuccessVisible, setRemoveSuccessVisible] = useState(false);
 
   useEffect(() => {
     if (!currentUser || !accessToken) {
@@ -341,7 +343,7 @@ export default function OnboardingScreen() {
         applyUserUpdate({ profilePicture: newUrl });
       }
 
-      Alert.alert("Success", "Profile picture updated!");
+      setPhotoSuccessVisible(true);
     } catch (error) {
       console.error("Error capturing photo:", error);
       Alert.alert("Unable to open camera", "Please try again.", undefined);
@@ -360,7 +362,8 @@ export default function OnboardingScreen() {
       );
       applyUserUpdate(updated);
       setProfilePicture(null);
-      Alert.alert("Removed", "Profile picture removed.");
+      setRemoveConfirmVisible(false);
+      setRemoveSuccessVisible(true);
     } catch (error) {
       console.error("Error removing profile picture:", error);
       Alert.alert("Unable to remove picture", "Please try again later.");
@@ -369,15 +372,8 @@ export default function OnboardingScreen() {
 
   const confirmRemoveProfilePicture = useCallback(() => {
     if (!profilePicture) return;
-    Alert.alert(
-      "Remove profile picture?",
-      "This will revert to your initials across the app.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => void removeProfilePicture() },
-      ]
-    );
-  }, [profilePicture, removeProfilePicture]);
+    setRemoveConfirmVisible(true);
+  }, [profilePicture]);
 
   const profilePictureActions = useMemo<OverflowAction[]>(() => {
     const actions: OverflowAction[] = [
@@ -676,7 +672,38 @@ export default function OnboardingScreen() {
             key: "ok",
             label: "Okay",
             icon: "checkmark-circle-outline",
-            onPress: () => setPhotoSuccessVisible(false),
+          onPress: () => setPhotoSuccessVisible(false),
+        },
+      ]}
+    />
+      <OverflowMenu
+        visible={removeConfirmVisible}
+        onClose={() => setRemoveConfirmVisible(false)}
+        title="Remove profile picture?"
+        message="This will revert to your initials across the app."
+        actions={[
+          {
+            key: "remove-photo",
+            label: isUploading ? "Removing..." : "Remove photo",
+            icon: "trash-outline",
+            destructive: true,
+            disabled: isUploading,
+            onPress: () => void removeProfilePicture(),
+          },
+        ]}
+      />
+      <OverflowMenu
+        visible={removeSuccessVisible}
+        onClose={() => setRemoveSuccessVisible(false)}
+        title="Removed"
+        message="Profile picture removed."
+        showCancel={false}
+        actions={[
+          {
+            key: "ok",
+            label: "Okay",
+            icon: "checkmark-circle-outline",
+            onPress: () => setRemoveSuccessVisible(false),
           },
         ]}
       />
