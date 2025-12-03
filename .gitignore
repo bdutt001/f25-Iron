@@ -10,3 +10,4 @@ frontend/ios/
 
 # macOS metadata
 .DS_Store
+frontend/.expo/types/router.d.ts
