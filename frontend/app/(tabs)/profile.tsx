@@ -93,6 +93,8 @@ export default function ProfileScreen() {
   const [blockedLoading, setBlockedLoading] = useState(false);
   const [showThemeOptions, setShowThemeOptions] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [nameSuccessVisible, setNameSuccessVisible] = useState(false);
 
   // ✅ Profile Picture State
   const [profilePicture, setProfilePicture] = useState<string | null>(
@@ -103,6 +105,7 @@ export default function ProfileScreen() {
       : null
   );
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const [photoSuccessVisible, setPhotoSuccessVisible] = useState(false);
   const hasProfilePhoto = Boolean(profilePicture);
 
   const [isEditingName, setIsEditingName] = useState(false);
@@ -267,7 +270,7 @@ export default function ProfileScreen() {
       applyUserUpdate(updated);
       setNameInput(updated.name ?? trimmed);
       setIsEditingName(false);
-      Alert.alert("Success", "Name updated!", undefined, alertAppearance);
+      setNameSuccessVisible(true);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to update name";
@@ -301,17 +304,14 @@ export default function ProfileScreen() {
 
   const confirmDeleteAccount = useCallback(() => {
     if (!currentUser || isDeleting) return;
+    setDeleteConfirmVisible(true);
+  }, [currentUser, isDeleting]);
 
-    Alert.alert(
-      "Delete your account?",
-      "This removes your profile, messages, waves, and blocks. This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => void performDeleteAccount() },
-      ],
-      alertAppearance
-    );
-  }, [alertAppearance, currentUser, isDeleting, performDeleteAccount]);
+  const handleConfirmDelete = useCallback(() => {
+    if (!currentUser || isDeleting) return;
+    setDeleteConfirmVisible(false);
+    void performDeleteAccount();
+  }, [currentUser, isDeleting, performDeleteAccount]);
 
   // ✅ Stable version for Android + iOS
   const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
@@ -358,7 +358,7 @@ export default function ProfileScreen() {
         }
       }
 
-      Alert.alert("Success", "Profile picture updated!", undefined, alertAppearance);
+      setPhotoSuccessVisible(true);
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert("Upload failed", "Please try again later.", undefined, alertAppearance);
@@ -569,20 +569,20 @@ export default function ProfileScreen() {
       contentContainerStyle={styles.scrollContent}
     >
       <View style={[styles.card, cardSurface]}>
-        <View style={styles.cardHeader}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            onPress={() => setShowThemeOptions((v) => !v)}
-            accessibilityRole="button"
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          >
-            <Ionicons
-              name={isDark ? "moon" : "sunny"}
-              size={24}
-              color={colors.accent}
-            />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.cardHeader, styles.appearanceHeader]}
+          onPress={() => setShowThemeOptions((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle appearance options"
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.sectionTitle, primaryText]}>Appearance</Text>
+          <Ionicons
+            name={isDark ? "moon" : "sunny"}
+            size={24}
+            color={colors.accent}
+          />
+        </TouchableOpacity>
 
         {showThemeOptions && (
           <>
@@ -878,26 +878,6 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      <View style={[styles.dangerCard, cardSurface]}>
-        <Text style={[styles.sectionTitle, styles.dangerTitle]}>Delete Account</Text>
-        <Text style={[styles.helperText, mutedText]}>
-          This removes your profile, messages, waves, and blocks. This cannot be undone.
-        </Text>
-        <TouchableOpacity
-          style={[styles.deleteButton, isDeleting && styles.disabledAction]}
-          onPress={confirmDeleteAccount}
-          disabled={isDeleting}
-          accessibilityRole="button"
-          accessibilityLabel="Delete my account"
-        >
-          {isDeleting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.deleteButtonText}>Delete Account</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.logout}>
         <TouchableOpacity
           style={[styles.logoutPill, cardSurface]}
@@ -906,6 +886,19 @@ export default function ProfileScreen() {
         >
           <Text style={styles.logoutPillText}>Logout</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.logoutPill, styles.deleteAction, isDeleting && styles.disabledAction]}
+          onPress={confirmDeleteAccount}
+          disabled={isDeleting}
+          accessibilityRole="button"
+          accessibilityLabel="Delete my account"
+        >
+          {isDeleting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.deleteActionText}>Delete Account</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </ScrollView>
     <OverflowMenu
@@ -913,6 +906,52 @@ export default function ProfileScreen() {
       onClose={() => setPhotoMenuVisible(false)}
       title="Profile picture"
       actions={profilePictureActions}
+    />
+    <OverflowMenu
+      visible={photoSuccessVisible}
+      onClose={() => setPhotoSuccessVisible(false)}
+      title="Success"
+      message="Profile picture updated!"
+      showCancel={false}
+      actions={[
+        {
+          key: "ok",
+          label: "Okay",
+          icon: "checkmark-circle-outline",
+          onPress: () => setPhotoSuccessVisible(false),
+        },
+      ]}
+    />
+    <OverflowMenu
+      visible={nameSuccessVisible}
+      onClose={() => setNameSuccessVisible(false)}
+      title="Success"
+      message="Name updated!"
+      showCancel={false}
+      actions={[
+        {
+          key: "ok",
+          label: "Okay",
+          icon: "checkmark-circle-outline",
+          onPress: () => setNameSuccessVisible(false),
+        },
+      ]}
+    />
+    <OverflowMenu
+      visible={deleteConfirmVisible}
+      onClose={() => setDeleteConfirmVisible(false)}
+      title="Delete your account?"
+      message="This removes your profile, messages, waves, and blocks. This action cannot be undone."
+      actions={[
+        {
+          key: "delete",
+          label: isDeleting ? "Deleting..." : "Delete account",
+          destructive: true,
+          disabled: isDeleting,
+          icon: "trash-outline",
+          onPress: handleConfirmDelete,
+        },
+      ]}
     />
     </>
   );
@@ -960,6 +999,7 @@ const styles = StyleSheet.create({
   catalogLoading: { flexDirection: "row", alignItems: "center" },
   catalogLoadingText: { marginLeft: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  appearanceHeader: { justifyContent: "space-between", marginBottom: 0, paddingBottom: 4 },
   themeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   themeChip: {
     flex: 1,
@@ -993,6 +1033,12 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
   },
   logoutPillText: { color: "#d9534f", fontWeight: "700", fontSize: 16 },
+  deleteAction: {
+    marginTop: 12,
+    backgroundColor: "#b91c1c",
+    borderColor: "#b91c1c",
+  },
+  deleteActionText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   profilePictureSection: { alignItems: "center", marginBottom: 20 },
   profilePictureWrapper: { position: "relative" },
   profilePicture: { width: 120, height: 120, borderRadius: 60, marginBottom: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e5e7eb" },
@@ -1031,30 +1077,6 @@ const styles = StyleSheet.create({
   unblockLink: { color: "#dc3545", fontWeight: "700" },
   link: { color: "#007BFF", fontWeight: "600" },
   linkDisabled: { opacity: 0.5 },
-  dangerCard: {
-    marginTop: 24,
-    width: "100%",
-    maxWidth: 580,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#e6e6e6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  dangerTitle: { color: "#b91c1c" },
-  deleteButton: {
-    marginTop: 12,
-    backgroundColor: "#b91c1c",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  deleteButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });
 
 

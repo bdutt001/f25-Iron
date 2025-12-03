@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { router } from "expo-router";
 import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
+import OverflowMenu from "../components/ui/OverflowMenu";
 
 type AuthSuccess = {
   tokenType?: string;
@@ -40,6 +41,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { setCurrentUser, setTokens, setPrefetchedUsers } = useUser();
+  const [signupSuccessVisible, setSignupSuccessVisible] = useState(false);
 
   const preloadVisibleUsers = async (accessToken: string) => {
     try {
@@ -145,13 +147,17 @@ export default function LoginScreen() {
       } else {
         setCurrentUser(toUserOrFallback(json));
       }
-      Alert.alert("Account created", "You are now logged in.");
-      router.replace("/onboarding");
+      setSignupSuccessVisible(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       Alert.alert("Signup failed", message);
     }
   };
+
+  const goToOnboarding = useCallback(() => {
+    setSignupSuccessVisible(false);
+    router.replace("/onboarding");
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -198,6 +204,22 @@ export default function LoginScreen() {
           <Text style={styles.secondaryText}>Test Backend Connection</Text>
         </TouchableOpacity>
       )}
+
+      <OverflowMenu
+        visible={signupSuccessVisible}
+        onClose={goToOnboarding}
+        title="Account created"
+        message="You are now logged in."
+        showCancel={false}
+        actions={[
+          {
+            key: "continue",
+            label: "Continue to onboarding",
+            icon: "checkmark-circle-outline",
+            onPress: goToOnboarding,
+          },
+        ]}
+      />
     </View>
   );
 }

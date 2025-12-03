@@ -91,6 +91,7 @@ export default function OnboardingScreen() {
       : null
   );
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const [photoSuccessVisible, setPhotoSuccessVisible] = useState(false);
 
   useEffect(() => {
     if (!currentUser || !accessToken) {
@@ -234,7 +235,7 @@ export default function OnboardingScreen() {
         applyUserUpdate({ profilePicture: newUrl });
       }
 
-      Alert.alert("Success", "Profile picture updated!");
+      setPhotoSuccessVisible(true);
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert("Upload failed", "Please try again later.");
@@ -462,17 +463,17 @@ export default function OnboardingScreen() {
         </View>
       </View>
 
-      <View style={[styles.section, cardSurface]}>
-        <View style={styles.sectionHeader}>
+        <View style={[styles.section, cardSurface]}>
+        <TouchableOpacity
+          style={[styles.sectionHeader, styles.appearanceHeader]}
+          onPress={() => setShowThemeOptions((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle appearance options"
+          activeOpacity={0.85}
+        >
           <Text style={[styles.sectionTitle, primaryText]}>Appearance</Text>
-          <TouchableOpacity
-            onPress={() => setShowThemeOptions((v) => !v)}
-            accessibilityRole="button"
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          >
-            <Ionicons name={isDark ? "moon" : "sunny"} size={22} color={colors.accent} />
-          </TouchableOpacity>
-        </View>
+          <Ionicons name={isDark ? "moon" : "sunny"} size={22} color={colors.accent} />
+        </TouchableOpacity>
         {showThemeOptions && (
           <>
             <Text style={[styles.helperText, mutedText]}>
@@ -664,6 +665,21 @@ export default function OnboardingScreen() {
         title="Profile picture"
         actions={profilePictureActions}
       />
+      <OverflowMenu
+        visible={photoSuccessVisible}
+        onClose={() => setPhotoSuccessVisible(false)}
+        title="Success"
+        message="Profile picture updated!"
+        showCancel={false}
+        actions={[
+          {
+            key: "ok",
+            label: "Okay",
+            icon: "checkmark-circle-outline",
+            onPress: () => setPhotoSuccessVisible(false),
+          },
+        ]}
+      />
     </ScrollView>
   );
 }
@@ -705,6 +721,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  appearanceHeader: { paddingVertical: 4 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
