@@ -74,6 +74,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   email: normalizeString(payload.email),
   name: normalizeOptionalString(payload.name),
   createdAt: normalizeOptionalString(payload.createdAt),
+  lastLogin: normalizeOptionalString(payload.lastLogin),
   interestTags: normalizeStringArray(payload.interestTags),
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),

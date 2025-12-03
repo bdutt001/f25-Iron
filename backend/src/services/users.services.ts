@@ -10,12 +10,14 @@ export const userWithTagsSelect = {
   interestTags: { select: { name: true } },
   trustScore: true,
   visibility: true,
+  lastLogin: true,
 } satisfies Prisma.UserSelect;
 
 export type PrismaUserWithTags = Prisma.UserGetPayload<{ select: typeof userWithTagsSelect }>;
 export type SerializedUser = Omit<PrismaUserWithTags, "interestTags"> & {
   interestTags: string[];
   visibility: boolean;
+  lastLogin: Date | null;
 };
 
 export const serializeUser = (user: PrismaUserWithTags): SerializedUser => ({
@@ -23,6 +25,7 @@ export const serializeUser = (user: PrismaUserWithTags): SerializedUser => ({
   interestTags: user.interestTags.map((tag) => tag.name),
   profilePicture: user.profilePicture ?? null,  // ✅ ensure it passes through
   visibility: user.visibility ?? false,
+  lastLogin: user.lastLogin ?? null,
 });
 
 export const normalizeTagNames = (tags: string[]): string[] => {

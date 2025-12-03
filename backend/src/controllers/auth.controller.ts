@@ -11,6 +11,7 @@ const safeSelect = {
   profilePicture: true, // ✅ included
   interestTags: { select: { name: true } }, // ✅ included
   createdAt: true,
+  lastLogin: true,
 } as const;
 
 type SafeUserRecord = {
@@ -20,6 +21,7 @@ type SafeUserRecord = {
   profilePicture: string | null;
   interestTags?: { name: string }[];
   createdAt: Date;
+  lastLogin: Date | null;
 };
 
 // Helper to shape user data safely
@@ -43,7 +45,7 @@ export const signup = async (req: Request, res: Response) => {
     if (existing) return res.status(409).json({ error: "Email already registered" });
 
     const userRecord = (await prisma.user.create({
-      data: { email, name, password: passwordRaw },
+      data: { email, name, password: passwordRaw, lastLogin: new Date() },
       select: safeSelect,
     })) as SafeUserRecord;
 
@@ -75,8 +77,14 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const { password: _p, ...safe } = userRecord;
-    return res.json(toSafeUser(safe));
+    const updated = await prisma.user.update({
+      where: { id: userRecord.id },
+      data: { lastLogin: new Date() },
+      select: safeSelect,
+    });
+
+    const { password: _p, ...safe } = updated;
+    return res.json(toSafeUser(safe as SafeUserRecord));
   } catch (err) {
     console.error("Login error", err);
     return res.status(500).json({ error: "Failed to login" });

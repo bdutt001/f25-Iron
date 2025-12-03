@@ -102,8 +102,6 @@ export default function MapScreen() {
   const userFetchAbortRef = useRef<AbortController | null>(null);
   const hasAnimatedRegion = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Removed markerTracks; no longer needed
-  const [markersVersion, setMarkersVersion] = useState(0);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   const [freezeMarkers, setFreezeMarkers] = useState(false);
   const [, setIsRefreshingUsers] = useState(false);
@@ -257,7 +255,6 @@ export default function MapScreen() {
           400
         );
         hasAnimatedRegion.current = true;
-        setTimeout(() => setMarkersVersion((v) => v + 1), 600);
       }
       return;
     }
@@ -344,12 +341,7 @@ export default function MapScreen() {
     setFreezeMarkers(false);
     const timer = setTimeout(() => setFreezeMarkers(true), 750);
     return () => clearTimeout(timer);
-  }, [markersVersion, nearbyUsers.length]);
-
-  // Ensure marker list updates when visibility status toggles
-  useEffect(() => {
-    setMarkersVersion((v) => v + 1);
-  }, [status]);
+  }, [nearbyUsers, status]);
 
   useEffect(() => {
     if (previousStatusRef.current === status) return;
@@ -408,7 +400,7 @@ export default function MapScreen() {
         {/* 👤 Current user */}
         {selfUser && (
           <Marker
-            key={`self-${markersVersion}-${selfUser.profilePicture ?? "nop"}`}
+            key={`self-${selfUser.id}-${selfUser.profilePicture ?? "nop"}`}
             coordinate={myCoords}
             onPress={() => setSelectedUser(selfUser)}
             anchor={{ x: 0.5, y: 0.5 }}
@@ -423,7 +415,7 @@ export default function MapScreen() {
         {nearbyUsers.map((user) => {
           return (
             <Marker
-              key={`${user.id}-${markersVersion}-${user.profilePicture ?? 'nop'}`}
+              key={`${user.id}-${user.profilePicture ?? 'nop'}`}
               coordinate={user.coords}
               onPress={() => setSelectedUser(user)}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -443,7 +435,6 @@ export default function MapScreen() {
         onBlocked={(uid) => {
           setNearbyUsers((prevUsers: NearbyUser[]) => prevUsers.filter((user) => user.id !== uid));
           setPrefetchedUsers((prevUsers) => (prevUsers ? prevUsers.filter((user) => user.id !== uid) : prevUsers));
-          setMarkersVersion((v) => v + 1);
           void loadUsers();
           setSelectedUser(null);
         }}

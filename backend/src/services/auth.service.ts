@@ -84,6 +84,7 @@ export const toAuthenticatedUser = (user: {
   profilePicture?: string | null;
   interestTags?: { name: string }[];
   visibility?: boolean;
+  lastLogin?: Date | string | null;
 }): AuthenticatedUser => ({
   id: user.id,
   email: user.email ?? null,
@@ -95,6 +96,10 @@ export const toAuthenticatedUser = (user: {
       )
     : [],
   visibility: user.visibility ?? false,
+  lastLogin:
+    user.lastLogin instanceof Date
+      ? user.lastLogin.toISOString()
+      : user.lastLogin ?? null,
 });
 
 /**
