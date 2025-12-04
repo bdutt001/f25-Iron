@@ -8,12 +8,6 @@ datasource db {
 }
 
 // ---------- ENUMS ----------
-enum UserStatus {
-  AVAILABLE
-  BUSY
-  DND
-}
-
 enum Gender {
   MALE
   FEMALE
@@ -29,7 +23,6 @@ model User {
   tokenVersion   Int        @default(0)
   name           String?
   profilePicture String?
-  status         UserStatus @default(AVAILABLE)
   visibility     Boolean    @default(true)
   trustScore     Int        @default(99)
   createdAt      DateTime   @default(now())
