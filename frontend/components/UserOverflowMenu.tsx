@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import OverflowMenu, { type OverflowAction } from "./ui/OverflowMenu";
-import { Alert, Modal, View, FlatList, Pressable, StyleSheet, Text } from "react-native";
-import type { AlertOptions } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useAppTheme } from "../context/ThemeContext";
+import { useThemedAlert } from "../hooks/useThemedAlert";
+import { ReportReasonMenu } from "./reporting/ReportReasonMenu";
+import { AppNotice } from "./ui/AppNotice";
 
 type Props = {
   visible: boolean;
@@ -17,12 +18,10 @@ type Props = {
 export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported }: Props) {
   const { currentUser, fetchWithAuth } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
-  const [showReportModal, setShowReportModal] = useState(false);
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const { isDark } = useAppTheme();
-  const alertAppearance = useMemo<AlertOptions>(
-    () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
-    [isDark]
-  );
+  const { showError } = useThemedAlert();
 
   // Persist user details while the menu is visible to avoid flicker to generic labels
   useEffect(() => {
@@ -36,28 +35,20 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective) return;
     if (!targetUser || !currentUser) {
-      Alert.alert("Error", "You must be logged in to report.", undefined, alertAppearance);
+      showError("You must be logged in to report.");
       return;
     }
     if (currentUser.id === effective.id) {
-      Alert.alert("Error", "You cannot report yourself.", undefined, alertAppearance);
+      showError("You cannot report yourself.");
       return;
     }
-    setShowReportModal(true);
+    setShowReportMenu(true);
   };
 
-  const reportReasons = [
-    "Inappropriate Behavior",
-    "Spam/Fake Profile",
-    "Harassment",
-    "Offensive Content", 
-    "Other"
-  ];
-
   const submitReport = async (reason: string) => {
-    setShowReportModal(false);
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective) return;
+    setShowReportMenu(false);
     try {
       const resp = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
@@ -66,17 +57,20 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
       });
       const payload = (await resp.json()) as { error?: string };
       if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
-      Alert.alert("Report Submitted", "Thank you for your report.", undefined, alertAppearance);
+      setNotice({
+        title: "Report Submitted",
+        message: "Thank you for your report. We will review it promptly.",
+      });
       onReported?.(effective.id);
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "Failed to submit report", undefined, alertAppearance);
+      showError(e?.message || "Failed to submit report");
     }
   };
 
   const doBlock = async () => {
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective) {
-      Alert.alert("Error", "You must be logged in to block.", undefined, alertAppearance);
+      showError("You must be logged in to block.");
       return;
     }
     try {
@@ -86,7 +80,7 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
       if (!res.ok) throw new Error(`Failed to block (${res.status})`);
       onBlocked?.(effective.id);
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "Could not block user.", undefined, alertAppearance);
+      showError(e?.message || "Could not block user.");
     }
   };
 
@@ -100,94 +94,19 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
   return (
     <>
       <OverflowMenu visible={visible} onClose={onClose} title={name} actions={actions} />
-      
-      {/* Custom Report Modal */}
-      <Modal
-        visible={showReportModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowReportModal(false)}
-      >
-        <View style={modalStyles.overlay}>
-          <View style={modalStyles.container}>
-            <Text style={modalStyles.title}>
-              Report {persisted?.name || "User"}
-            </Text>
-            <Text style={modalStyles.subtitle}>
-              Why are you reporting this user?
-            </Text>
-            
-            <FlatList
-              data={reportReasons}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={modalStyles.reasonButton}
-                  onPress={() => submitReport(item)}
-                >
-                  <Text style={modalStyles.reasonText}>{item}</Text>
-                </Pressable>
-              )}
-            />
-            
-            <Pressable
-              style={modalStyles.cancelButton}
-              onPress={() => setShowReportModal(false)}
-            >
-              <Text style={modalStyles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+
+      <ReportReasonMenu
+        visible={showReportMenu}
+        onClose={() => setShowReportMenu(false)}
+        subjectLabel={persisted?.name || "User"}
+        onSelectReason={submitReport}
+      />
+      <AppNotice
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title ?? ""}
+        message={notice?.message}
+      />
     </>
   );
 }
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  container: {
-    backgroundColor: "white",
-    margin: 20,
-    borderRadius: 10,
-    padding: 20,
-    maxWidth: 300,
-    width: "80%",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 20,
-    color: "#666",
-  },
-  reasonButton: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  reasonText: {
-    fontSize: 16,
-    textAlign: "center",
-  },
-  cancelButton: {
-    padding: 15,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 5,
-    marginTop: 10,
-  },
-  cancelText: {
-    fontSize: 16,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-});

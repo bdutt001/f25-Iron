@@ -5,7 +5,7 @@ import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
 import { useAppTheme } from "../context/ThemeContext";
-import OverflowMenu from "../components/ui/OverflowMenu";
+import { AppNotice } from "../components/ui/AppNotice";
 
 type AuthSuccess = {
   tokenType?: string;
@@ -264,35 +264,18 @@ export default function LoginScreen() {
         </View>
       </View>
 
-      <OverflowMenu
+      <AppNotice
         visible={signupSuccessVisible}
         onClose={goToOnboarding}
         title="Account created"
         message="You are now logged in."
-        showCancel={false}
-        actions={[
-          {
-            key: "continue",
-            label: "Continue to onboarding",
-            icon: "checkmark-circle-outline",
-            onPress: goToOnboarding,
-          },
-        ]}
+        actionLabel="Continue to onboarding"
       />
-      <OverflowMenu
+      <AppNotice
         visible={authModalVisible}
         onClose={closeAuthModal}
         title={authModalTitle || "Notice"}
         message={authModalMessage}
-        showCancel={false}
-        actions={[
-          {
-            key: "ok",
-            label: "Okay",
-            icon: "checkmark-circle-outline",
-            onPress: closeAuthModal,
-          },
-        ]}
       />
     </View>
   );
