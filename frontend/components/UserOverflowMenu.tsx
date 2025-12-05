@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import OverflowMenu, { type OverflowAction } from "./ui/OverflowMenu";
-import { Alert } from "react-native";
+import { Alert, Modal, View, FlatList, Pressable, StyleSheet, Text } from "react-native";
 import type { AlertOptions } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
@@ -17,6 +17,7 @@ type Props = {
 export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported }: Props) {
   const { currentUser, fetchWithAuth } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
   const { isDark } = useAppTheme();
   const alertAppearance = useMemo<AlertOptions>(
     () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
@@ -42,22 +43,19 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
       Alert.alert("Error", "You cannot report yourself.", undefined, alertAppearance);
       return;
     }
-    const pickReason = (reason: string) => submitReport(reason);
-    Alert.alert(
-      "Report User",
-      `Why are you reporting ${effective.name}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Inappropriate", onPress: () => pickReason("Inappropriate Behavior") },
-        { text: "Spam/Fake", onPress: () => pickReason("Spam/Fake Profile") },
-        { text: "Harassment", onPress: () => pickReason("Harassment") },
-        { text: "Other", onPress: () => pickReason("Other") },
-      ],
-      alertAppearance
-    );
+    setShowReportModal(true);
   };
 
+  const reportReasons = [
+    "Inappropriate Behavior",
+    "Spam/Fake Profile",
+    "Harassment",
+    "Offensive Content", 
+    "Other"
+  ];
+
   const submitReport = async (reason: string) => {
+    setShowReportModal(false);
     const effective = persisted ?? (targetUser ? { id: targetUser.id, name: targetUser.name || targetUser.email || "User" } : null);
     if (!effective) return;
     try {
@@ -99,5 +97,97 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
     { key: "block", label: `Block ${name}`, destructive: true, onPress: doBlock, icon: "hand-left-outline" },
   ];
 
-  return <OverflowMenu visible={visible} onClose={onClose} title={name} actions={actions} />;
+  return (
+    <>
+      <OverflowMenu visible={visible} onClose={onClose} title={name} actions={actions} />
+      
+      {/* Custom Report Modal */}
+      <Modal
+        visible={showReportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.container}>
+            <Text style={modalStyles.title}>
+              Report {persisted?.name || "User"}
+            </Text>
+            <Text style={modalStyles.subtitle}>
+              Why are you reporting this user?
+            </Text>
+            
+            <FlatList
+              data={reportReasons}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={modalStyles.reasonButton}
+                  onPress={() => submitReport(item)}
+                >
+                  <Text style={modalStyles.reasonText}>{item}</Text>
+                </Pressable>
+              )}
+            />
+            
+            <Pressable
+              style={modalStyles.cancelButton}
+              onPress={() => setShowReportModal(false)}
+            >
+              <Text style={modalStyles.cancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
 }
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  container: {
+    backgroundColor: "white",
+    margin: 20,
+    borderRadius: 10,
+    padding: 20,
+    maxWidth: 300,
+    width: "80%",
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 20,
+    color: "#666",
+  },
+  reasonButton: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  reasonText: {
+    fontSize: 16,
+    textAlign: "center",
+  },
+  cancelButton: {
+    padding: 15,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  cancelText: {
+    fontSize: 16,
+    textAlign: "center",
+    fontWeight: "500",
+  },
+});
