@@ -22,11 +22,11 @@ export default function ReportButton({
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
-  const { currentUser, isLoggedIn, accessToken } = useUser();
+  const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
 
   const handleReport = async () => {
     // ✅ Check if user is logged in
-    if (!isLoggedIn || !currentUser || !accessToken) {
+    if (!isLoggedIn || !currentUser) {
       Alert.alert("Error", "You must be logged in to report users.");
       return;
     }
@@ -39,30 +39,21 @@ export default function ReportButton({
       return;
     }
 
-    // ✅ Confirm before reporting
-    Alert.alert(
-      "Report User",
-      `Are you sure you want to report ${reportedUserName}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Report", style: "destructive", onPress: () => setShowReasonModal(true) },
-      ]
-    );
+    // ✅ Show custom modal directly instead of Alert confirmation
+    console.log("Opening custom modal for reporting");
+    setShowReasonModal(true);
   };
 
-  const showReasonDialog = () => {
-    // ✅ Display predefined report reasons
-    Alert.alert("Reason for Report", "Why are you reporting this user?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Inappropriate Behavior", onPress: () => submitReport("Inappropriate Behavior") },
-      { text: "Spam/Fake Profile", onPress: () => submitReport("Spam/Fake Profile") },
-      { text: "Harassment", onPress: () => submitReport("Harassment") },
-      { text: "Other", onPress: () => submitReport("Other") },
-    ]);
-  };
+  const reasons = [
+    "Inappropriate Behavior",
+    "Spam/Fake Profile", 
+    "Harassment",
+    "Offensive Content",
+    "Other"
+  ];
 
   const submitReport = async (reason: string, severityOverride?: number) => {
-    if (!currentUser || !accessToken) return;
+    if (!currentUser) return;
 
     setIsReporting(true);
 
@@ -73,11 +64,10 @@ export default function ReportButton({
           : defaultSeverity;
 
       // ✅ Send the report to the backend
-      const response = await fetch(`${API_BASE_URL}/api/report`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           reportedId: reportedUserId,
@@ -97,9 +87,7 @@ export default function ReportButton({
 
       // ✅ Refresh trust score from backend after report
       try {
-        const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const trustResponse = await fetchWithAuth(`${API_BASE_URL}/api/users/${reportedUserId}/trust`);
         if (trustResponse.ok) {
           const trustData = (await trustResponse.json()) as { trustScore?: number };
           if (typeof trustData.trustScore === "number") {
@@ -134,14 +122,6 @@ export default function ReportButton({
     isReporting && styles.disabledText,
   ];
 
-  const reasons = [
-    "Inappropriate Behavior",
-    "Spam/Fake Profile", 
-    "Harassment",
-    "Offensive Content",
-    "Other"
-  ];
-
   return (
     <>
       <TouchableOpacity
@@ -161,11 +141,9 @@ export default function ReportButton({
         onRequestClose={() => setShowReasonModal(false)}
       >
         <View style={modalStyles.overlay}>
-          <View style={modalStyles.container}>
-            <Text style={modalStyles.title}>Reason for Report</Text>
-            <Text style={modalStyles.subtitle}>Why are you reporting this user?</Text>
-            
-            <FlatList
+        <View style={modalStyles.container}>
+          <Text style={modalStyles.title}>Report {reportedUserName}</Text>
+          <Text style={modalStyles.subtitle}>Why are you reporting this user?</Text>            <FlatList
               data={reasons}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
