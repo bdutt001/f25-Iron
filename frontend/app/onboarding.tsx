@@ -18,6 +18,7 @@ import { useUser } from "../context/UserContext";
 import { API_BASE_URL, fetchTagCatalog, updateUserProfile } from "@/utils/api";
 import { ThemeMode, useAppTheme } from "../context/ThemeContext";
 import OverflowMenu, { type OverflowAction } from "../components/ui/OverflowMenu";
+import { AppNotice } from "../components/ui/AppNotice";
 
 const MAX_INTEREST_TAGS = 10;
 
@@ -661,21 +662,12 @@ export default function OnboardingScreen() {
         title="Profile picture"
         actions={profilePictureActions}
       />
-      <OverflowMenu
+      <AppNotice
         visible={photoSuccessVisible}
         onClose={() => setPhotoSuccessVisible(false)}
         title="Success"
         message="Profile picture updated!"
-        showCancel={false}
-        actions={[
-          {
-            key: "ok",
-            label: "Okay",
-            icon: "checkmark-circle-outline",
-          onPress: () => setPhotoSuccessVisible(false),
-        },
-      ]}
-    />
+      />
       <OverflowMenu
         visible={removeConfirmVisible}
         onClose={() => setRemoveConfirmVisible(false)}
@@ -692,20 +684,11 @@ export default function OnboardingScreen() {
           },
         ]}
       />
-      <OverflowMenu
+      <AppNotice
         visible={removeSuccessVisible}
         onClose={() => setRemoveSuccessVisible(false)}
         title="Removed"
         message="Profile picture removed."
-        showCancel={false}
-        actions={[
-          {
-            key: "ok",
-            label: "Okay",
-            icon: "checkmark-circle-outline",
-            onPress: () => setRemoveSuccessVisible(false),
-          },
-        ]}
       />
     </ScrollView>
   );

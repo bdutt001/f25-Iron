@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useThemedAlert } from "../hooks/useThemedAlert";
-import { ReportReasonMenu } from "./reporting/ReportReasonMenu";
+import { ReportReasonMenu, REPORT_SUCCESS_NOTICE } from "./UserOverflowMenu";
 import { AppNotice } from "./ui/AppNotice";
 
 type ReportButtonProps = {
@@ -25,7 +25,7 @@ export default function ReportButton({
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
   const [showReasonMenu, setShowReasonMenu] = useState(false);
-  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  const [notice, setNotice] = useState<typeof REPORT_SUCCESS_NOTICE | null>(null);
   const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
   const { showError } = useThemedAlert();
 
@@ -90,10 +90,7 @@ export default function ReportButton({
         console.warn("Unable to refresh trust score after report:", error);
       }
 
-      setNotice({
-        title: "Report Submitted",
-        message: "Thank you for your report. We will review it promptly.",
-      });
+      setNotice(REPORT_SUCCESS_NOTICE);
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit report";

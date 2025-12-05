@@ -21,6 +21,7 @@ import { fetchTagCatalog, updateUserProfile, API_BASE_URL, deleteAccount } from 
 import type { ApiUser } from "../../utils/geo";
 import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
 import OverflowMenu, { type OverflowAction } from "../../components/ui/OverflowMenu";
+import { AppNotice } from "../../components/ui/AppNotice";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
@@ -907,35 +908,17 @@ export default function ProfileScreen() {
       title="Profile picture"
       actions={profilePictureActions}
     />
-    <OverflowMenu
+    <AppNotice
       visible={photoSuccessVisible}
       onClose={() => setPhotoSuccessVisible(false)}
       title="Success"
       message="Profile picture updated!"
-      showCancel={false}
-      actions={[
-        {
-          key: "ok",
-          label: "Okay",
-          icon: "checkmark-circle-outline",
-          onPress: () => setPhotoSuccessVisible(false),
-        },
-      ]}
     />
-    <OverflowMenu
+    <AppNotice
       visible={nameSuccessVisible}
       onClose={() => setNameSuccessVisible(false)}
       title="Success"
       message="Name updated!"
-      showCancel={false}
-      actions={[
-        {
-          key: "ok",
-          label: "Okay",
-          icon: "checkmark-circle-outline",
-          onPress: () => setNameSuccessVisible(false),
-        },
-      ]}
     />
     <OverflowMenu
       visible={deleteConfirmVisible}
