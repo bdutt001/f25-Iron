@@ -148,7 +148,7 @@ router.get("/:chatId", authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
     const access = await ensureChatAccess(chatId, userId);
-    if (!access.allowed) {
+    if (access.allowed === false) {
       const status = access.reason === "not_found" ? 404 : 403;
       return res.status(status).json({ message: "You cannot access this chat" });
     }
@@ -176,7 +176,7 @@ router.post("/", authenticate, async (req: AuthRequest, res) => {
     const chatSessionIdNum = Number(chatSessionId);
     const userId = req.user!.id;
     const access = await ensureChatAccess(chatSessionIdNum, userId);
-    if (!access.allowed) {
+    if (access.allowed === false) {
       const status = access.reason === "not_found" ? 404 : 403;
       return res.status(status).json({ message: "You cannot send messages to this chat" });
     }
