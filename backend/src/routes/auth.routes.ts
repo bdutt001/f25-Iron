@@ -246,19 +246,21 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   try {
+    const profileSelect = {
+      id: true,
+      email: true,
+      name: true,
+      profileStatus: true,
+      visibility: true,
+      profilePicture: true,
+      interestTags: { select: { name: true } },
+      createdAt: true,
+    } as const;
+
     const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        status: true,
-        visibility: true,
-        profilePicture: true,
-        interestTags: { select: { name: true } },
-        createdAt: true,
         lastLogin: true,
-      },
+      where: { id: userId },
+      select: profileSelect,
     });
 
     if (!user) return res.status(404).json({ error: "User not found" });

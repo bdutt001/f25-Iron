@@ -14,6 +14,8 @@ const safeSelect = {
   lastLogin: true,
 } as const;
 
+const selectWithPassword = { ...safeSelect, password: true } as const;
+
 type SafeUserRecord = {
   id: number;
   email: string | null;
@@ -66,10 +68,10 @@ export const login = async (req: Request, res: Response) => {
     if (!email || !password)
       return res.status(400).json({ error: "Email and password are required" });
 
-    const userRecord = (await prisma.user.findUnique({
+    const userRecord = await prisma.user.findUnique({
       where: { email },
-      select: { ...safeSelect, password: true } as any,
-    })) as (SafeUserRecord & { password: string }) | null;
+      select: selectWithPassword,
+    });
 
     if (!userRecord) return res.status(401).json({ error: "Invalid credentials" });
 
