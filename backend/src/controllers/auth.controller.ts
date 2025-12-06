@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 
 const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || "Password123";
@@ -14,7 +15,16 @@ const safeSelect = {
   lastLogin: true,
 } as const;
 
-const selectWithPassword = { ...safeSelect, password: true } as const;
+const selectWithPassword = {
+  id: true,
+  email: true,
+  name: true,
+  profilePicture: true,
+  interestTags: { select: { name: true } },
+  createdAt: true,
+  lastLogin: true,
+  password: true,
+} as const satisfies Prisma.UserSelect;
 
 type SafeUserRecord = {
   id: number;
@@ -25,6 +35,9 @@ type SafeUserRecord = {
   createdAt: Date;
   lastLogin: Date | null;
 };
+
+type UserWithPassword = Prisma.UserGetPayload<{ select: typeof selectWithPassword }>;
+type SafeUserWithPassword = SafeUserRecord & { password: string };
 
 // Helper to shape user data safely
 const toSafeUser = (user: SafeUserRecord) => ({
@@ -37,7 +50,7 @@ const toSafeUser = (user: SafeUserRecord) => ({
 export const signup = async (req: Request, res: Response) => {
   try {
     const emailRaw = (req.body?.email ?? "") as string;
-    const name = typeof req.body?.name === "string" ? req.body.name : undefined;
+    const name = typeof req.body?.name === "string" ? req.body.name : null;
     const passwordRaw = (req.body?.password as string | undefined) || DEFAULT_PASSWORD;
 
     const email = emailRaw.trim().toLowerCase();
@@ -68,14 +81,15 @@ export const login = async (req: Request, res: Response) => {
     if (!email || !password)
       return res.status(400).json({ error: "Email and password are required" });
 
-    const userRecord = await prisma.user.findUnique({
+    const userRecord = (await prisma.user.findUnique({
       where: { email },
       select: selectWithPassword,
-    });
+    })) as SafeUserWithPassword | null;
 
     if (!userRecord) return res.status(401).json({ error: "Invalid credentials" });
 
-    if (userRecord.password !== password) {
+    const storedPassword = (userRecord as SafeUserWithPassword).password;
+    if (storedPassword !== password) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -85,8 +99,7 @@ export const login = async (req: Request, res: Response) => {
       select: safeSelect,
     });
 
-    const { password: _p, ...safe } = updated;
-    return res.json(toSafeUser(safe as SafeUserRecord));
+    return res.json(toSafeUser(updated as SafeUserRecord));
   } catch (err) {
     console.error("Login error", err);
     return res.status(500).json({ error: "Failed to login" });

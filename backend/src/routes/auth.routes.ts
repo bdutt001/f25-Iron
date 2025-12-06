@@ -86,7 +86,7 @@ const buildAuthResponse = (user: UserAuthRecord) => {
   const tokens = issueTokenPair({
     id: user.id,
     email: user.email,
-    name: user.name ?? undefined,
+    name: user.name ?? null,
     tokenVersion: user.tokenVersion,
   });
 
@@ -99,7 +99,7 @@ const buildAuthResponse = (user: UserAuthRecord) => {
     user: toAuthenticatedUser({
       id: user.id,
       email: user.email,
-      name: user.name ?? undefined,
+      name: user.name ?? null,
       profilePicture: user.profilePicture ?? null,
       interestTags: user.interestTags ?? [],
       visibility: user.visibility,
@@ -130,7 +130,7 @@ router.post("/register", async (req: Request, res: Response) => {
     const user = await prisma.user.create({
       data: {
         email,
-        name: name || undefined,
+        name: name || null,
         password: hashedPassword,
         lastLogin: new Date(),
       },
@@ -255,10 +255,10 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
       profilePicture: true,
       interestTags: { select: { name: true } },
       createdAt: true,
+      lastLogin: true,
     } as const;
 
     const user = await prisma.user.findUnique({
-        lastLogin: true,
       where: { id: userId },
       select: profileSelect,
     });
