@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { router } from "expo-router";
-import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
@@ -165,7 +165,9 @@ export default function LoginScreen() {
       setSignupSuccessVisible(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert("Signup failed", message);
+      setAuthModalTitle("Signup failed");
+      setAuthModalMessage(message);
+      setAuthModalVisible(true);
     }
   };
 

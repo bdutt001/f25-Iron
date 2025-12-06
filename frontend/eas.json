@@ -22,7 +22,10 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://f25-iron.onrender.com"
+      }
     }
   },
   "submit": {

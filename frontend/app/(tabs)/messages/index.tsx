@@ -15,8 +15,7 @@ import { Edge, SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+import { API_BASE_URL } from "@/utils/api";
 
 type Conversation = {
   id: string;

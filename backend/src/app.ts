@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import usersRouter from "./routes/users.routes";
@@ -15,8 +15,8 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-app.get("/", (_req, res) => res.status(200).send("Hello from Express"));
-app.get("/api", (_req, res) => res.json({ status: "ok" }));
+app.get("/", (_req: Request, res: Response) => res.status(200).send("Hello from Express"));
+app.get("/api", (_req: Request, res: Response) => res.json({ status: "ok" }));
 
 // Primary API surface (preferred)
 app.use("/api/auth", authRouter);
