@@ -24,6 +24,7 @@ export type CurrentUser = {
   email: string;
   name?: string | null;
   createdAt?: string;
+  lastLogin?: string | null;
   interestTags?: string[];
   profilePicture?: string | null;
   trustScore?: number;

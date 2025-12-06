@@ -13,6 +13,8 @@ export default function MessagesLayout() {
           headerShown: true,
           ...headerOptions,
           headerTitleAlign: "left",
+          headerBackVisible: false,
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen

@@ -23,9 +23,7 @@ import { useUser } from "../../../context/UserContext";
 import UserOverflowMenu from "../../../components/UserOverflowMenu";
 import { useTabHeaderOptions } from "../../../hooks/useTabHeaderOptions";
 import { saveChatLastRead } from "@/utils/chatReadStorage";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
-const WS_BASE_URL = API_BASE_URL ? API_BASE_URL.replace(/^http/i, "ws") : undefined;
+import { API_BASE_URL, WS_BASE_URL } from "@/utils/api";
 
 type Message = {
   id: number;
