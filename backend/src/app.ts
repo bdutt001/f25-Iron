@@ -12,25 +12,24 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 app.get("/", (_req, res) => res.status(200).send("Hello from Express"));
 app.get("/api", (_req, res) => res.json({ status: "ok" }));
 
-app.use("/auth", authRouter);
-app.use("/api/auth", authRouter); // backwards compatibility
-
+// Primary API surface (preferred)
+app.use("/api/auth", authRouter);
 app.use("/api", usersRouter);
-app.use("/", usersRouter); // allow legacy clients without /api prefix
-
 app.use("/api", tagsRouter);
-app.use("/", tagsRouter);
-
 app.use("/api", reportsRouter);
 app.use("/api", reportRouter);
-
 app.use("/api/messages", messagesRouter);
+
+// Legacy mounts kept active for current clients still hitting non-API-prefixed paths.
+app.use("/auth", authRouter);
+app.use("/", usersRouter);
+app.use("/", tagsRouter);
 app.use("/messages", messagesRouter);
 
 export default app;

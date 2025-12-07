@@ -5,16 +5,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ---------- ENUMS ----------
-enum UserStatus {
-  AVAILABLE
-  BUSY
-  DND
-}
-
 enum Gender {
   MALE
   FEMALE
@@ -30,7 +23,6 @@ model User {
   tokenVersion   Int        @default(0)
   name           String?
   profilePicture String?
-  status         UserStatus @default(AVAILABLE)
   visibility     Boolean    @default(true)
   trustScore     Int        @default(99)
   createdAt      DateTime   @default(now())
@@ -64,7 +56,7 @@ model UserLocation {
   longitude Float
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -87,7 +79,7 @@ model ChatParticipant {
   joinedAt      DateTime @default(now())
 
   chatSession ChatSession @relation(fields: [chatSessionId], references: [id])
-  user        User        @relation(fields: [userId], references: [id])
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatSessionId, userId])
 }
@@ -100,7 +92,7 @@ model Message {
   senderId      Int
   chatSessionId Int
 
-  sender      User        @relation("SentMessages", fields: [senderId], references: [id])
+  sender      User        @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   chatSession ChatSession @relation(fields: [chatSessionId], references: [id])
 
   @@index([chatSessionId])
@@ -113,8 +105,8 @@ model Wave {
   senderId   Int
   receiverId Int
 
-  sender   User @relation("WavesSent", fields: [senderId], references: [id])
-  receiver User @relation("WavesReceived", fields: [receiverId], references: [id])
+  sender   User @relation("WavesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("WavesReceived", fields: [receiverId], references: [id], onDelete: Cascade)
 }
 
 // Reports (misconduct)
@@ -127,8 +119,8 @@ model Report {
   reportedId  Int
   severity    Int?     @default(1)
 
-  reporter User @relation("ReportsMade", fields: [reporterId], references: [id])
-  reported User @relation("ReportsAgainst", fields: [reportedId], references: [id])
+  reporter User @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported User @relation("ReportsAgainst", fields: [reportedId], references: [id], onDelete: Cascade)
 }
 
 // Blocks (prevent user interaction)
@@ -138,8 +130,8 @@ model Block {
   blockedId Int
   createdAt DateTime @default(now())
 
-  blocker User @relation("BlocksMade", fields: [blockerId], references: [id])
-  blocked User @relation("BlocksReceived", fields: [blockedId], references: [id])
+  blocker User @relation("BlocksMade", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
   @@index([blockerId])

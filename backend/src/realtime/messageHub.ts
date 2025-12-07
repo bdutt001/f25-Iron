@@ -123,7 +123,7 @@ export const startMessageHub = (server: Server) => {
     }
 
     const access = await ensureChatAccess(chatId, userId);
-    if (!access.allowed) {
+    if (access.allowed === false) {
       const code = access.reason === "not_found" ? 4404 : 4403;
       socket.close(code, "Forbidden");
       return;

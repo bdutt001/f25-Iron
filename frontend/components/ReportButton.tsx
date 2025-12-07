@@ -1,5 +1,14 @@
 import React, { useState } from "react";
-import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native";
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Modal,
+  View,
+  FlatList,
+  Pressable,
+} from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 
@@ -21,11 +30,12 @@ export default function ReportButton({
   defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, fetchWithAuth, accessToken } = useUser();
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
 
   const handleReport = async () => {
     // ✅ Check if user is logged in
-    if (!isLoggedIn || !currentUser || !accessToken) {
+    if (!isLoggedIn || !currentUser) {
       Alert.alert("Error", "You must be logged in to report users.");
       return;
     }
@@ -38,27 +48,18 @@ export default function ReportButton({
       return;
     }
 
-    // ✅ Confirm before reporting
-    Alert.alert(
-      "Report User",
-      `Are you sure you want to report ${reportedUserName}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Report", style: "destructive", onPress: () => showReasonDialog() },
-      ]
-    );
+    // ✅ Show custom modal directly instead of Alert confirmation
+    console.log("Opening custom modal for reporting");
+    setShowReasonModal(true);
   };
 
-  const showReasonDialog = () => {
-    // ✅ Display predefined report reasons
-    Alert.alert("Reason for Report", "Why are you reporting this user?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Inappropriate Behavior", onPress: () => submitReport("Inappropriate Behavior") },
-      { text: "Spam/Fake Profile", onPress: () => submitReport("Spam/Fake Profile") },
-      { text: "Harassment", onPress: () => submitReport("Harassment") },
-      { text: "Other", onPress: () => submitReport("Other") },
-    ]);
-  };
+  const reasons = [
+    "Inappropriate Behavior",
+    "Spam/Fake Profile",
+    "Harassment",
+    "Offensive Content",
+    "Other",
+  ];
 
   const submitReport = async (reason: string, severityOverride?: number) => {
     if (!currentUser) return;
@@ -95,7 +96,9 @@ export default function ReportButton({
 
       // ✅ Refresh trust score from backend after report
       try {
-        const trustResponse = await fetchWithAuth(`${API_BASE_URL}/api/users/${reportedUserId}/trust`);
+        const trustResponse = await fetchWithAuth(
+          `${API_BASE_URL}/api/users/${reportedUserId}/trust`
+        );
         if (trustResponse.ok) {
           const trustData = (await trustResponse.json()) as { trustScore?: number };
           if (typeof trustData.trustScore === "number") {
@@ -109,8 +112,7 @@ export default function ReportButton({
       Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to submit report";
+      const message = error instanceof Error ? error.message : "Failed to submit report";
       Alert.alert("Error", message);
     } finally {
       setIsReporting(false);
@@ -131,14 +133,55 @@ export default function ReportButton({
   ];
 
   return (
-    <TouchableOpacity
-      style={buttonStyles}
-      onPress={handleReport}
-      disabled={isReporting}
-      activeOpacity={0.7}
-    >
-      <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity
+        style={buttonStyles}
+        onPress={handleReport}
+        disabled={isReporting}
+        activeOpacity={0.7}
+      >
+        <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
+      </TouchableOpacity>
+
+      {/* Custom Modal for Reason Selection */}
+      <Modal
+        visible={showReasonModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReasonModal(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.container}>
+            <Text style={modalStyles.title}>Report {reportedUserName}</Text>
+            <Text style={modalStyles.subtitle}>
+              Why are you reporting this user?
+            </Text>
+            <FlatList
+              data={reasons}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={modalStyles.reasonButton}
+                  onPress={() => {
+                    setShowReasonModal(false);
+                    submitReport(item);
+                  }}
+                >
+                  <Text style={modalStyles.reasonText}>{item}</Text>
+                </Pressable>
+              )}
+            />
+
+            <Pressable
+              style={modalStyles.cancelButton}
+              onPress={() => setShowReasonModal(false)}
+            >
+              <Text style={modalStyles.cancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -183,5 +226,54 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: "#adb5bd",
+  },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  container: {
+    backgroundColor: "white",
+    margin: 20,
+    borderRadius: 10,
+    padding: 20,
+    maxWidth: 300,
+    width: "80%",
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 20,
+    color: "#666",
+  },
+  reasonButton: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  reasonText: {
+    fontSize: 16,
+    textAlign: "center",
+  },
+  cancelButton: {
+    padding: 15,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  cancelText: {
+    fontSize: 16,
+    textAlign: "center",
+    fontWeight: "500",
   },
 });
