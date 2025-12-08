@@ -2,9 +2,9 @@ import "dotenv/config";
 import prisma from "../src/prisma";
 import { destinationPoint, randomBetween, seededRandom } from "../src/utils/geo";
 
-const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-const MIN_DISTANCE_METERS = 1100; // ensure we land outside the 1000m nearby window
-const MAX_DISTANCE_METERS = 1500;
+const TARGET_CENTER = { latitude: 36.892703, longitude: -76.300946 };
+const MIN_DISTANCE_METERS = 0; // allow center
+const MAX_DISTANCE_METERS = 50; // within 50m of the target
 
 const usage = () => {
   console.error("Usage: ts-node --transpile-only scripts/move_user_outside_odu.ts user@example.com");
@@ -35,8 +35,8 @@ const main = async () => {
   const distance = randomBetween(MIN_DISTANCE_METERS, MAX_DISTANCE_METERS, rand);
   const bearing = rand() * 2 * Math.PI;
   const coords = destinationPoint(
-    ODU_CENTER.latitude,
-    ODU_CENTER.longitude,
+    TARGET_CENTER.latitude,
+    TARGET_CENTER.longitude,
     distance,
     bearing
   );
