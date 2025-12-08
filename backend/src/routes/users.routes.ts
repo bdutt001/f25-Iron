@@ -19,6 +19,7 @@ import {
   uploadProfilePicture,
   setMyLocation,
   getMyLocation,
+  getNearbyUsers,
 } from "../controllers/users.controller";
 
 const router = Router();
@@ -46,14 +47,17 @@ router.use(authenticate);
 // Core user routes
 router.post("/users", createUser);
 router.get("/users", getUsers);
+router.get("/users/nearby", getNearbyUsers);
+router.get("/users/me/location", getMyLocation);
+router.post("/users/me/location", setMyLocation);
+router.patch("/users/me/visibility", updateVisibility);
+
+router.get("/users/tags/:tagName", getUsersByTag);
+
 router.get("/users/:id", getUserById);
 router.patch("/users/:id", updateUser);
-router.patch("/users/me/visibility", updateVisibility);
-router.post("/users/me/location", setMyLocation);
-router.get("/users/me/location", getMyLocation);
 router.delete("/users/:id", deleteUser);
 router.post("/users/:id/tags", addTag);
-router.get("/users/tags/:tagName", getUsersByTag);
 router.delete("/users/:id/tags/:tagName", deleteTagFromUser);
 
 // Cloudinary upload route (uses temp storage)
