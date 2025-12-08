@@ -10,12 +10,14 @@ export const userWithTagsSelect = {
   interestTags: { select: { name: true } },
   trustScore: true,
   visibility: true,
+  lastLogin: true,
 } satisfies Prisma.UserSelect;
 
 export type PrismaUserWithTags = Prisma.UserGetPayload<{ select: typeof userWithTagsSelect }>;
 export type SerializedUser = Omit<PrismaUserWithTags, "interestTags"> & {
   interestTags: string[];
   visibility: boolean;
+  lastLogin: Date | null;
 };
 
 export const serializeUser = (user: PrismaUserWithTags): SerializedUser => ({
@@ -23,6 +25,7 @@ export const serializeUser = (user: PrismaUserWithTags): SerializedUser => ({
   interestTags: user.interestTags.map((tag) => tag.name),
   profilePicture: user.profilePicture ?? null,  // ✅ ensure it passes through
   visibility: user.visibility ?? false,
+  lastLogin: user.lastLogin ?? null,
 });
 
 export const normalizeTagNames = (tags: string[]): string[] => {
@@ -106,4 +109,29 @@ export const findUsersByTag = async (tagName: string): Promise<SerializedUser[]>
   });
 
   return users.map(serializeUser);
+};
+
+export const deleteUserAndRelations = async (userId: number): Promise<void> => {
+  await prisma.$transaction(async (tx) => {
+    await tx.message.deleteMany({ where: { senderId: userId } });
+    await tx.wave.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } });
+    await tx.report.deleteMany({ where: { OR: [{ reporterId: userId }, { reportedId: userId }] } });
+    await tx.block.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } });
+    await tx.userLocation.deleteMany({ where: { userId } });
+    await tx.chatParticipant.deleteMany({ where: { userId } });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { interestTags: { set: [] } },
+    });
+
+    // Clean up chat sessions that no longer have participants after removal
+    await tx.chatSession.deleteMany({
+      where: {
+        participants: { none: {} },
+      },
+    });
+
+    await tx.user.delete({ where: { id: userId } });
+  });
 };

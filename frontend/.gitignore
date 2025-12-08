@@ -7,3 +7,12 @@
 
 expo-env.d.ts
 # @end expo-cli
+credentials.json
+*.jks
+*.keystore
+# Android build artifacts
+*.aab
+*.apk
+dist/
+build/
+android/app/build/

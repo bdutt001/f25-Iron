@@ -14,7 +14,10 @@ import {
   serializeUser,
   userWithTagsSelect,
   updateUserVisibility,
+  deleteUserAndRelations,
+  SerializedUser,
 } from "../services/users.services";
+import { haversineMeters } from "../utils/geo";
 
 // Load environment variables early
 dotenv.config();
@@ -37,6 +40,56 @@ cloudinary.config({
 const toNumberId = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
+};
+
+const toCoord = (value: unknown): number => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "") return Number(value);
+  return NaN;
+};
+
+const isValidLatitude = (value: number) => Number.isFinite(value) && value >= -90 && value <= 90;
+const isValidLongitude = (value: number) => Number.isFinite(value) && value >= -180 && value <= 180;
+
+const DEFAULT_RADIUS_METERS = 500;
+const MIN_RADIUS_METERS = 50;
+const MAX_RADIUS_METERS = 5000;
+
+const parseRadiusMeters = (value: unknown): number | null => {
+  if (value === undefined) return DEFAULT_RADIUS_METERS;
+
+  const radius = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(radius)) return null;
+
+  const clamped = Math.max(MIN_RADIUS_METERS, Math.min(MAX_RADIUS_METERS, radius));
+  return clamped;
+};
+
+const normalizedTagSet = (tags: string[]) => {
+  const normalized = normalizeTagNames(tags).map((tag) => tag.toLowerCase());
+  return new Set(normalized);
+};
+
+const computeMatchPercent = (mine: string[], theirs: string[]) => {
+  const a = normalizedTagSet(mine);
+  const b = normalizedTagSet(theirs);
+  if (a.size === 0 && b.size === 0) return 0;
+
+  let intersection = 0;
+  for (const tag of a) {
+    if (b.has(tag)) intersection += 1;
+  }
+
+  const union = a.size + b.size - intersection;
+  return union > 0 ? Math.round((intersection / union) * 100) : 0;
+};
+
+type NearbyUserPayload = SerializedUser & {
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  matchPercent: number;
+  locationUpdatedAt: Date;
 };
 
 // ---------- Create User ----------
@@ -197,8 +250,19 @@ export const deleteUser = async (req: Request, res: Response) => {
   const userId = toNumberId(req.params.id);
   if (!userId) return res.status(400).json({ error: "User not found" });
 
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  if (req.user.id !== userId)
+    return res.status(403).json({ error: "You can only delete your own account" });
+
   try {
-    await prisma.user.delete({ where: { id: userId } });
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!existing) return res.status(404).json({ error: "User not found" });
+
+    await deleteUserAndRelations(userId);
     res.status(204).send();
   } catch (err: any) {
     if (err?.code === "P2025")
@@ -270,6 +334,161 @@ export const getUsersByTag = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error finding users by tag:", error);
     res.status(500).json({ error: "Failed to find users by tag" });
+  }
+};
+
+// ---------- User Location (self) ----------
+export const getNearbyUsers = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const radiusMeters = parseRadiusMeters(req.query?.radius);
+  if (radiusMeters === null) {
+    return res.status(400).json({
+      error: `radius must be a number between ${MIN_RADIUS_METERS} and ${MAX_RADIUS_METERS} meters`,
+    });
+  }
+
+  const sortRaw = typeof req.query?.sort === "string" ? req.query.sort.toLowerCase() : "";
+  const sortMode: "match" | "distance" = sortRaw === "distance" ? "distance" : "match";
+
+  try {
+    const myLocation = await prisma.userLocation.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      select: { latitude: true, longitude: true, updatedAt: true },
+    });
+
+    if (!myLocation) {
+      return res.status(400).json({ error: "No location set for current user" });
+    }
+
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { interestTags: { select: { name: true } } },
+    });
+    const myTags = normalizeTagNames(me?.interestTags.map((tag) => tag.name) ?? []);
+
+    const candidateSelect = {
+      ...userWithTagsSelect,
+      locations: {
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        select: { latitude: true, longitude: true, updatedAt: true },
+      },
+    } satisfies Prisma.UserSelect;
+
+    const candidates = await prisma.user.findMany({
+      where: {
+        visibility: true,
+        id: { not: userId },
+        NOT: {
+          OR: [
+            { blocksReceived: { some: { blockerId: userId } } },
+            { blocksMade: { some: { blockedId: userId } } },
+          ],
+        },
+      },
+      select: candidateSelect,
+    });
+
+    const nearby: NearbyUserPayload[] = candidates
+      .map((candidate) => {
+        const latest = candidate.locations[0];
+        if (!latest) return null;
+
+        const distanceMeters = haversineMeters(
+          myLocation.latitude,
+          myLocation.longitude,
+          latest.latitude,
+          latest.longitude
+        );
+        if (!Number.isFinite(distanceMeters) || distanceMeters > radiusMeters) return null;
+
+        const base = serializeUser(candidate);
+        const matchPercent = computeMatchPercent(myTags, base.interestTags);
+
+        return {
+          ...base,
+          latitude: latest.latitude,
+          longitude: latest.longitude,
+          distanceMeters,
+          matchPercent,
+          locationUpdatedAt: latest.updatedAt,
+        };
+      })
+      .filter((value): value is NearbyUserPayload => Boolean(value));
+
+    nearby.sort((a, b) => {
+      if (sortMode === "distance") {
+        return (
+          a.distanceMeters - b.distanceMeters ||
+          b.matchPercent - a.matchPercent ||
+          a.id - b.id
+        );
+      }
+
+      return (
+        b.matchPercent - a.matchPercent ||
+        a.distanceMeters - b.distanceMeters ||
+        a.id - b.id
+      );
+    });
+
+    return res.json({
+      users: nearby,
+      radius: radiusMeters,
+      sort: sortMode,
+      center: { latitude: myLocation.latitude, longitude: myLocation.longitude },
+    });
+  } catch (error) {
+    console.error("Failed to load nearby users", error);
+    return res.status(500).json({ error: "Failed to load nearby users" });
+  }
+};
+
+export const setMyLocation = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const latitude = toCoord(req.body?.latitude);
+  const longitude = toCoord(req.body?.longitude);
+
+  if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) {
+    return res.status(400).json({
+      error: "latitude must be between -90 and 90 and longitude between -180 and 180",
+    });
+  }
+
+  try {
+    const location = await prisma.userLocation.create({
+      data: { userId, latitude, longitude },
+      select: { userId: true, latitude: true, longitude: true, updatedAt: true },
+    });
+
+    return res.status(201).json(location);
+  } catch (error) {
+    console.error("Failed to save user location", error);
+    return res.status(500).json({ error: "Failed to save location" });
+  }
+};
+
+export const getMyLocation = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const location = await prisma.userLocation.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      select: { userId: true, latitude: true, longitude: true, updatedAt: true },
+    });
+
+    if (!location) return res.status(404).json({ error: "Location not found" });
+    return res.json(location);
+  } catch (error) {
+    console.error("Failed to fetch user location", error);
+    return res.status(500).json({ error: "Failed to fetch location" });
   }
 };
 

@@ -5,13 +5,20 @@ type FetchInput = Parameters<typeof fetch>[0];
 export type AuthorizedRequestInit = RequestInit & { skipAuth?: boolean };
 export type AuthorizedFetch = (input: FetchInput, init?: AuthorizedRequestInit) => Promise<Response>;
 
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ??
-  (Platform.OS === "android"
+const envApiUrl = (process.env.EXPO_PUBLIC_API_URL ?? "").trim();
+const devFallback =
+  Platform.OS === "android"
     ? "http://10.0.2.2:8000" // Android emulator
-    : "http://localhost:8000"); // iOS simulator or web
+    : "http://localhost:8000"; // iOS simulator or web
+const prodFallback = "https://f25-iron.onrender.com";
+
+export const API_BASE_URL = envApiUrl || (__DEV__ ? devFallback : prodFallback);
+export const WS_BASE_URL = API_BASE_URL.replace(/^http/i, "ws");
 
 type JsonRecord = Record<string, unknown>;
+
+export const buildAuthHeaders = (accessToken: string | null | undefined): Record<string, string> =>
+  accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 
 const normalizeString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
@@ -74,6 +81,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   email: normalizeString(payload.email),
   name: normalizeOptionalString(payload.name),
   createdAt: normalizeOptionalString(payload.createdAt),
+  lastLogin: normalizeOptionalString(payload.lastLogin),
   interestTags: normalizeStringArray(payload.interestTags),
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),
@@ -175,4 +183,19 @@ export const updateUserVisibility = async (
 
   const data = (await response.json()) as JsonRecord;
   return toCurrentUser(data);
+};
+
+export const deleteAccount = async (
+  userId: number,
+  fetcher: AuthorizedFetch
+): Promise<void> => {
+  const response = await fetcher(`${API_BASE_URL}/users/${userId}`, {
+    method: "DELETE",
+  });
+
+  if (response.status === 204) return;
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
 };
