@@ -2,12 +2,13 @@ import "dotenv/config";
 import prisma from "../src/prisma";
 import { destinationPoint, randomBetween, seededRandom } from "../src/utils/geo";
 
-const TARGET_CENTER = { latitude: 36.892703, longitude: -76.300946 };
-const MIN_DISTANCE_METERS = 0; // allow center
-const MAX_DISTANCE_METERS = 50; // within 50m of the target
+// Far-off target to simulate being out of nearby range (within 50m of this point)
+const TARGET_CENTER = { latitude: 36.787859, longitude: -76.216243 };
+const MIN_DISTANCE_METERS = 0;
+const MAX_DISTANCE_METERS = 50;
 
 const usage = () => {
-  console.error("Usage: ts-node --transpile-only scripts/move_user_outside_odu.ts user@example.com");
+  console.error("Usage: ts-node --transpile-only scripts/move_user_far.ts user@example.com");
 };
 
 const main = async () => {
@@ -51,13 +52,13 @@ const main = async () => {
 
   const label = user.name?.trim() || user.email;
   console.log(
-    `Moved ${label} to ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)} (${Math.round(distance)}m from ODU center)`
+    `Moved ${label} far away -> ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)} (${Math.round(distance)}m offset)`
   );
 };
 
 main()
   .catch((error) => {
-    console.error("Failed to move user outside ODU radius", error);
+    console.error("Failed to move user far away", error);
     process.exitCode = 1;
   })
   .finally(async () => {
