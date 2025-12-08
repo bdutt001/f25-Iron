@@ -178,6 +178,29 @@ describe("Users API (protected)", () => {
     expect(res.body.name).toBe("Bob Updated");
   });
 
+  it("sets and fetches the current user's location", async () => {
+    const coords = { latitude: 37.7749, longitude: -122.4194 };
+
+    const setRes = await request(app)
+      .post(`${API_PREFIX}/users/me/location`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send(coords);
+
+    expect(setRes.status).toBe(201);
+    expect(setRes.body.userId).toBeGreaterThan(0);
+    expect(setRes.body.latitude).toBeCloseTo(coords.latitude, 5);
+    expect(setRes.body.longitude).toBeCloseTo(coords.longitude, 5);
+    expect(setRes.body.updatedAt).toBeDefined();
+
+    const getRes = await request(app)
+      .get(`${API_PREFIX}/users/me/location`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.latitude).toBeCloseTo(coords.latitude, 5);
+    expect(getRes.body.longitude).toBeCloseTo(coords.longitude, 5);
+  });
+
   it("deletes a user", async () => {
     const res = await request(app)
       .delete(`${API_PREFIX}/users/${createdUserId}`)
