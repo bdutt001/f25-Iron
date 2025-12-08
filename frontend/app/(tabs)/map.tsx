@@ -541,12 +541,15 @@ export default function MapScreen() {
     return "#DC3545";
   };
 
-  const avatarUri = useCallback((profilePicture?: string | null): string | null => {
-    if (!profilePicture) return null;
-    return profilePicture.startsWith("http")
-      ? profilePicture
-      : `${API_BASE_URL}${profilePicture}`;
-  }, []);
+  const avatarUri = useCallback(
+    (profilePicture?: string | null): string | null => {
+      if (!profilePicture) return null;
+      return profilePicture.startsWith("http")
+        ? profilePicture
+        : `${API_BASE_URL}${profilePicture}`;
+    },
+    []
+  );
 
   const userInitial = useCallback(
     (user: { name?: string | null; email?: string | null }) => {
@@ -558,7 +561,11 @@ export default function MapScreen() {
 
   // Use a View-based marker (instead of marker image assets) to avoid Android DPI clipping
   const renderAvatarMarker = useCallback(
-    (user: NearbyUser | SelectedUser, isSelf = false, options?: { dimmed?: boolean }) => {
+    (
+      user: NearbyUser | SelectedUser,
+      isSelf = false,
+      options?: { dimmed?: boolean }
+    ) => {
       const uri = avatarUri(user.profilePicture as string | null);
       const ringColor = isSelf ? colors.accent : "#e63946";
       const fallbackBg = isDark ? colors.card : "#f0f0f0";
@@ -1048,7 +1055,9 @@ export default function MapScreen() {
             )}
           </TouchableOpacity>
         </View>
-        {!!errorMsg && <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>}
+        {!!errorMsg && (
+          <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>
+        )}
       </View>
     </View>
   );
