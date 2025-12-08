@@ -5,6 +5,7 @@ import prisma from "../prisma";
 import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
+import { randomOduLocation } from "../config/location";
 import {
   addTagToUser,
   buildConnectOrCreate,
@@ -122,9 +123,23 @@ export const createUser = async (req: Request, res: Response) => {
       };
     }
 
-    const user = await prisma.user.create({
-      data,
-      select: userWithTagsSelect,
+    const user = await prisma.$transaction(async (tx) => {
+      const oduCoords = randomOduLocation();
+
+      const createdUser = await tx.user.create({
+        data,
+        select: userWithTagsSelect,
+      });
+
+      await tx.userLocation.create({
+        data: {
+          userId: createdUser.id,
+          latitude: oduCoords.latitude,
+          longitude: oduCoords.longitude,
+        },
+      });
+
+      return createdUser;
     });
 
     res.status(201).json(serializeUser(user));

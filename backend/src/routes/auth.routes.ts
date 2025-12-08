@@ -10,6 +10,7 @@ import bcrypt from "bcrypt";
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/authenticate";
 import prisma from "../prisma";
+import { randomOduLocation } from "../config/location";
 import {
   invalidateUserSessions,
   issueTokenPair,
@@ -127,14 +128,28 @@ router.post("/register", async (req: Request, res: Response) => {
 
   try {
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: name || null,
-        password: hashedPassword,
-        lastLogin: new Date(),
-      },
-      select: userAuthSelect,
+    const user = await prisma.$transaction(async (tx) => {
+      const oduCoords = randomOduLocation();
+
+      const createdUser = await tx.user.create({
+        data: {
+          email,
+          name: name || null,
+          password: hashedPassword,
+          lastLogin: new Date(),
+        },
+        select: userAuthSelect,
+      });
+
+      await tx.userLocation.create({
+        data: {
+          userId: createdUser.id,
+          latitude: oduCoords.latitude,
+          longitude: oduCoords.longitude,
+        },
+      });
+
+      return createdUser;
     });
 
     return res.status(201).json(buildAuthResponse(user));
