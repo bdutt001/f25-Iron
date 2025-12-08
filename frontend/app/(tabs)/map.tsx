@@ -191,7 +191,10 @@ export default function MapScreen() {
   const mapRef = useRef<MapView | null>(null);
   const isMountedRef = useRef(true);
   const userFetchAbortRef = useRef<AbortController | null>(null);
+  const [locationReady, setLocationReady] = useState(false);
+  const [showRecenter, setShowRecenter] = useState(false);
   const hasAnimatedRegion = useRef(false);
+  const hasCenteredOnSelf = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   const [freezeMarkers, setFreezeMarkers] = useState(false);
@@ -206,6 +209,7 @@ export default function MapScreen() {
     fetchWithAuth,
   } = useUser();
   const currentUserId = currentUser?.id;
+  const deviceLocationAttemptedRef = useRef(false);
 
   const stopUserPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -302,19 +306,34 @@ export default function MapScreen() {
 
   const ensureLocation = useCallback(async (): Promise<Coords> => {
     const saved = await fetchSavedLocation();
-    if (saved) {
-      setCenter(saved);
-      setMyCoords(saved);
-      return saved;
+
+    let nextCoords: Coords | null = saved ?? null;
+    if (!deviceLocationAttemptedRef.current) {
+      deviceLocationAttemptedRef.current = true;
+      const deviceCoords = await requestDeviceLocation();
+      if (deviceCoords) {
+        nextCoords = deviceCoords;
+        if (accessToken) {
+          await persistLocationToBackend(deviceCoords);
+        }
+      }
     }
 
-    const deviceCoords = await requestDeviceLocation();
-    const fallback = deviceCoords ?? ODU_CENTER;
+    if (nextCoords) {
+      setCenter(nextCoords);
+      setMyCoords(nextCoords);
+      setLocationReady(true);
+      return nextCoords;
+    }
+
+    // If we failed to get device location, fall back to ODU without re-prompting.
+    const fallback = ODU_CENTER;
     if (accessToken) {
       await persistLocationToBackend(fallback);
     }
     setCenter(fallback);
     setMyCoords(fallback);
+    setLocationReady(true);
     return fallback;
   }, [
     accessToken,
@@ -635,6 +654,52 @@ export default function MapScreen() {
   const textColor = { color: colors.text };
   const mutedText = { color: colors.muted };
   const selectedMatchPercent = selectedUser ? matchPercent(selectedUser) : null;
+  const CENTER_TOLERANCE = 0.0008; // ~90m at these latitudes
+
+  const recenterOnSelf = useCallback(() => {
+    if (!locationReady || !mapRef.current) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: myCoords.latitude,
+        longitude: myCoords.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      400
+    );
+    setShowRecenter(false);
+  }, [locationReady, myCoords.latitude, myCoords.longitude]);
+
+  // Center the map on the user's current (or fallback) coordinates once when ready.
+  useEffect(() => {
+    if (!locationReady) return;
+    if (!mapRef.current) return;
+    if (hasCenteredOnSelf.current) return;
+
+    mapRef.current.animateToRegion(
+      {
+        latitude: myCoords.latitude,
+        longitude: myCoords.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      400
+    );
+    hasCenteredOnSelf.current = true;
+    setShowRecenter(false);
+  }, [locationReady, myCoords.latitude, myCoords.longitude]);
+
+  // Update recenter visibility when map moves
+  const handleRegionChangeComplete = useCallback(
+    (region: { latitude: number; longitude: number }) => {
+      if (!locationReady) return;
+      const latDiff = Math.abs(region.latitude - myCoords.latitude);
+      const lonDiff = Math.abs(region.longitude - myCoords.longitude);
+      const centered = latDiff < CENTER_TOLERANCE && lonDiff < CENTER_TOLERANCE;
+      setShowRecenter(!centered);
+    },
+    [CENTER_TOLERANCE, locationReady, myCoords.latitude, myCoords.longitude]
+  );
 
   // ✅ Safe display name for the selected user (no email shown)
   const selectedDisplayName =
@@ -657,6 +722,7 @@ export default function MapScreen() {
         customMapStyle={isDark ? DARK_MAP_STYLE : []}
         showsPointsOfInterest
         showsBuildings
+        onRegionChangeComplete={handleRegionChangeComplete}
       >
         {/* Current user */}
         {selfUser && (
@@ -690,6 +756,26 @@ export default function MapScreen() {
           );
         })}
       </MapView>
+
+      {/* Recenter floating button */}
+      {showRecenter && (
+        <TouchableOpacity
+          style={[
+            styles.recenterFab,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: isDark ? "#000" : "#000",
+              opacity: locationReady ? 1 : 0.6,
+            },
+          ]}
+          onPress={recenterOnSelf}
+          disabled={!locationReady}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="locate" size={22} color={colors.accent} />
+        </TouchableOpacity>
+      )}
 
       <UserOverflowMenu
         visible={!!menuTarget}
@@ -939,30 +1025,30 @@ export default function MapScreen() {
         ]}
       >
         <Text style={[styles.statusText, textColor]}>Visibility: {status}</Text>
-        <TouchableOpacity
-          style={[
-            styles.visibilityToggle,
-            { backgroundColor: colors.accent },
-            isStatusUpdating && styles.visibilityToggleDisabled,
-          ]}
-          onPress={() => {
-            if (isStatusUpdating) return;
-            setStatus(status === "Visible" ? "Hidden" : "Visible");
-          }}
-          activeOpacity={0.85}
-          disabled={isStatusUpdating}
-        >
-          {isStatusUpdating ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.visibilityToggleText}>
-              {status === "Visible" ? "Hide Me" : "Show Me"}
-            </Text>
-          )}
-        </TouchableOpacity>
-        {!!errorMsg && (
-          <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>
-        )}
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+          <TouchableOpacity
+            style={[
+              styles.visibilityToggle,
+              { backgroundColor: colors.accent },
+              isStatusUpdating && styles.visibilityToggleDisabled,
+            ]}
+            onPress={() => {
+              if (isStatusUpdating) return;
+              setStatus(status === "Visible" ? "Hidden" : "Visible");
+            }}
+            activeOpacity={0.85}
+            disabled={isStatusUpdating}
+          >
+            {isStatusUpdating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.visibilityToggleText}>
+                {status === "Visible" ? "Hide Me" : "Show Me"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        {!!errorMsg && <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>}
       </View>
     </View>
   );
@@ -1019,6 +1105,21 @@ const styles = StyleSheet.create({
   },
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  recenterFab: {
+    position: "absolute",
+    right: 16,
+    bottom: 86, // vertically aligned with the visibility controls
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+  },
 
   // Floating preview
   floatingMarker: {

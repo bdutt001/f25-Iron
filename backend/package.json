@@ -11,6 +11,8 @@
     "seed:odu": "ts-node --transpile-only scripts/seed_locations_odu.ts",
     "seed:move": "ts-node --transpile-only scripts/move_locations.ts",
     "move:user": "ts-node --transpile-only scripts/move_user_by_email.ts",
+    "move:larchmont": "ts-node --transpile-only scripts/move_user_larchmont.ts",
+    "move:far": "ts-node --transpile-only scripts/move_user_far.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js"
   },

@@ -4,8 +4,8 @@ import { clampToRadius, destinationPoint, randomBetween, seededRandom } from "..
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 const MAX_RADIUS_METERS = 520;
-const STEP_MIN_METERS = 10;
-const STEP_MAX_METERS = 50;
+const STEP_MIN_METERS = 100;
+const STEP_MAX_METERS = 250;
 
 const usage = () => {
   console.error("Usage: ts-node --transpile-only scripts/move_user_by_email.ts user@example.com");

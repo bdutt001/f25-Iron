@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
+import { randomOduLocation } from "../config/location";
 
 const DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD || "Password123";
 
@@ -59,9 +60,23 @@ export const signup = async (req: Request, res: Response) => {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: "Email already registered" });
 
-    const userRecord = (await prisma.user.create({
-      data: { email, name, password: passwordRaw, lastLogin: new Date() },
-      select: safeSelect,
+    const userRecord = (await prisma.$transaction(async (tx) => {
+      const oduCoords = randomOduLocation();
+
+      const createdUser = await tx.user.create({
+        data: { email, name, password: passwordRaw, lastLogin: new Date() },
+        select: safeSelect,
+      });
+
+      await tx.userLocation.create({
+        data: {
+          userId: createdUser.id,
+          latitude: oduCoords.latitude,
+          longitude: oduCoords.longitude,
+        },
+      });
+
+      return createdUser;
     })) as SafeUserRecord;
 
     return res.status(201).json(toSafeUser(userRecord));
