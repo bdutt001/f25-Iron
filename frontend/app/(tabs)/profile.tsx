@@ -17,12 +17,18 @@ import type { AlertOptions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useUser, type CurrentUser } from "../../context/UserContext";
-import { fetchTagCatalog, updateUserProfile, API_BASE_URL } from "@/utils/api";
+import {
+  fetchTagCatalog,
+  updateUserProfile,
+  API_BASE_URL,
+  deleteAccount,
+} from "@/utils/api";
 import type { ApiUser } from "../../utils/geo";
 import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
 import OverflowMenu, {
   type OverflowAction,
 } from "../../components/ui/OverflowMenu";
+import { AppNotice } from "../../components/ui/AppNotice";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
@@ -121,6 +127,9 @@ export default function ProfileScreen() {
   const [blockedUsers, setBlockedUsers] = useState<ApiUser[]>([]);
   const [blockedLoading, setBlockedLoading] = useState(false);
   const [showThemeOptions, setShowThemeOptions] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [nameSuccessVisible, setNameSuccessVisible] = useState(false);
 
   // ✅ Profile Picture State
   const [profilePicture, setProfilePicture] = useState<string | null>(
@@ -131,6 +140,7 @@ export default function ProfileScreen() {
       : null
   );
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const [photoSuccessVisible, setPhotoSuccessVisible] = useState(false);
   const hasProfilePhoto = Boolean(profilePicture);
 
   const [isEditingName, setIsEditingName] = useState(false);
@@ -138,7 +148,7 @@ export default function ProfileScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // ✅ Profile Status (now synced with backend)
+  // ✅ Profile Status (synced with backend)
   const initialStatus = currentUser?.profileStatus ?? "Looking to Mingle";
   const [profileStatus, setProfileStatus] = useState<string>(initialStatus);
   const [savingProfileStatus, setSavingProfileStatus] = useState(false);
@@ -338,7 +348,7 @@ export default function ProfileScreen() {
       applyUserUpdate(updated);
       setNameInput(updated.name ?? trimmed);
       setIsEditingName(false);
-      Alert.alert("Success", "Name updated!", undefined, alertAppearance);
+      setNameSuccessVisible(true);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to update name";
@@ -352,6 +362,39 @@ export default function ProfileScreen() {
     setPrefetchedUsers(null);
     void logout();
   };
+
+  const performDeleteAccount = useCallback(async () => {
+    if (!currentUser) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteAccount(currentUser.id, fetchWithAuth);
+      setPrefetchedUsers(null);
+      await logout();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to delete account";
+      Alert.alert(
+        "Unable to delete account",
+        message,
+        undefined,
+        alertAppearance
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [alertAppearance, currentUser, fetchWithAuth, logout, setPrefetchedUsers]);
+
+  const confirmDeleteAccount = useCallback(() => {
+    if (!currentUser || isDeleting) return;
+    setDeleteConfirmVisible(true);
+  }, [currentUser, isDeleting]);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!currentUser || isDeleting) return;
+    setDeleteConfirmVisible(false);
+    void performDeleteAccount();
+  }, [currentUser, isDeleting, performDeleteAccount]);
 
   // ✅ Stable version for Android + iOS
   const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
@@ -398,12 +441,7 @@ export default function ProfileScreen() {
         }
       }
 
-      Alert.alert(
-        "Success",
-        "Profile picture updated!",
-        undefined,
-        alertAppearance
-      );
+      setPhotoSuccessVisible(true);
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert(
@@ -570,7 +608,9 @@ export default function ProfileScreen() {
       return;
     }
 
-    const next = isRemoving ? previous.filter((t) => t !== tag) : [...previous, tag];
+    const next = isRemoving
+      ? previous.filter((t) => t !== tag)
+      : [...previous, tag];
     const sortedNext = sortTags(next);
 
     setSelectedTags(sortedNext);
@@ -711,20 +751,21 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={[styles.card, cardSurface]}>
-          <View style={styles.cardHeader}>
-            <View style={{ flex: 1 }} />
-            <TouchableOpacity
-              onPress={() => setShowThemeOptions((v) => !v)}
-              accessibilityRole="button"
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Ionicons
-                name={isDark ? "moon" : "sunny"}
-                size={24}
-                color={colors.accent}
-              />
-            </TouchableOpacity>
-          </View>
+          {/* Appearance header from main */}
+          <TouchableOpacity
+            style={[styles.cardHeader, styles.appearanceHeader]}
+            onPress={() => setShowThemeOptions((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle appearance options"
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.sectionTitle, primaryText]}>Appearance</Text>
+            <Ionicons
+              name={isDark ? "moon" : "sunny"}
+              size={24}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
 
           {showThemeOptions && (
             <>
@@ -764,7 +805,9 @@ export default function ProfileScreen() {
                   );
                 })}
               </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View
+                style={[styles.divider, { backgroundColor: colors.border }]}
+              />
             </>
           )}
 
@@ -883,7 +926,7 @@ export default function ProfileScreen() {
           <Text style={[styles.label, primaryText]}>Visibility:</Text>
           <Text style={[styles.value, primaryText]}>{status}</Text>
 
-          {/* ✅ Profile Status row with Custom option (now backend-synced) */}
+          {/* ✅ Profile Status row with Custom option (backend-synced) */}
           <Text style={[styles.label, primaryText]}>Status:</Text>
 
           <View style={styles.statusRow}>
@@ -1024,9 +1067,11 @@ export default function ProfileScreen() {
             </Text>
           )}
 
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View
+            style={[styles.divider, { backgroundColor: colors.border }]}
+          />
 
-          {/* ✅ Interest Tags Section (unchanged) */}
+          {/* ✅ Interest Tags Section */}
           <View style={styles.tagHeader}>
             <Text style={[styles.label, primaryText]}>
               Interest Tags
@@ -1301,13 +1346,61 @@ export default function ProfileScreen() {
           >
             <Text style={styles.logoutPillText}>Logout</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.logoutPill,
+              styles.deleteAction,
+              isDeleting && styles.disabledAction,
+            ]}
+            onPress={confirmDeleteAccount}
+            disabled={isDeleting}
+            accessibilityRole="button"
+            accessibilityLabel="Delete my account"
+          >
+            {isDeleting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.deleteActionText}>Delete Account</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
+
       <OverflowMenu
         visible={photoMenuVisible}
         onClose={() => setPhotoMenuVisible(false)}
         title="Profile picture"
         actions={profilePictureActions}
+      />
+
+      <AppNotice
+        visible={photoSuccessVisible}
+        onClose={() => setPhotoSuccessVisible(false)}
+        title="Success"
+        message="Profile picture updated!"
+      />
+      <AppNotice
+        visible={nameSuccessVisible}
+        onClose={() => setNameSuccessVisible(false)}
+        title="Success"
+        message="Name updated!"
+      />
+
+      <OverflowMenu
+        visible={deleteConfirmVisible}
+        onClose={() => setDeleteConfirmVisible(false)}
+        title="Delete your account?"
+        message="This removes your profile, messages, waves, and blocks. This action cannot be undone."
+        actions={[
+          {
+            key: "delete",
+            label: isDeleting ? "Deleting..." : "Delete account",
+            destructive: true,
+            disabled: isDeleting,
+            icon: "trash-outline",
+            onPress: handleConfirmDelete,
+          },
+        ]}
       />
     </>
   );
@@ -1437,6 +1530,11 @@ const styles = StyleSheet.create({
   catalogLoading: { flexDirection: "row", alignItems: "center" },
   catalogLoadingText: { marginLeft: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  appearanceHeader: {
+    justifyContent: "space-between",
+    marginBottom: 0,
+    paddingBottom: 4,
+  },
   themeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   themeChip: {
     flex: 1,
@@ -1470,6 +1568,12 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
   },
   logoutPillText: { color: "#d9534f", fontWeight: "700", fontSize: 16 },
+  deleteAction: {
+    marginTop: 12,
+    backgroundColor: "#b91c1c",
+    borderColor: "#b91c1c",
+  },
+  deleteActionText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   profilePictureSection: { alignItems: "center", marginBottom: 20 },
   profilePictureWrapper: { position: "relative" },
   profilePicture: {

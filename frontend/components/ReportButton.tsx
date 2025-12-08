@@ -1,16 +1,10 @@
 import React, { useState } from "react";
-import {
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  Modal,
-  View,
-  FlatList,
-  Pressable,
-} from "react-native";
+import { StyleSheet, Text, TouchableOpacity } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
+import { useThemedAlert } from "../hooks/useThemedAlert";
+import { ReportReasonMenu, REPORT_SUCCESS_NOTICE } from "./UserOverflowMenu";
+import { AppNotice } from "./ui/AppNotice";
 
 type ReportButtonProps = {
   reportedUserId: number;
@@ -30,49 +24,41 @@ export default function ReportButton({
   defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [showReasonMenu, setShowReasonMenu] = useState(false);
+  const [notice, setNotice] =
+    useState<typeof REPORT_SUCCESS_NOTICE | null>(null);
   const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
+  const { showError } = useThemedAlert();
 
   const handleReport = async () => {
-    // ✅ Check if user is logged in
     if (!isLoggedIn || !currentUser) {
-      Alert.alert("Error", "You must be logged in to report users.");
+      showError("You must be logged in to report users.");
       return;
     }
 
     const reporterId = currentUser.id;
 
-    // ✅ Prevent self-reporting
     if (reporterId === reportedUserId) {
-      Alert.alert("Error", "You cannot report yourself.");
+      showError("You cannot report yourself.");
       return;
     }
 
-    // ✅ Show custom modal directly instead of Alert confirmation
-    console.log("Opening custom modal for reporting");
-    setShowReasonModal(true);
+    setShowReasonMenu(true);
   };
-
-  const reasons = [
-    "Inappropriate Behavior",
-    "Spam/Fake Profile",
-    "Harassment",
-    "Offensive Content",
-    "Other",
-  ];
 
   const submitReport = async (reason: string, severityOverride?: number) => {
     if (!currentUser) return;
 
+    setShowReasonMenu(false);
     setIsReporting(true);
 
     try {
       const severity =
-        typeof severityOverride === "number" && Number.isFinite(severityOverride)
+        typeof severityOverride === "number" &&
+        Number.isFinite(severityOverride)
           ? severityOverride
           : defaultSeverity;
 
-      // ✅ Send the report to the backend
       const response = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
@@ -85,7 +71,10 @@ export default function ReportButton({
         }),
       });
 
-      const payload = (await response.json()) as { trustScore?: number; error?: string };
+      const payload = (await response.json()) as {
+        trustScore?: number;
+        error?: string;
+      };
 
       if (!response.ok || typeof payload.trustScore !== "number") {
         const message = payload?.error ?? "Failed to submit report";
@@ -94,13 +83,14 @@ export default function ReportButton({
 
       let latestTrustScore = payload.trustScore;
 
-      // ✅ Refresh trust score from backend after report
       try {
         const trustResponse = await fetchWithAuth(
           `${API_BASE_URL}/api/users/${reportedUserId}/trust`
         );
         if (trustResponse.ok) {
-          const trustData = (await trustResponse.json()) as { trustScore?: number };
+          const trustData = (await trustResponse.json()) as {
+            trustScore?: number;
+          };
           if (typeof trustData.trustScore === "number") {
             latestTrustScore = trustData.trustScore;
           }
@@ -109,11 +99,12 @@ export default function ReportButton({
         console.warn("Unable to refresh trust score after report:", error);
       }
 
-      Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
+      setNotice(REPORT_SUCCESS_NOTICE);
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to submit report";
-      Alert.alert("Error", message);
+      const message =
+        error instanceof Error ? error.message : "Failed to submit report";
+      showError(message);
     } finally {
       setIsReporting(false);
     }
@@ -143,44 +134,18 @@ export default function ReportButton({
         <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
       </TouchableOpacity>
 
-      {/* Custom Modal for Reason Selection */}
-      <Modal
-        visible={showReasonModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowReasonModal(false)}
-      >
-        <View style={modalStyles.overlay}>
-          <View style={modalStyles.container}>
-            <Text style={modalStyles.title}>Report {reportedUserName}</Text>
-            <Text style={modalStyles.subtitle}>
-              Why are you reporting this user?
-            </Text>
-            <FlatList
-              data={reasons}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={modalStyles.reasonButton}
-                  onPress={() => {
-                    setShowReasonModal(false);
-                    submitReport(item);
-                  }}
-                >
-                  <Text style={modalStyles.reasonText}>{item}</Text>
-                </Pressable>
-              )}
-            />
-
-            <Pressable
-              style={modalStyles.cancelButton}
-              onPress={() => setShowReasonModal(false)}
-            >
-              <Text style={modalStyles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      <ReportReasonMenu
+        visible={showReasonMenu}
+        onClose={() => setShowReasonMenu(false)}
+        subjectLabel={reportedUserName}
+        onSelectReason={(reason) => submitReport(reason)}
+      />
+      <AppNotice
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title ?? ""}
+        message={notice?.message}
+      />
     </>
   );
 }
@@ -226,54 +191,5 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: "#adb5bd",
-  },
-});
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  container: {
-    backgroundColor: "white",
-    margin: 20,
-    borderRadius: 10,
-    padding: 20,
-    maxWidth: 300,
-    width: "80%",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 20,
-    color: "#666",
-  },
-  reasonButton: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  reasonText: {
-    fontSize: 16,
-    textAlign: "center",
-  },
-  cancelButton: {
-    padding: 15,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 5,
-    marginTop: 10,
-  },
-  cancelText: {
-    fontSize: 16,
-    textAlign: "center",
-    fontWeight: "500",
   },
 });

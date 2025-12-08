@@ -1,7 +1,7 @@
 /**
- * NearbyScreen component displays a list of users nearby relative to the current user's location.
- * For demo purposes, it simulates user proximity centered around Old Dominion University (Norfolk, VA).
- * It fetches user data from the API, calculates distances, and allows toggling visibility status.
+ * NearbyScreen component displays nearby users based on the latest locations stored in the backend.
+ * It ensures the viewer has a saved location (device or fallback), fetches nearby users with distance,
+ * and lets the user sort by match or distance.
  */
 
 import * as Location from "expo-location";
@@ -23,27 +23,26 @@ import type { AlertOptions, ListRenderItemInfo } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useAppTheme } from "../../context/ThemeContext";
-import {
-  ApiUser,
-  NearbyUser,
-  formatDistance,
-  haversineDistanceMeters,
-  scatterUsersAround,
-} from "../../utils/geo";
-import { rankNearbyUsers } from "../../utils/rank";
+import { ApiUser, formatDistance } from "../../utils/geo";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
+const NEARBY_RADIUS_METERS = 1600; // ~1 mile for demo visibility
 
-// Types
-type NearbyWithDistance = NearbyUser & {
-  distanceMeters: number;   // for display only
-  score?: number;           // matchmaking score 0..1
+type Coordinates = { latitude: number; longitude: number };
+type NearbyWithDistance = ApiUser & {
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  matchPercent: number;
+  locationUpdatedAt?: string;
 };
+type SortMode = "match" | "distance";
 
 // Defensive tags normalization
 const normalizeTags = (tags: unknown): string[] =>
@@ -64,145 +63,217 @@ export default function NearbyScreen() {
     () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
     [isDark]
   );
-  const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
-    latitude: ODU_CENTER.latitude,
-    longitude: ODU_CENTER.longitude,
-    altitude: undefined as any,
-    accuracy: undefined as any,
-    altitudeAccuracy: undefined as any,
-    heading: undefined as any,
-    speed: undefined as any,
-  });
+  const [location, setLocation] = useState<Coordinates | null>(null);
   const [users, setUsers] = useState<NearbyWithDistance[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuTarget, setMenuTarget] = useState<ApiUser | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("match");
 
-  const {
-    status,
-    setStatus,
-    isStatusUpdating,
-    accessToken,
-    currentUser,
-    prefetchedUsers,
-    setPrefetchedUsers,
-    fetchWithAuth,
-  } = useUser();
+  const { status, setStatus, isStatusUpdating, accessToken, currentUser, fetchWithAuth } = useUser();
+  const hasLoadedOnceRef = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /**
-   * Build final ranked list:
-   * 1) filter (visibility, not current user)
-   * 2) scatter (demo coords)
-   * 3) rank by SCORE ONLY (tagSim weight 1.0, distance weight 0.0)
-   * 4) compute distance for display (does NOT affect order)
-   */
-  const buildRankedList = useCallback(
-    (rawUsers: ApiUser[], coords: Location.LocationObjectCoords): NearbyWithDistance[] => {
-      const filtered = Array.isArray(rawUsers)
-        ? rawUsers.filter(
-            (u) => (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
-          )
+  const normalizeNearbyResponse = useCallback(
+    (payload: unknown): NearbyWithDistance[] => {
+      const rawList: any[] = Array.isArray((payload as any)?.users)
+        ? (payload as any).users
+        : Array.isArray(payload)
+        ? (payload as any)
         : [];
 
-      const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+      return rawList
+        .map((item: any): NearbyWithDistance | null => {
+          const id = Number(item?.id);
+          const latitude = Number(item?.latitude);
+          const longitude = Number(item?.longitude);
+          const distanceMeters = Number(item?.distanceMeters);
 
-      const ranked = rankNearbyUsers(
-        {
-          id: currentUser?.id ?? -1,
-          interestTags: normalizeTags(currentUser?.interestTags),
-          coords: { latitude: coords.latitude, longitude: coords.longitude },
-        },
-        scattered,
-        {
-          weights: { tagSim: 1.0, distance: 0.0 }, // 👈 rank strictly by tag similarity (score)
-          // halfLifeMeters still accepted but irrelevant with distance weight 0
-          halfLifeMeters: 1200,
-        }
-      );
+          if (
+            !Number.isFinite(id) ||
+            !Number.isFinite(latitude) ||
+            !Number.isFinite(longitude) ||
+            !Number.isFinite(distanceMeters)
+          ) {
+            return null;
+          }
 
-      // Preserve ranked order; enrich with distance for UI only
-      const rankedWithDistance: NearbyWithDistance[] = ranked.map((u) => ({
-        ...u,
-        distanceMeters: haversineDistanceMeters(
-          coords.latitude,
-          coords.longitude,
-          u.coords.latitude,
-          u.coords.longitude
-        ),
-      }));
+          const matchPercentRaw = Number(item?.matchPercent);
+          const matchPercent = Number.isFinite(matchPercentRaw)
+            ? Math.max(0, Math.min(100, Math.round(matchPercentRaw)))
+            : 0;
 
-      return rankedWithDistance;
+          const trustScoreRaw = Number(item?.trustScore);
+          const trustScore = Number.isFinite(trustScoreRaw) ? trustScoreRaw : 0;
+
+          const email = typeof item?.email === "string" ? item.email : "";
+          const name = typeof item?.name === "string" ? item.name : email;
+
+          return {
+            id,
+            email,
+            name,
+            interestTags: normalizeTags(item?.interestTags),
+            profilePicture: typeof item?.profilePicture === "string" ? item.profilePicture : null,
+            trustScore,
+            visibility: item?.visibility ?? true,
+            latitude,
+            longitude,
+            distanceMeters,
+            matchPercent,
+            locationUpdatedAt:
+              typeof item?.locationUpdatedAt === "string" ? item.locationUpdatedAt : undefined,
+          };
+        })
+        .filter(
+          (item): item is NearbyWithDistance =>
+            !!item && item.distanceMeters <= NEARBY_RADIUS_METERS
+        );
     },
-    [currentUser]
+    []
   );
 
-  /**
-   * Fetches users and sets ranked list (score-only ordering).
-   */
-  const loadUsers = useCallback(
-    async (
-      coords: Location.LocationObjectCoords,
-      options?: { silent?: boolean }
-    ) => {
-      try {
-        if (!accessToken) {
-          // Demo users when not authenticated
-          const demoUsers: ApiUser[] = [
-            {
-              id: 1,
-              name: "Alice Demo",
-              email: "alice@example.com",
-              interestTags: ["Coffee", "Reading"],
-              profilePicture: null,
-              visibility: true,
-            } as unknown as ApiUser,
-            {
-              id: 2,
-              name: "Bob Demo",
-              email: "bob@example.com",
-              interestTags: ["Gaming", "Movies"],
-              profilePicture: null,
-              visibility: true,
-            } as unknown as ApiUser,
-            {
-              id: 3,
-              name: "Charlie Demo",
-              email: "charlie@example.com",
-              interestTags: ["Running"],
-              profilePicture: null,
-              visibility: true,
-            } as unknown as ApiUser,
-          ];
+  const fetchSavedLocation = useCallback(async (): Promise<Coordinates | null> => {
+    if (!accessToken) return null;
 
-          const rankedList = buildRankedList(demoUsers, coords);
-          setUsers(rankedList);
-          setError(null);
-          if (!options?.silent) setLoading(false);
-          return;
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/users/me/location`);
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        const message = await response.text().catch(() => "");
+        throw new Error(message || `Failed to fetch location (${response.status})`);
+      }
+
+      const data = (await response.json()) as { latitude?: unknown; longitude?: unknown };
+      const latitude = Number(data?.latitude);
+      const longitude = Number(data?.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+      return { latitude, longitude };
+    } catch (err) {
+      console.warn("Failed to fetch saved location:", err);
+      return null;
+    }
+  }, [accessToken, fetchWithAuth]);
+
+  const persistLocationToBackend = useCallback(
+    async (coords: Coordinates) => {
+      if (!accessToken) return;
+      try {
+        await fetch(`${API_BASE_URL}/users/me/location`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(coords),
+        });
+      } catch (err) {
+        console.warn("Failed to send location to backend:", err);
+      }
+    },
+    [accessToken]
+  );
+
+  const requestDeviceLocation = useCallback(async (): Promise<Coordinates | null> => {
+    try {
+      const { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permissionStatus !== "granted") {
+        return null;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+    } catch (err) {
+      console.warn("Unable to fetch device location, falling back to ODU coords:", err);
+      return null;
+    }
+  }, []);
+
+  const ensureLocation = useCallback(async (): Promise<Coordinates> => {
+    if (!accessToken) {
+      throw new Error("Please log in to view nearby users.");
+    }
+
+    const saved = await fetchSavedLocation();
+    if (saved) {
+      setLocation(saved);
+      return saved;
+    }
+
+    const deviceCoords = await requestDeviceLocation();
+    const fallbackCoords = deviceCoords ?? ODU_CENTER;
+    await persistLocationToBackend(fallbackCoords);
+    setLocation(fallbackCoords);
+    return fallbackCoords;
+  }, [accessToken, fetchSavedLocation, persistLocationToBackend, requestDeviceLocation]);
+
+  const loadNearbyUsers = useCallback(
+    async (_coords: Coordinates, options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!accessToken) {
+        setError("Please log in to view nearby users.");
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      try {
+        if (!silent) setLoading(true);
+
+        const params = new URLSearchParams({
+          radius: String(NEARBY_RADIUS_METERS),
+          sort: sortMode,
+        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/nearby?${params.toString()}`);
+        if (!response.ok) {
+          const message = await response.text().catch(() => "");
+          throw new Error(message || `Failed to load nearby users (${response.status})`);
         }
 
-        const response = await fetchWithAuth(`${API_BASE_URL}/users`);
-        if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
+        const payload = await response.json();
+        const normalized = normalizeNearbyResponse(payload).filter(
+          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS
+        );
 
-        const data = (await response.json()) as ApiUser[];
-
-        // Keep a warm cache of raw users
-        setPrefetchedUsers(data);
-
-        // Build ranked output strictly by score
-        const rankedList = buildRankedList(data, coords);
-        setUsers(rankedList);
+        setUsers(normalized);
         setError(null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : "Failed to load nearby users";
         setError(message);
       } finally {
-        if (!options?.silent) setLoading(false);
+        if (!silent) setLoading(false);
         setRefreshing(false);
       }
     },
-    [accessToken, fetchWithAuth, setPrefetchedUsers, buildRankedList]
+    [accessToken, fetchWithAuth, normalizeNearbyResponse, sortMode]
+  );
+
+  const ensureAndLoad = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? hasLoadedOnceRef.current;
+
+      try {
+        if (!silent) setLoading(true);
+        const coords = await ensureLocation();
+        await loadNearbyUsers(coords, { silent: true });
+        hasLoadedOnceRef.current = true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load nearby users";
+        setError(message);
+      } finally {
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [ensureLocation, loadNearbyUsers]
   );
 
   /**
@@ -229,78 +300,65 @@ export default function NearbyScreen() {
     [fetchWithAuth]
   );
 
-  /**
-   * Request (simulated) location and load users.
-   */
-  const hasLoadedOnceRef = useRef(false);
-
-  const requestAndLoad = useCallback(
-    async (options?: { silent?: boolean }) => {
-      const silent = options?.silent ?? hasLoadedOnceRef.current;
-
-      try {
-        if (!silent) setLoading(true);
-
-        const coords = {
-          latitude: ODU_CENTER.latitude,
-          longitude: ODU_CENTER.longitude,
-          altitude: undefined as any,
-          accuracy: undefined as any,
-          altitudeAccuracy: undefined as any,
-          heading: undefined as any,
-          speed: undefined as any,
-        };
-        setLocation(coords);
-        await loadUsers(coords, { silent });
-        hasLoadedOnceRef.current = true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setError(message);
-        if (!silent) setLoading(false);
-      }
-    },
-    [loadUsers]
-  );
-
-  /**
-   * Rebuild from warm cache when it changes.
-   * Still rank strictly by score; distance only displayed.
-   */
   useEffect(() => {
-    if (!prefetchedUsers) return;
+    void ensureAndLoad({ silent: false });
+  }, [ensureAndLoad]);
 
-    const coords =
-      location ?? {
-        latitude: ODU_CENTER.latitude,
-        longitude: ODU_CENTER.longitude,
-        altitude: undefined as any,
-        accuracy: undefined as any,
-        altitudeAccuracy: undefined as any,
-        heading: undefined as any,
-        speed: undefined as any,
-      };
-
-    const rankedList = buildRankedList(prefetchedUsers, coords);
-    setUsers(rankedList);
-    setLoading(false);
-    hasLoadedOnceRef.current = true;
-  }, [prefetchedUsers, location, buildRankedList]);
-
-  // Reload when profile picture or visibility changes
   useEffect(() => {
-    void requestAndLoad({ silent: hasLoadedOnceRef.current });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.profilePicture, currentUser?.visibility]);
+    if (!location) return;
+    const silent = hasLoadedOnceRef.current;
+    void loadNearbyUsers(location, { silent });
+  }, [location, loadNearbyUsers, sortMode]);
+
+  useEffect(() => {
+    if (!hasLoadedOnceRef.current) return;
+    void ensureAndLoad({ silent: true });
+  }, [currentUser?.profilePicture, currentUser?.visibility, ensureAndLoad]);
 
   // Pull-to-refresh
   const onRefresh = useCallback(async () => {
-    if (!location) {
-      await requestAndLoad({ silent: false });
-      return;
-    }
     setRefreshing(true);
-    await loadUsers(location);
-  }, [loadUsers, location, requestAndLoad]);
+    try {
+      const coords = location ?? (await ensureLocation());
+      await loadNearbyUsers(coords, { silent: true });
+      hasLoadedOnceRef.current = true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to refresh nearby users";
+      setError(message);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [ensureLocation, loadNearbyUsers, location]);
+
+  // Lightweight polling while the tab is focused (mirrors map tab behavior)
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      const tick = async () => {
+        if (cancelled) return;
+        try {
+          const coords = location ?? (await ensureLocation());
+          if (!coords) return;
+          await loadNearbyUsers(coords, { silent: true });
+          hasLoadedOnceRef.current = true;
+        } catch {
+          // ignore transient polling errors
+        }
+      };
+
+      void tick();
+      pollTimerRef.current = setInterval(tick, 8000);
+
+      return () => {
+        cancelled = true;
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      };
+    }, [ensureLocation, loadNearbyUsers, location])
+  );
 
   /**
    * Start a new chat session (fetch latest receiver first).
@@ -355,15 +413,13 @@ export default function NearbyScreen() {
     [alertAppearance, currentUser, fetchWithAuth]
   );
 
-  // Blocked list now shown in Profile tab; local loader removed
-  // Unblock flow moved to Profile tab
-
-  // Removed old inline toggle; actions now in overflow menu
-
-  // Loading and error UI
   const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
   const textColor = useMemo(() => ({ color: colors.text }), [colors.text]);
   const mutedText = useMemo(() => ({ color: colors.muted }), [colors.muted]);
+  const visibleUsers = useMemo(
+    () => users.filter((u) => u.distanceMeters <= NEARBY_RADIUS_METERS),
+    [users]
+  );
 
   const renderUserCard = useCallback(
     ({ item, index }: ListRenderItemInfo<NearbyWithDistance>) => {
@@ -376,17 +432,20 @@ export default function NearbyScreen() {
 
       const trustScore = item.trustScore ?? 0;
       const trustColor = trustColorForScore(trustScore);
-      const matchPercent = typeof item.score === "number" ? Math.round(item.score * 100) : null;
+      const matchPercent =
+        Number.isFinite(item.matchPercent) && item.matchPercent >= 0
+          ? Math.round(item.matchPercent)
+          : null;
       const userTags = normalizeTags(item.interestTags);
 
-      // ⬇️ Make the whole card pressable to open the user's profile (keeps Tabs visible)
+      // Make the whole card pressable to open the user's profile (keeps Tabs visible)
       return (
         <Pressable
           onPress={() =>
-            router.push({ 
+            router.push({
               pathname: "/user/[id]",
-              params: { id: String(item.id), from: "nearby" }, 
-              })
+              params: { id: String(item.id), from: "nearby" },
+            })
           }
           style={({ pressed }) => [
             styles.card,
@@ -496,7 +555,11 @@ export default function NearbyScreen() {
                 color="white"
                 style={
                   Platform.OS === "android"
-                    ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                    ? {
+                        includeFontPadding: false,
+                        textAlignVertical: "center",
+                        lineHeight: 18,
+                      }
                     : undefined
                 }
               />
@@ -523,7 +586,11 @@ export default function NearbyScreen() {
                 color={colors.icon}
                 style={
                   Platform.OS === "android"
-                    ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                    ? {
+                        includeFontPadding: false,
+                        textAlignVertical: "center",
+                        lineHeight: 18,
+                      }
                     : undefined
                 }
               />
@@ -532,7 +599,7 @@ export default function NearbyScreen() {
         </Pressable>
       );
     },
-    [colors, isDark, mutedText, startChat, textColor]
+    [colors, isDark, startChat, textColor]
   );
 
   if (showInitialLoader) {
@@ -551,7 +618,7 @@ export default function NearbyScreen() {
         <Button
           title="Try Again"
           onPress={() => {
-            void requestAndLoad({ silent: false });
+            void ensureAndLoad({ silent: false });
           }}
         />
       </View>
@@ -572,7 +639,11 @@ export default function NearbyScreen() {
       <View
         style={[
           styles.header,
-          { backgroundColor: colors.card, borderColor: colors.border, shadowColor: isDark ? "#000" : "#0f172a" },
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            shadowColor: isDark ? "#000" : "#0f172a",
+          },
         ]}
       >
         <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
@@ -599,20 +670,72 @@ export default function NearbyScreen() {
             </Text>
           )}
         </TouchableOpacity>
-        {/* Blocked list moved to Profile tab */}
       </View>
-
-      {loading && hasLoadedOnceRef.current && (
-        <View style={styles.inlineLoader}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={[styles.inlineLoaderText, mutedText]}>Updating nearby users…</Text>
-        </View>
-      )}
 
       {/* User list */}
       <FlatList
-        data={users}
+        data={visibleUsers}
         keyExtractor={(item) => item.id.toString()}
+        ListHeaderComponent={
+          <View>
+            <View style={styles.filterBar}>
+              <Pressable
+                onPress={() => setSortMode("match")}
+                style={({ pressed }) => [
+                  styles.toggleOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor:
+                      sortMode === "match"
+                        ? isDark
+                          ? "rgba(0,123,255,0.25)"
+                          : "rgba(0,123,255,0.12)"
+                        : isDark
+                        ? "rgba(255,255,255,0.04)"
+                        : "rgba(0,0,0,0.02)",
+                  },
+                  pressed && styles.togglePressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: sortMode === "match" ? colors.accent : colors.text },
+                  ]}
+                >
+                  Sort by Match %
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSortMode("distance")}
+                style={({ pressed }) => [
+                  styles.toggleOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor:
+                      sortMode === "distance"
+                        ? isDark
+                          ? "rgba(0,123,255,0.25)"
+                          : "rgba(0,123,255,0.12)"
+                        : isDark
+                        ? "rgba(255,255,255,0.04)"
+                        : "rgba(0,0,0,0.02)",
+                  },
+                  pressed && styles.togglePressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: sortMode === "distance" ? colors.accent : colors.text },
+                  ]}
+                >
+                  Sort by Distance
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        }
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.centered}>
@@ -620,7 +743,7 @@ export default function NearbyScreen() {
           </View>
         }
         renderItem={renderUserCard}
-        contentContainerStyle={[styles.listContent, users.length === 0 && styles.flexGrow]}
+        contentContainerStyle={[styles.listContent, visibleUsers.length === 0 && styles.flexGrow]}
         showsVerticalScrollIndicator={false}
       />
       <UserOverflowMenu
@@ -629,21 +752,35 @@ export default function NearbyScreen() {
         targetUser={menuTarget}
         onBlocked={(uid) => {
           setUsers((prev) => prev.filter((u) => u.id !== uid));
-          setPrefetchedUsers((prev) => (prev ? prev.filter((u) => u.id !== uid) : prev));
         }}
         onReported={(uid) => {
           void refreshTrustScore(uid);
         }}
         onViewProfile={(userId) => {
-        // Close the menu first
-        setMenuTarget(null);
-        // Navigate to the same profile screen you use when pressing the card
-        router.push({
-          pathname: "/user/[id]",
-          params: { id: String(userId), from: "nearby" },  // 👈 mark origin
+          // Close the menu first
+          setMenuTarget(null);
+          // Navigate to the same profile screen you use when pressing the card
+          router.push({
+            pathname: "/user/[id]",
+            params: { id: String(userId), from: "nearby" }, // mark origin
           });
-          }}
-          />
+        }}
+      />
+      {loading && hasLoadedOnceRef.current && (
+        <View
+          style={[
+            styles.floatingLoader,
+            {
+              backgroundColor: isDark
+                ? "rgba(0,0,0,0.55)"
+                : "rgba(255,255,255,0.78)",
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      )}
     </View>
   );
 }
@@ -654,7 +791,7 @@ const styles = StyleSheet.create({
   note: { marginTop: 12, fontSize: 16, textAlign: "center" },
   error: { marginBottom: 12, fontSize: 16, textAlign: "center", color: "#c00" },
   header: {
-    marginBottom: 16,
+    marginBottom: 12,
     padding: 14,
     borderRadius: 14,
     backgroundColor: "#fff",
@@ -680,13 +817,25 @@ const styles = StyleSheet.create({
   visibilityHide: {},
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  inlineLoader: {
+  filterBar: {
+    marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    marginBottom: 12,
+    justifyContent: "space-between",
+    gap: 10,
   },
-  inlineLoaderText: { marginLeft: 8, fontSize: 13 },
+  toggleOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+  },
+  toggleText: { fontSize: 14, fontWeight: "700" },
+  togglePressed: { opacity: 0.85 },
   listContent: { paddingBottom: 24 },
   flexGrow: { flexGrow: 1 },
   card: {
@@ -763,4 +912,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   iconButtonPressed: { opacity: 0.9 },
+  floatingLoader: {
+    position: "absolute",
+    right: 16,
+    bottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
+  },
 });

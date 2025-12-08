@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -15,8 +15,7 @@ import { Edge, SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+import { API_BASE_URL } from "@/utils/api";
 
 type Conversation = {
   id: string;
@@ -47,6 +46,8 @@ export default function MessagesScreen() {
   const [lastRead, setLastRead] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(false);
   const { isDark, colors } = useAppTheme();
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isLoadingConversationsRef = useRef(false);
 
   const styles = useMemo(
     () =>
@@ -61,22 +62,6 @@ export default function MessagesScreen() {
           paddingTop: topPadding,
           backgroundColor: colors.background,
         },
-        topBar: {
-          flexDirection: "row",
-          alignItems: "flex-start",
-          marginBottom: 8,
-        },
-        syncBadge: {
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: isDark ? "#1f263a" : "#e8edff",
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          gap: 8,
-        },
-        syncText: { color: isDark ? "#dbeafe" : "#1e293b", fontWeight: "600", fontSize: 12 },
-        syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
         centered: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 16 },
         listContent: { paddingBottom: 28 },
         chatItem: {
@@ -140,14 +125,16 @@ export default function MessagesScreen() {
 
   // Load conversations
   const loadConversations = useCallback(
-    async (options?: { silent?: boolean; fromPull?: boolean }) => {
+    async (options?: { silent?: boolean; fromPull?: boolean; skipIfBusy?: boolean }) => {
       if (!currentUser) return;
+      if (options?.skipIfBusy && isLoadingConversationsRef.current) return;
 
       const showLoading = !options?.silent;
       const fromPull = options?.fromPull === true;
       const showErrors = showLoading || fromPull;
       if (showLoading) setLoading(true);
       if (fromPull) setRefreshing(true);
+      isLoadingConversationsRef.current = true;
 
       try {
         const response = await fetchWithAuth(
@@ -175,6 +162,7 @@ export default function MessagesScreen() {
         if (showErrors) setError(message);
         else console.warn("Background conversation refresh failed:", message);
       } finally {
+        isLoadingConversationsRef.current = false;
         if (showLoading) setLoading(false);
         if (fromPull) setRefreshing(false);
       }
@@ -213,6 +201,13 @@ export default function MessagesScreen() {
     void loadConversations({ silent: true, fromPull: true });
   }, [loadConversations]);
 
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
   // Load everything when screen focuses
   useFocusEffect(
     useCallback(() => {
@@ -221,7 +216,18 @@ export default function MessagesScreen() {
         await loadConversations();
       };
       void fetchAll();
-    }, [loadUsers, loadConversations])
+
+      const tick = () => {
+        void loadConversations({ silent: true, skipIfBusy: true });
+      };
+
+      stopPolling();
+      pollTimerRef.current = setInterval(tick, 5000);
+
+      return () => {
+        stopPolling();
+      };
+    }, [loadUsers, loadConversations, stopPolling])
   );
 
   const formatTimestamp = useCallback((timestamp?: string | null) => {
@@ -257,14 +263,6 @@ export default function MessagesScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
       <View style={styles.container}>
-        <View style={styles.topBar}>
-          <View style={styles.syncBadge}>
-            <View style={[styles.syncDot, { opacity: loading ? 0.5 : 1 }]} />
-            <Text style={styles.syncText}>{loading ? "Syncing..." : "Up to date"}</Text>
-            {loading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
-          </View>
-        </View>
-
         {error ? (
           <View style={styles.centered}>
             <Text style={styles.error}>{error}</Text>

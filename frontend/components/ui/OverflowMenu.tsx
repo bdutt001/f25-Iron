@@ -16,10 +16,12 @@ type OverflowMenuProps = {
   visible: boolean;
   onClose: () => void;
   title?: string;
+  message?: string;
+  showCancel?: boolean;
   actions: OverflowAction[];
 };
 
-export default function OverflowMenu({ visible, onClose, title, actions }: OverflowMenuProps) {
+export default function OverflowMenu({ visible, onClose, title, message, showCancel = true, actions }: OverflowMenuProps) {
   const { colors, isDark } = useAppTheme();
   const palette = useMemo(
     () => ({
@@ -50,6 +52,7 @@ export default function OverflowMenu({ visible, onClose, title, actions }: Overf
           accessibilityRole="menu"
         >
           {title ? <Text style={[styles.title, { color: colors.muted }]}>{title}</Text> : null}
+          {message ? <Text style={[styles.message, { color: colors.text }]}>{message}</Text> : null}
           {actions.map((action) => {
             const iconColor = action.destructive ? palette.destructiveText : palette.icon;
             const textColor = action.destructive ? palette.destructiveText : colors.text;
@@ -81,16 +84,18 @@ export default function OverflowMenu({ visible, onClose, title, actions }: Overf
               </TouchableOpacity>
             );
           })}
-          <TouchableOpacity
-            style={[
-              styles.item,
-              styles.cancelItem,
-              { borderColor: colors.border, backgroundColor: colors.card },
-            ]}
-            onPress={onClose}
-          >
-            <Text style={[styles.itemText, { color: colors.accent }]}>Cancel</Text>
-          </TouchableOpacity>
+          {showCancel ? (
+            <TouchableOpacity
+              style={[
+                styles.item,
+                styles.cancelItem,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
+              onPress={onClose}
+            >
+              <Text style={[styles.itemText, { color: colors.accent }]}>Cancel</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -122,6 +127,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600",
     letterSpacing: 0.3,
+  },
+  message: {
+    fontSize: 15,
+    textAlign: "center",
+    marginBottom: 14,
+    lineHeight: 21,
   },
   item: {
     paddingVertical: 12,
