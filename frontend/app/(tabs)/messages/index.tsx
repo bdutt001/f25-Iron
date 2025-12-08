@@ -62,22 +62,6 @@ export default function MessagesScreen() {
           paddingTop: topPadding,
           backgroundColor: colors.background,
         },
-        topBar: {
-          flexDirection: "row",
-          alignItems: "flex-start",
-          marginBottom: 8,
-        },
-        syncBadge: {
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: isDark ? "#1f263a" : "#e8edff",
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          gap: 8,
-        },
-        syncText: { color: isDark ? "#dbeafe" : "#1e293b", fontWeight: "600", fontSize: 12 },
-        syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
         centered: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 16 },
         listContent: { paddingBottom: 28 },
         chatItem: {
@@ -279,14 +263,6 @@ export default function MessagesScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
       <View style={styles.container}>
-        <View style={styles.topBar}>
-          <View style={styles.syncBadge}>
-            <View style={[styles.syncDot, { opacity: loading ? 0.5 : 1 }]} />
-            <Text style={styles.syncText}>{loading ? "Syncing..." : "Up to date"}</Text>
-            {loading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
-          </View>
-        </View>
-
         {error ? (
           <View style={styles.centered}>
             <Text style={styles.error}>{error}</Text>
