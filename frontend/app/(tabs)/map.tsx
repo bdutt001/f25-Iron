@@ -43,7 +43,7 @@ const DARK_MAP_STYLE = [
 ];
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-const NEARBY_RADIUS_METERS = 500;
+const NEARBY_RADIUS_METERS = 1600; // ~1 mile for demo visibility
 const BASE_AVATAR_SIZE = 46;
 const BASE_AVATAR_BORDER = 3;
 const MAX_ANDROID_MARKER_PX = 100;
@@ -97,6 +97,20 @@ const {
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
+
+const areNearbyListsEqual = (prev: NearbyUser[], next: NearbyUser[]): boolean => {
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (a.id !== b.id) return false;
+    if (a.profilePicture !== b.profilePicture) return false;
+    if (Math.abs(a.coords.latitude - b.coords.latitude) > 1e-6) return false;
+    if (Math.abs(a.coords.longitude - b.coords.longitude) > 1e-6) return false;
+    if ((a.trustScore ?? 0) !== (b.trustScore ?? 0)) return false;
+  }
+  return true;
+};
 
 export default function MapScreen() {
   const [center, setCenter] = useState<Coords>(ODU_CENTER);
@@ -226,8 +240,8 @@ export default function MapScreen() {
   }, [accessToken, fetchSavedLocation, persistLocationToBackend, requestDeviceLocation]);
 
   const normalizeNearby = useCallback(
-    (payload: any): NearbyUser[] => {
-      const list = Array.isArray(payload?.users) ? payload.users : [];
+    (payload: unknown): NearbyUser[] => {
+      const list = Array.isArray((payload as any)?.users) ? (payload as any).users : [];
       return list
         .map((item: any): NearbyUser | null => {
           const id = Number(item?.id);
@@ -248,7 +262,7 @@ export default function MapScreen() {
             trustScore: Number.isFinite(Number(item?.trustScore)) ? Number(item?.trustScore) : 0,
           };
         })
-        .filter((u): u is NearbyUser => Boolean(u));
+        .filter((u: NearbyUser | null): u is NearbyUser => Boolean(u));
     },
     []
   );
@@ -275,11 +289,12 @@ export default function MapScreen() {
         });
         if (!response.ok) throw new Error(`Failed to load nearby users (${response.status})`);
         const payload = await response.json();
-        const users = normalizeNearby(payload).filter(
-          (u) => currentUserId ? u.id !== currentUserId : true
-        );
+        const users = normalizeNearby(payload).filter((u: NearbyUser) => {
+          if (!currentUserId) return true;
+          return u.id !== currentUserId;
+        });
         if (!isMountedRef.current || controller.signal.aborted) return;
-        setNearbyUsers(users);
+        setNearbyUsers((prev) => (areNearbyListsEqual(prev, users) ? prev : users));
         setErrorMsg(null);
 
         if (!hasAnimatedRegion.current && mapRef.current && users.length > 0) {
@@ -481,7 +496,7 @@ export default function MapScreen() {
 
       stopUserPolling();
       tick();
-      pollTimerRef.current = setInterval(tick, 8000);
+      pollTimerRef.current = setInterval(tick, 3000);
 
       return () => {
         cancelled = true;
@@ -510,7 +525,7 @@ export default function MapScreen() {
         showsPointsOfInterest
         showsBuildings
       >
-        {/* 👤 Current user */}
+        {/* Current user */}
         {selfUser && (
           <Marker
             key={`self-${selfUser.id}-${selfUser.profilePicture ?? "nop"}`}
@@ -524,7 +539,7 @@ export default function MapScreen() {
           </Marker>
         )}
 
-        {/* 👥 Other users */}
+        {/* Other users */}
         {nearbyUsers.map((user) => {
           return (
             <Marker
@@ -552,7 +567,7 @@ export default function MapScreen() {
         }}
       />
 
-      {/* 🔍 Floating enlarged preview */}
+      {/* Floating enlarged preview */}
       {selectedUser && (
         <View
           pointerEvents="none"
@@ -585,7 +600,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* 🧾 Bottom sheet */}
+      {/* Bottom sheet */}
       {selectedUser && (
         <>
           <TouchableOpacity
@@ -700,7 +715,7 @@ export default function MapScreen() {
 
       {/* Inline actions are rendered inside the sheet above */}
 
-      {/* 🔘 Controls (lift when sheet is open) */}
+      {/*  Controls (lift when sheet is open) */}
       <View
         style={[
           styles.controls,

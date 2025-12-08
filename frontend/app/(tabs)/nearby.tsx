@@ -32,7 +32,7 @@ import { ApiUser, formatDistance } from "../../utils/geo";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-const NEARBY_RADIUS_METERS = 500;
+const NEARBY_RADIUS_METERS = 1600; // ~1 mile for demo visibility
 
 type Coordinates = { latitude: number; longitude: number };
 type NearbyWithDistance = ApiUser & {
@@ -77,7 +77,7 @@ export default function NearbyScreen() {
 
   const normalizeNearbyResponse = useCallback(
     (payload: unknown): NearbyWithDistance[] => {
-      const rawList = Array.isArray((payload as any)?.users)
+      const rawList: any[] = Array.isArray((payload as any)?.users)
         ? (payload as any).users
         : Array.isArray(payload)
           ? (payload as any)

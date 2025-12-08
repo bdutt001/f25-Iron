@@ -17,6 +17,9 @@ export const WS_BASE_URL = API_BASE_URL.replace(/^http/i, "ws");
 
 type JsonRecord = Record<string, unknown>;
 
+export const buildAuthHeaders = (accessToken: string | null | undefined): Record<string, string> =>
+  accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+
 const normalizeString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
 
