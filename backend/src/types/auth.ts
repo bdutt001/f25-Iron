@@ -10,4 +10,5 @@ export interface AuthenticatedUser {
   profilePicture: string | null;
   interestTags?: string[];
   visibility: boolean;
+  lastLogin?: string | null;
 }

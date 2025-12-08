@@ -14,6 +14,7 @@ import {
   serializeUser,
   userWithTagsSelect,
   updateUserVisibility,
+  deleteUserAndRelations,
 } from "../services/users.services";
 
 // Load environment variables early
@@ -206,8 +207,19 @@ export const deleteUser = async (req: Request, res: Response) => {
   const userId = toNumberId(req.params.id);
   if (!userId) return res.status(400).json({ error: "User not found" });
 
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  if (req.user.id !== userId)
+    return res.status(403).json({ error: "You can only delete your own account" });
+
   try {
-    await prisma.user.delete({ where: { id: userId } });
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!existing) return res.status(404).json({ error: "User not found" });
+
+    await deleteUserAndRelations(userId);
     res.status(204).send();
   } catch (err: any) {
     if (err?.code === "P2025")
