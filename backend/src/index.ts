@@ -1,10 +1,16 @@
-import app from "./app";
 import dotenv from "dotenv";
+import { createServer } from "http";
+import app from "./app";
+import { startMessageHub } from "./realtime/messageHub";
 
 dotenv.config();
 
-const PORT = process.env.PORT || 8000;
+const PORT = Number(process.env.PORT) || 8000;
+const server = createServer(app);
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+startMessageHub(server);
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
