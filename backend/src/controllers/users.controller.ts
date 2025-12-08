@@ -54,7 +54,7 @@ const isValidLongitude = (value: number) => Number.isFinite(value) && value >= -
 
 const DEFAULT_RADIUS_METERS = 500;
 const MIN_RADIUS_METERS = 50;
-const MAX_RADIUS_METERS = 5000;
+const MAX_RADIUS_METERS = 1000;
 
 const parseRadiusMeters = (value: unknown): number | null => {
   if (value === undefined) return DEFAULT_RADIUS_METERS;
