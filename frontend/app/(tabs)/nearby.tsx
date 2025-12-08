@@ -23,6 +23,7 @@ import type { AlertOptions, ListRenderItemInfo } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
@@ -72,6 +73,7 @@ export default function NearbyScreen() {
 
   const { status, setStatus, isStatusUpdating, accessToken, currentUser, fetchWithAuth } = useUser();
   const hasLoadedOnceRef = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const normalizeNearbyResponse = useCallback(
     (payload: unknown): NearbyWithDistance[] => {
@@ -304,7 +306,8 @@ export default function NearbyScreen() {
 
   useEffect(() => {
     if (!location) return;
-    void loadNearbyUsers(location, { silent: false });
+    const silent = hasLoadedOnceRef.current;
+    void loadNearbyUsers(location, { silent });
   }, [location, loadNearbyUsers, sortMode]);
 
   useEffect(() => {
@@ -326,6 +329,36 @@ export default function NearbyScreen() {
       setRefreshing(false);
     }
   }, [ensureLocation, loadNearbyUsers, location]);
+
+  // Lightweight polling while the tab is focused (mirrors map tab behavior)
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      const tick = async () => {
+        if (cancelled) return;
+        try {
+          const coords = location ?? (await ensureLocation());
+          if (!coords) return;
+          await loadNearbyUsers(coords, { silent: true });
+          hasLoadedOnceRef.current = true;
+        } catch {
+          // ignore transient polling errors
+        }
+      };
+
+      void tick();
+      pollTimerRef.current = setInterval(tick, 8000);
+
+      return () => {
+        cancelled = true;
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      };
+    }, [ensureLocation, loadNearbyUsers, location])
+  );
 
   /**
    * Start a new chat session (fetch latest receiver first).
@@ -617,85 +650,70 @@ export default function NearbyScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Sorting controls */}
-      <View style={styles.filterBar}>
-        <Pressable
-          onPress={() => setSortMode("match")}
-          style={({ pressed }) => [
-            styles.toggleOption,
-            {
-              borderColor: colors.border,
-              backgroundColor:
-                sortMode === "match"
-                  ? isDark
-                    ? "rgba(0,123,255,0.25)"
-                    : "rgba(0,123,255,0.12)"
-                  : isDark
-                  ? "rgba(255,255,255,0.04)"
-                  : "rgba(0,0,0,0.02)",
-            },
-            pressed && styles.togglePressed,
-          ]}
-        >
-          <Ionicons
-            name="sparkles-outline"
-            size={16}
-            color={sortMode === "match" ? colors.accent : colors.text}
-          />
-          <Text
-            style={[
-              styles.toggleText,
-              { color: sortMode === "match" ? colors.accent : colors.text },
-            ]}
-          >
-            Match %
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setSortMode("distance")}
-          style={({ pressed }) => [
-            styles.toggleOption,
-            {
-              borderColor: colors.border,
-              backgroundColor:
-                sortMode === "distance"
-                  ? isDark
-                    ? "rgba(0,123,255,0.25)"
-                    : "rgba(0,123,255,0.12)"
-                  : isDark
-                  ? "rgba(255,255,255,0.04)"
-                  : "rgba(0,0,0,0.02)",
-            },
-            pressed && styles.togglePressed,
-          ]}
-        >
-          <Ionicons
-            name="navigate-outline"
-            size={16}
-            color={sortMode === "distance" ? colors.accent : colors.text}
-          />
-          <Text
-            style={[
-              styles.toggleText,
-              { color: sortMode === "distance" ? colors.accent : colors.text },
-            ]}
-          >
-            Distance
-          </Text>
-        </Pressable>
-      </View>
-
-      {loading && hasLoadedOnceRef.current && (
-        <View style={styles.inlineLoader}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={[styles.inlineLoaderText, mutedText]}>Updating nearby users.</Text>
-        </View>
-      )}
-
       {/* User list */}
       <FlatList
         data={visibleUsers}
         keyExtractor={(item) => item.id.toString()}
+        ListHeaderComponent={
+          <View>
+            <View style={styles.filterBar}>
+              <Pressable
+                onPress={() => setSortMode("match")}
+                style={({ pressed }) => [
+                  styles.toggleOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor:
+                      sortMode === "match"
+                        ? isDark
+                          ? "rgba(0,123,255,0.25)"
+                          : "rgba(0,123,255,0.12)"
+                        : isDark
+                        ? "rgba(255,255,255,0.04)"
+                        : "rgba(0,0,0,0.02)",
+                  },
+                  pressed && styles.togglePressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                    { color: sortMode === "match" ? colors.accent : colors.text },
+                  ]}
+                >
+                  Sort by Match %
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSortMode("distance")}
+                style={({ pressed }) => [
+                  styles.toggleOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor:
+                      sortMode === "distance"
+                        ? isDark
+                          ? "rgba(0,123,255,0.25)"
+                          : "rgba(0,123,255,0.12)"
+                        : isDark
+                        ? "rgba(255,255,255,0.04)"
+                        : "rgba(0,0,0,0.02)",
+                  },
+                  pressed && styles.togglePressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: sortMode === "distance" ? colors.accent : colors.text },
+                  ]}
+                >
+                  Sort by Distance
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        }
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.centered}>
@@ -717,6 +735,11 @@ export default function NearbyScreen() {
           void refreshTrustScore(uid);
         }}
       />
+      {loading && hasLoadedOnceRef.current && (
+        <View style={[styles.floatingLoader, { backgroundColor: isDark ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.78)", borderColor: colors.border }]}>
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      )}
     </View>
   );
 }
@@ -770,15 +793,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
   },
-  toggleText: { fontSize: 14, fontWeight: "700", marginLeft: 8 },
+  toggleText: { fontSize: 14, fontWeight: "700" },
   togglePressed: { opacity: 0.85 },
-  inlineLoader: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    marginBottom: 12,
-  },
-  inlineLoaderText: { marginLeft: 8, fontSize: 13 },
   listContent: { paddingBottom: 24 },
   flexGrow: { flexGrow: 1 },
   card: {
@@ -855,4 +871,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   iconButtonPressed: { opacity: 0.9 },
+  floatingLoader: {
+    position: "absolute",
+    right: 16,
+    bottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
+  },
 });
