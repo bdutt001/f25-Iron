@@ -189,6 +189,15 @@ export const getUserById = async (req: Request, res: Response) => {
       select: userWithTagsSelect,
     });
     if (!user) return res.status(404).json({ error: "User not found" });
+
+
+    // ✅ Enforce visibility for non-owners
+    const viewerId = req.user?.id ?? null;  // set by authenticate middleware
+    const isSelf = viewerId === user.id;
+    if (!isSelf && user.visibility === false) {
+      return res.status(404).json({ error: "User not found" }); // or 403 if you prefer
+    }
+
     res.json(serializeUser(user));
   } catch (err) {
     console.error("Failed to fetch user", err);
@@ -213,6 +222,12 @@ export const updateUser = async (req: Request, res: Response) => {
   const visibilityRaw =
     typeof req.body.visibility === "boolean" ? req.body.visibility : undefined;
   const profilePictureRaw = req.body.profilePicture;
+  const profileStatusRaw =
+  typeof req.body.profileStatus === "string"
+    ? req.body.profileStatus.trim()
+    : req.body.profileStatus === null
+    ? null
+    : undefined;
 
   try {
     const data: Prisma.UserUpdateInput = {};
@@ -246,6 +261,13 @@ export const updateUser = async (req: Request, res: Response) => {
       if (trimmed) data.profilePicture = trimmed;
     }
 
+    if (profileStatusRaw === null) {
+      // allow clearing the status (set to NULL in DB)
+      data.profileStatus = null;
+    } else if (typeof profileStatusRaw === "string" && profileStatusRaw.length > 0) {
+      // set to a non-empty custom or preset status
+      data.profileStatus = profileStatusRaw;
+    }
     const user = await prisma.user.update({
       where: { id: userId },
       data,

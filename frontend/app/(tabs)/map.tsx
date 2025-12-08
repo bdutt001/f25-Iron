@@ -25,21 +25,81 @@ const DARK_MAP_STYLE = [
   { elementType: "geometry", stylers: [{ color: "#111827" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#f1f5f9" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
-  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#a5f3fc" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#283548" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2d3a4f" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2937" }] },
-  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f8fafc" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#1f2937" }] },
-  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#dbeafe" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#14213d" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+  {
+    featureType: "administrative.locality",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#dbeafe" }],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#dbeafe" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "geometry",
+    stylers: [{ color: "#1f2937" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#a5f3fc" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#1f2937" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#283548" }],
+  },
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#e2e8f0" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#2d3a4f" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#1f2937" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#f8fafc" }],
+  },
+  {
+    featureType: "transit",
+    elementType: "geometry",
+    stylers: [{ color: "#1f2937" }],
+  },
+  {
+    featureType: "transit.station",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#dbeafe" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#14213d" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#e2e8f0" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.stroke",
+    stylers: [{ color: "#0f172a" }],
+  },
 ];
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -57,11 +117,14 @@ type AvatarMetrics = {
 
 const normalizeTags = (tags: unknown): string[] =>
   Array.isArray(tags)
-    ? tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    ? tags.filter(
+        (t): t is string => typeof t === "string" && t.trim().length > 0
+      )
     : [];
 
 const computeAvatarMetrics = (): AvatarMetrics => {
-  const imageFrom = (size: number, border: number) => Math.max(size - border * 2, 0);
+  const imageFrom = (size: number, border: number) =>
+    Math.max(size - border * 2, 0);
   if (Platform.OS !== "android") {
     const image = imageFrom(BASE_AVATAR_SIZE, BASE_AVATAR_BORDER);
     return {
@@ -76,8 +139,12 @@ const computeAvatarMetrics = (): AvatarMetrics => {
   const desiredPx = PixelRatio.getPixelSizeForLayoutSize(BASE_AVATAR_SIZE);
   const safePx = Math.min(desiredPx, MAX_ANDROID_MARKER_PX);
   const adjustedSize = PixelRatio.roundToNearestPixel(safePx / density);
-  const proportionalBorder = (BASE_AVATAR_BORDER / BASE_AVATAR_SIZE) * adjustedSize;
-  const adjustedBorder = Math.max(2, PixelRatio.roundToNearestPixel(proportionalBorder));
+  const proportionalBorder =
+    (BASE_AVATAR_BORDER / BASE_AVATAR_SIZE) * adjustedSize;
+  const adjustedBorder = Math.max(
+    2,
+    PixelRatio.roundToNearestPixel(proportionalBorder)
+  );
   const adjustedImage = imageFrom(adjustedSize, adjustedBorder);
 
   return {
@@ -98,7 +165,10 @@ const {
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
 
-const areNearbyListsEqual = (prev: NearbyUser[], next: NearbyUser[]): boolean => {
+const areNearbyListsEqual = (
+  prev: NearbyUser[],
+  next: NearbyUser[]
+): boolean => {
   if (prev.length !== next.length) return false;
   for (let i = 0; i < prev.length; i++) {
     const a = prev[i];
@@ -161,7 +231,9 @@ export default function MapScreen() {
         id: currentUser.id,
         name: currentUser.name?.trim() || currentUser.email,
         email: currentUser.email,
-        interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
+        interestTags: Array.isArray(currentUser.interestTags)
+          ? currentUser.interestTags
+          : [],
         profilePicture: currentUser.profilePicture ?? null,
         coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
         trustScore: currentUser.trustScore ?? 99,
@@ -177,7 +249,10 @@ export default function MapScreen() {
       if (response.status === 404) return null;
       if (!response.ok) return null;
 
-      const data = (await response.json()) as { latitude?: unknown; longitude?: unknown };
+      const data = (await response.json()) as {
+        latitude?: unknown;
+        longitude?: unknown;
+      };
       const latitude = Number(data?.latitude);
       const longitude = Number(data?.longitude);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
@@ -208,7 +283,8 @@ export default function MapScreen() {
 
   const requestDeviceLocation = useCallback(async (): Promise<Coords | null> => {
     try {
-      const { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
+      const { status: permissionStatus } =
+        await Location.requestForegroundPermissionsAsync();
       if (permissionStatus !== "granted") {
         return null;
       }
@@ -220,7 +296,10 @@ export default function MapScreen() {
         longitude: position.coords.longitude,
       };
     } catch (err) {
-      console.warn("Unable to fetch device location, falling back to ODU coords:", err);
+      console.warn(
+        "Unable to fetch device location, falling back to ODU coords:",
+        err
+      );
       return null;
     }
   }, []);
@@ -256,17 +335,28 @@ export default function MapScreen() {
     setMyCoords(fallback);
     setLocationReady(true);
     return fallback;
-  }, [accessToken, fetchSavedLocation, persistLocationToBackend, requestDeviceLocation]);
+  }, [
+    accessToken,
+    fetchSavedLocation,
+    persistLocationToBackend,
+    requestDeviceLocation,
+  ]);
 
-  const normalizeNearby = useCallback(
-    (payload: unknown): NearbyUser[] => {
-      const list = Array.isArray((payload as any)?.users) ? (payload as any).users : [];
-      return list
-        .map((item: any): NearbyUser | null => {
+  const normalizeNearby = useCallback((payload: unknown): NearbyUser[] => {
+    const list = Array.isArray((payload as any)?.users)
+      ? (payload as any).users
+      : [];
+    return list
+      .map(
+        (item: any): NearbyUser | null => {
           const id = Number(item?.id);
           const latitude = Number(item?.latitude);
           const longitude = Number(item?.longitude);
-          if (!Number.isFinite(id) || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          if (
+            !Number.isFinite(id) ||
+            !Number.isFinite(latitude) ||
+            !Number.isFinite(longitude)
+          ) {
             return null;
           }
           const email = typeof item?.email === "string" ? item.email : "";
@@ -276,15 +366,19 @@ export default function MapScreen() {
             email,
             name,
             interestTags: normalizeTags(item?.interestTags),
-            profilePicture: typeof item?.profilePicture === "string" ? item.profilePicture : null,
+            profilePicture:
+              typeof item?.profilePicture === "string"
+                ? item.profilePicture
+                : null,
             coords: { latitude, longitude },
-            trustScore: Number.isFinite(Number(item?.trustScore)) ? Number(item?.trustScore) : 0,
+            trustScore: Number.isFinite(Number(item?.trustScore))
+              ? Number(item?.trustScore)
+              : 0,
           };
-        })
-        .filter((u: NearbyUser | null): u is NearbyUser => Boolean(u));
-    },
-    []
-  );
+        }
+      )
+      .filter((u: NearbyUser | null): u is NearbyUser => Boolean(u));
+  }, []);
 
   const loadNearbyUsers = useCallback(
     async (coords: Coords) => {
@@ -303,17 +397,23 @@ export default function MapScreen() {
           radius: String(NEARBY_RADIUS_METERS),
           sort: "distance",
         });
-        const response = await fetchWithAuth(`${API_BASE_URL}/users/nearby?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`Failed to load nearby users (${response.status})`);
+        const response = await fetchWithAuth(
+          `${API_BASE_URL}/users/nearby?${params.toString()}`,
+          {
+            signal: controller.signal,
+          }
+        );
+        if (!response.ok)
+          throw new Error(`Failed to load nearby users (${response.status})`);
         const payload = await response.json();
         const users = normalizeNearby(payload).filter((u: NearbyUser) => {
           if (!currentUserId) return true;
           return u.id !== currentUserId;
         });
         if (!isMountedRef.current || controller.signal.aborted) return;
-        setNearbyUsers((prev) => (areNearbyListsEqual(prev, users) ? prev : users));
+        setNearbyUsers((prev) =>
+          areNearbyListsEqual(prev, users) ? prev : users
+        );
         setErrorMsg(null);
 
         if (!hasAnimatedRegion.current && mapRef.current && users.length > 0) {
@@ -349,8 +449,16 @@ export default function MapScreen() {
   // Compute simple match score (% overlap of tags using Jaccard)
   const matchPercent = useCallback(
     (other: { interestTags: string[] }): number => {
-      const a = new Set((currentUser?.interestTags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean));
-      const b = new Set((other.interestTags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean));
+      const a = new Set(
+        (currentUser?.interestTags ?? [])
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean)
+      );
+      const b = new Set(
+        (other.interestTags ?? [])
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean)
+      );
       if (a.size === 0 && b.size === 0) return 0;
       let inter = 0;
       for (const t of a) if (b.has(t)) inter++;
@@ -366,21 +474,29 @@ export default function MapScreen() {
       if (!currentUser) return;
       try {
         // Fetch latest receiver for display info
-      const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`, {
-        skipAuth: !accessToken,
-      });
+        const userResponse = await fetchWithAuth(
+          `${API_BASE_URL}/users/${receiverId}`,
+          {
+            skipAuth: !accessToken,
+          }
+        );
         let latestUser: ApiUser | null = null;
-        if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
+        if (userResponse.ok)
+          latestUser = (await userResponse.json()) as ApiUser;
 
         // Create or get chat session
-        const resp = await fetchWithAuth(`${API_BASE_URL}/api/messages/session`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ participants: [currentUser.id, receiverId] }),
-        });
-        if (!resp.ok) throw new Error(`Failed to start chat (${resp.status})`);
+        const resp = await fetchWithAuth(
+          `${API_BASE_URL}/api/messages/session`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ participants: [currentUser.id, receiverId] }),
+          }
+        );
+        if (!resp.ok)
+          throw new Error(`Failed to start chat (${resp.status})`);
         const data = (await resp.json()) as { chatId: number };
         router.push({
           pathname: "/(tabs)/messages/[chatId]",
@@ -399,8 +515,7 @@ export default function MapScreen() {
     [accessToken, currentUser, fetchWithAuth]
   );
 
-  // Actions handled by shared UserOverflowMenu
-
+  // Initial ensureLocation + loadNearbyUsers on focus
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -417,8 +532,6 @@ export default function MapScreen() {
     }, [ensureLocation, loadNearbyUsers])
   );
 
-  // Removed markerTracks effect
-
   // Helpers for UI coloring
   const trustColor = (score?: number) => {
     const s = score ?? 0;
@@ -428,19 +541,31 @@ export default function MapScreen() {
     return "#DC3545";
   };
 
-  const avatarUri = useCallback((profilePicture?: string | null): string | null => {
-    if (!profilePicture) return null;
-    return profilePicture.startsWith("http") ? profilePicture : `${API_BASE_URL}${profilePicture}`;
-  }, []);
+  const avatarUri = useCallback(
+    (profilePicture?: string | null): string | null => {
+      if (!profilePicture) return null;
+      return profilePicture.startsWith("http")
+        ? profilePicture
+        : `${API_BASE_URL}${profilePicture}`;
+    },
+    []
+  );
 
-  const userInitial = useCallback((user: { name?: string | null; email?: string | null }) => {
-    const letter = user.name?.trim()?.[0] || user.email?.trim()?.[0];
-    return (letter || "?").toUpperCase();
-  }, []);
+  const userInitial = useCallback(
+    (user: { name?: string | null; email?: string | null }) => {
+      const letter = user.name?.trim()?.[0] || user.email?.trim()?.[0];
+      return (letter || "?").toUpperCase();
+    },
+    []
+  );
 
   // Use a View-based marker (instead of marker image assets) to avoid Android DPI clipping
   const renderAvatarMarker = useCallback(
-    (user: NearbyUser | SelectedUser, isSelf = false, options?: { dimmed?: boolean }) => {
+    (
+      user: NearbyUser | SelectedUser,
+      isSelf = false,
+      options?: { dimmed?: boolean }
+    ) => {
       const uri = avatarUri(user.profilePicture as string | null);
       const ringColor = isSelf ? colors.accent : "#e63946";
       const fallbackBg = isDark ? colors.card : "#f0f0f0";
@@ -464,8 +589,17 @@ export default function MapScreen() {
               cachePolicy="memory-disk"
             />
           ) : (
-            <View style={[styles.avatarFallback, { backgroundColor: fallbackBg }]}>
-              <Text style={[styles.avatarInitial, { color: isDark ? colors.text : "#4a4a4a" }]}>{initials}</Text>
+            <View
+              style={[styles.avatarFallback, { backgroundColor: fallbackBg }]}
+            >
+              <Text
+                style={[
+                  styles.avatarInitial,
+                  { color: isDark ? colors.text : "#4a4a4a" },
+                ]}
+              >
+                {initials}
+              </Text>
             </View>
           )}
         </View>
@@ -574,6 +708,12 @@ export default function MapScreen() {
     [CENTER_TOLERANCE, locationReady, myCoords.latitude, myCoords.longitude]
   );
 
+  // ✅ Safe display name for the selected user (no email shown)
+  const selectedDisplayName =
+    selectedUser && selectedUser.name && selectedUser.name.trim().length > 0
+      ? selectedUser.name.trim()
+      : "Anonymous";
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <MapView
@@ -601,7 +741,9 @@ export default function MapScreen() {
             centerOffset={{ x: 0, y: 0 }}
             tracksViewChanges={!freezeMarkers}
           >
-            {renderAvatarMarker(selfUser, true, { dimmed: status !== "Visible" })}
+            {renderAvatarMarker(selfUser, true, {
+              dimmed: status !== "Visible",
+            })}
           </Marker>
         )}
 
@@ -609,7 +751,7 @@ export default function MapScreen() {
         {nearbyUsers.map((user) => {
           return (
             <Marker
-              key={`${user.id}-${user.profilePicture ?? 'nop'}`}
+              key={`${user.id}-${user.profilePicture ?? "nop"}`}
               coordinate={user.coords}
               onPress={() => setSelectedUser(user)}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -647,9 +789,22 @@ export default function MapScreen() {
         onClose={() => setMenuTarget(null)}
         targetUser={menuTarget}
         onBlocked={(uid) => {
-          setNearbyUsers((prevUsers: NearbyUser[]) => prevUsers.filter((user) => user.id !== uid));
+          setNearbyUsers((prevUsers: NearbyUser[]) =>
+            prevUsers.filter((user) => user.id !== uid)
+          );
           void loadNearbyUsers(center);
           setSelectedUser(null);
+        }}
+        onReported={() => {
+          // optional extra behavior after report; leave empty or add toast if desired
+        }}
+        onViewProfile={(userId) => {
+          setMenuTarget(null);
+          setSelectedUser(null);
+          router.push({
+            pathname: "/user/[id]",
+            params: { id: String(userId), from: "map" },
+          });
         }}
       />
 
@@ -659,7 +814,11 @@ export default function MapScreen() {
           pointerEvents="none"
           style={[
             styles.floatingMarker,
-            { top: "42%", left: "50%", transform: [{ translateX: -75 }, { translateY: -75 }] },
+            {
+              top: "42%",
+              left: "50%",
+              transform: [{ translateX: -75 }, { translateY: -75 }],
+            },
           ]}
         >
           {selectedUserAvatarUri ? (
@@ -667,7 +826,12 @@ export default function MapScreen() {
               source={{ uri: selectedUserAvatarUri }}
               style={[
                 styles.floatingImage,
-                { borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946", backgroundColor: colors.card },
+                {
+                  borderColor: selectedUser.isCurrentUser
+                    ? colors.accent
+                    : "#e63946",
+                  backgroundColor: colors.card,
+                },
               ]}
               cachePolicy="memory-disk"
               transition={0}
@@ -677,10 +841,22 @@ export default function MapScreen() {
             <View
               style={[
                 styles.floatingPlaceholder,
-                { borderColor: selectedUser.isCurrentUser ? colors.accent : "#e63946", backgroundColor: colors.card },
+                {
+                  borderColor: selectedUser.isCurrentUser
+                    ? colors.accent
+                    : "#e63946",
+                  backgroundColor: colors.card,
+                },
               ]}
             >
-              <Text style={[styles.floatingInitials, { color: isDark ? colors.text : "#555" }]}>{userInitial(selectedUser)}</Text>
+              <Text
+                style={[
+                  styles.floatingInitials,
+                  { color: isDark ? colors.text : "#555" },
+                ]}
+              >
+                {userInitial(selectedUser)}
+              </Text>
             </View>
           )}
         </View>
@@ -697,47 +873,69 @@ export default function MapScreen() {
           <View
             style={[
               styles.sheet,
-              { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth, shadowColor: isDark ? "#000" : "#000" },
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderWidth: StyleSheet.hairlineWidth,
+                shadowColor: isDark ? "#000" : "#000",
+              },
             ]}
           >
             <View style={styles.sheetHeader}>
-              <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+              <View
+                style={[styles.sheetHandle, { backgroundColor: colors.border }]}
+              />
               <TouchableOpacity onPress={() => setSelectedUser(null)}>
-                <Text style={[styles.sheetClose, { color: colors.accent }]}>Close</Text>
+                <Text style={[styles.sheetClose, { color: colors.accent }]}>
+                  Close
+                </Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.calloutHeaderRow}>
               <View style={styles.calloutTextBlock}>
                 <View style={styles.calloutTitleRow}>
-                  <Text style={[styles.calloutTitle, textColor]} numberOfLines={1}>
-                    {selectedUser.name || selectedUser.email}
+                  <Text
+                    style={[styles.calloutTitle, textColor]}
+                    numberOfLines={1}
+                  >
+                    {selectedDisplayName}
                   </Text>
                   {selectedUser.isCurrentUser && (
-                    <Text style={[styles.calloutBadge, { backgroundColor: colors.accent }]}>
+                    <Text
+                      style={[
+                        styles.calloutBadge,
+                        { backgroundColor: colors.accent },
+                      ]}
+                    >
                       You
                     </Text>
                   )}
                 </View>
-                <Text style={[styles.calloutSubtitle, mutedText]} numberOfLines={1}>
-                  {selectedUser.email}
-                </Text>
-                {!selectedUser.isCurrentUser && selectedMatchPercent !== null && (
-                  <View
-                    style={[
-                      styles.metaPill,
-                      styles.metaPillUnderText,
-                      {
-                        borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
-                        backgroundColor: isDark ? "rgba(0,123,255,0.2)" : "rgba(0,123,255,0.08)",
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.metaText, { color: colors.accent }]}>
-                      {selectedMatchPercent}% match
-                    </Text>
-                  </View>
-                )}
+                {/* Email removed from map tab for all users */}
+                {!selectedUser.isCurrentUser &&
+                  selectedMatchPercent !== null && (
+                    <View
+                      style={[
+                        styles.metaPill,
+                        styles.metaPillUnderText,
+                        {
+                          borderColor: isDark
+                            ? "rgba(255,255,255,0.08)"
+                            : "rgba(0,0,0,0.05)",
+                          backgroundColor: isDark
+                            ? "rgba(0,123,255,0.2)"
+                            : "rgba(0,123,255,0.08)",
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.metaText, { color: colors.accent }]}
+                      >
+                        {selectedMatchPercent}% match
+                      </Text>
+                    </View>
+                  )}
               </View>
               <View style={styles.calloutMetrics}>
                 <Text
@@ -747,7 +945,9 @@ export default function MapScreen() {
                   ]}
                 >
                   Trust Score:{" "}
-                  <Text style={styles.trustScoreNumber}>{selectedUser.trustScore ?? "-"}</Text>
+                  <Text style={styles.trustScoreNumber}>
+                    {selectedUser.trustScore ?? "-"}
+                  </Text>
                 </Text>
               </View>
             </View>
@@ -755,8 +955,22 @@ export default function MapScreen() {
             {selectedUser.interestTags.length > 0 ? (
               <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
                 {selectedUser.interestTags.map((tag) => (
-                  <View key={tag} style={[styles.calloutTagChip, { backgroundColor: isDark ? colors.background : "#e6f0ff" }]}>
-                    <Text style={[styles.calloutTagText, { color: colors.accent }]}>{tag}</Text>
+                  <View
+                    key={tag}
+                    style={[
+                      styles.calloutTagChip,
+                      {
+                        backgroundColor: isDark
+                          ? colors.background
+                          : "#e6f0ff",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.calloutTagText, { color: colors.accent }]}
+                    >
+                      {tag}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -768,13 +982,17 @@ export default function MapScreen() {
               </Text>
             )}
 
-            {/* Action bar: message + more menu (report/block) */}
+            {/* Action bar: message + more menu (view profile / report / block) */}
             {!selectedUser.isCurrentUser && (
-              <>
               <View style={styles.calloutActionsRow}>
                 <TouchableOpacity
-                  onPress={() => startChat(selectedUser.id, selectedUser.name || selectedUser.email)}
-                  style={[styles.calloutActionButton, { backgroundColor: colors.accent }]}
+                  onPress={() =>
+                    startChat(selectedUser.id, selectedDisplayName)
+                  }
+                  style={[
+                    styles.calloutActionButton,
+                    { backgroundColor: colors.accent },
+                  ]}
                   activeOpacity={0.85}
                   accessibilityRole="button"
                   accessibilityLabel="Message user"
@@ -788,25 +1006,29 @@ export default function MapScreen() {
                   style={styles.calloutActionMenu}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
+                  <Ionicons
+                    name="ellipsis-vertical"
+                    size={20}
+                    color={colors.icon}
+                  />
                 </TouchableOpacity>
               </View>
-              </>
             )}
           </View>
-
-          {/* Popover moved to screen root for proper z-ordering */}
         </>
       )}
 
-      {/* Inline actions are rendered inside the sheet above */}
-
-      {/*  Controls (lift when sheet is open) */}
+      {/* Controls (hidden when sheet is open) */}
       <View
         style={[
           styles.controls,
-          { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth, shadowColor: isDark ? "#000" : "#000" },
-          selectedUser ? { display: 'none' } : null,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderWidth: StyleSheet.hairlineWidth,
+            shadowColor: isDark ? "#000" : "#000",
+          },
+          selectedUser ? { display: "none" } : null,
         ]}
       >
         <Text style={[styles.statusText, textColor]}>Visibility: {status}</Text>
@@ -833,7 +1055,9 @@ export default function MapScreen() {
             )}
           </TouchableOpacity>
         </View>
-        {!!errorMsg && <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>}
+        {!!errorMsg && (
+          <Text style={[styles.errorText, { color: "#c00" }]}>{errorMsg}</Text>
+        )}
       </View>
     </View>
   );
@@ -933,7 +1157,14 @@ const styles = StyleSheet.create({
   floatingInitials: { fontSize: 50, fontWeight: "700", color: "#555" },
 
   // Bottom sheet
-  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.15)" },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
   sheet: {
     position: "absolute",
     left: 12,
@@ -954,10 +1185,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd" },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#ddd",
+  },
   sheetClose: { color: "#66a8ff", fontWeight: "600" },
 
-  calloutHeaderRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  calloutHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
   calloutTextBlock: { flex: 1, minWidth: 0 },
   calloutTitleRow: { flexDirection: "row", alignItems: "center" },
   calloutTitle: { fontSize: 16, fontWeight: "600", flexShrink: 1 },
@@ -972,7 +1212,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  calloutTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
+  calloutTagsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
   calloutTagChip: {
     backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
@@ -1004,7 +1248,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  calloutMetrics: { alignItems: "flex-end", minWidth: 120, marginLeft: 12, gap: 6 },
+  calloutMetrics: {
+    alignItems: "flex-end",
+    minWidth: 120,
+    marginLeft: 12,
+    gap: 6,
+  },
   metricValueSmall: { fontSize: 14, fontWeight: "700", textAlign: "right" },
   trustScoreNumber: { fontSize: 15, fontWeight: "700" },
   metaPill: {
@@ -1018,10 +1267,15 @@ const styles = StyleSheet.create({
   },
   metaPillUnderText: { marginTop: 6 },
   metaText: { fontSize: 12, fontWeight: "600" },
-  
-  inlineActionsWrap: { overflow: 'hidden', flexDirection: 'row', alignItems: 'center', marginRight: 6 },
+
+  inlineActionsWrap: {
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 6,
+  },
   inlineActionsWrapClosed: { width: 0, opacity: 0 },
-  inlineActionsWrapOpen: { width: 'auto', opacity: 1 },
+  inlineActionsWrapOpen: { width: "auto", opacity: 1 },
   inlineActionDanger: {
     color: "#dc3545",
     fontWeight: "700",
@@ -1036,8 +1290,4 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  
 });
-
-
-

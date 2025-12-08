@@ -81,8 +81,8 @@ export default function NearbyScreen() {
       const rawList: any[] = Array.isArray((payload as any)?.users)
         ? (payload as any).users
         : Array.isArray(payload)
-          ? (payload as any)
-          : [];
+        ? (payload as any)
+        : [];
 
       return rawList
         .map((item: any): NearbyWithDistance | null => {
@@ -452,9 +452,16 @@ export default function NearbyScreen() {
           : null;
       const userTags = normalizeTags(item.interestTags);
 
+      // Make the whole card pressable to open the user's profile (keeps Tabs visible)
       return (
-        <View
-          style={[
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/user/[id]",
+              params: { id: String(item.id), from: "nearby" },
+            })
+          }
+          style={({ pressed }) => [
             styles.card,
             {
               backgroundColor: colors.card,
@@ -462,6 +469,7 @@ export default function NearbyScreen() {
               shadowColor: isDark ? "#000" : "#0f172a",
             },
             index === 0 && [styles.cardFeatured, { borderColor: colors.accent }],
+            pressed && { opacity: 0.96 },
           ]}
         >
           <View style={styles.cardTop}>
@@ -545,6 +553,7 @@ export default function NearbyScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.cardFooter}>
+            {/* Chat stays a separate, tappable target */}
             <Pressable
               onPress={() => startChat(item.id, item.name || item.email)}
               style={({ pressed }) => [
@@ -560,7 +569,11 @@ export default function NearbyScreen() {
                 color="white"
                 style={
                   Platform.OS === "android"
-                    ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                    ? {
+                        includeFontPadding: false,
+                        textAlignVertical: "center",
+                        lineHeight: 18,
+                      }
                     : undefined
                 }
               />
@@ -568,6 +581,7 @@ export default function NearbyScreen() {
 
             <View style={{ flex: 1 }} />
 
+            {/* Overflow (•••) opens block/report etc. */}
             <TouchableOpacity
               onPress={() => setMenuTarget(item as unknown as ApiUser)}
               style={[
@@ -586,13 +600,17 @@ export default function NearbyScreen() {
                 color={colors.icon}
                 style={
                   Platform.OS === "android"
-                    ? { includeFontPadding: false, textAlignVertical: "center", lineHeight: 18 }
+                    ? {
+                        includeFontPadding: false,
+                        textAlignVertical: "center",
+                        lineHeight: 18,
+                      }
                     : undefined
                 }
               />
             </TouchableOpacity>
           </View>
-        </View>
+        </Pressable>
       );
     },
     [colors, isDark, startChat, textColor]
@@ -635,7 +653,11 @@ export default function NearbyScreen() {
       <View
         style={[
           styles.header,
-          { backgroundColor: colors.card, borderColor: colors.border, shadowColor: isDark ? "#000" : "#0f172a" },
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            shadowColor: isDark ? "#000" : "#0f172a",
+          },
         ]}
       >
         <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
@@ -687,11 +709,11 @@ export default function NearbyScreen() {
                         : "rgba(0,0,0,0.02)",
                   },
                   pressed && styles.togglePressed,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.toggleText,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
                     { color: sortMode === "match" ? colors.accent : colors.text },
                   ]}
                 >
@@ -748,9 +770,28 @@ export default function NearbyScreen() {
         onReported={(uid) => {
           void refreshTrustScore(uid);
         }}
+        onViewProfile={(userId) => {
+          // Close the menu first
+          setMenuTarget(null);
+          // Navigate to the same profile screen you use when pressing the card
+          router.push({
+            pathname: "/user/[id]",
+            params: { id: String(userId), from: "nearby" }, // mark origin
+          });
+        }}
       />
       {loading && hasLoadedOnceRef.current && (
-        <View style={[styles.floatingLoader, { backgroundColor: isDark ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.78)", borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.floatingLoader,
+            {
+              backgroundColor: isDark
+                ? "rgba(0,0,0,0.55)"
+                : "rgba(255,255,255,0.78)",
+              borderColor: colors.border,
+            },
+          ]}
+        >
           <ActivityIndicator size="small" color={colors.accent} />
         </View>
       )}

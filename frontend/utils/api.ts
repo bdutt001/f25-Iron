@@ -3,7 +3,10 @@ import type { CurrentUser } from "../context/UserContext";
 
 type FetchInput = Parameters<typeof fetch>[0];
 export type AuthorizedRequestInit = RequestInit & { skipAuth?: boolean };
-export type AuthorizedFetch = (input: FetchInput, init?: AuthorizedRequestInit) => Promise<Response>;
+export type AuthorizedFetch = (
+  input: FetchInput,
+  init?: AuthorizedRequestInit
+) => Promise<Response>;
 
 const envApiUrl = (process.env.EXPO_PUBLIC_API_URL ?? "").trim();
 const devFallback =
@@ -17,7 +20,10 @@ export const WS_BASE_URL = API_BASE_URL.replace(/^http/i, "ws");
 
 type JsonRecord = Record<string, unknown>;
 
-export const buildAuthHeaders = (accessToken: string | null | undefined): Record<string, string> =>
+// ✅ Shared auth header helper
+export const buildAuthHeaders = (
+  accessToken: string | null | undefined
+): Record<string, string> =>
   accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 
 const normalizeString = (value: unknown, fallback = ""): string =>
@@ -72,7 +78,7 @@ const resolveProfilePictureUrl = (path: unknown): string | null => {
   return `${API_BASE_URL}${path}`;
 };
 
-// ✅ Updated user parser (includes trustScore + profilePicture)
+// ✅ Updated user parser (includes trustScore + profilePicture + profileStatus)
 export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   id: parseUserId(payload.id),
   username:
@@ -86,6 +92,7 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),
   visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
+  profileStatus: normalizeOptionalString(payload.profileStatus),
 });
 
 const extractErrorMessage = async (response: Response): Promise<string> => {
@@ -99,7 +106,9 @@ const extractErrorMessage = async (response: Response): Promise<string> => {
 };
 
 // ✅ Fetch logged-in user's profile
-export const fetchProfile = async (accessToken: string): Promise<CurrentUser> => {
+export const fetchProfile = async (
+  accessToken: string
+): Promise<CurrentUser> => {
   const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
     headers: buildAuthHeaders(accessToken),
   });
@@ -113,7 +122,9 @@ export const fetchProfile = async (accessToken: string): Promise<CurrentUser> =>
 };
 
 // ✅ Fetch available tags
-export const fetchTagCatalog = async (fetcher: AuthorizedFetch): Promise<string[]> => {
+export const fetchTagCatalog = async (
+  fetcher: AuthorizedFetch
+): Promise<string[]> => {
   const response = await fetcher(`${API_BASE_URL}/tags/catalog`);
 
   if (!response.ok) {
@@ -130,9 +141,10 @@ export type UpdateUserProfilePayload = {
   interestTags?: string[];
   visibility?: boolean;
   profilePicture?: string | null;
+  profileStatus?: string | null;
 };
 
-// ✅ Update user profile details (name, tags, etc.)
+// ✅ Update user profile details (name, tags, status, etc.)
 export const updateUserProfile = async (
   userId: number,
   payload: UpdateUserProfilePayload,
@@ -144,6 +156,7 @@ export const updateUserProfile = async (
   if ("interestTags" in payload) body.interestTags = payload.interestTags;
   if ("visibility" in payload) body.visibility = payload.visibility;
   if ("profilePicture" in payload) body.profilePicture = payload.profilePicture;
+  if ("profileStatus" in payload) body.profileStatus = payload.profileStatus;
 
   if (Object.keys(body).length === 0) {
     throw new Error("No profile fields provided.");
@@ -182,6 +195,20 @@ export const updateUserVisibility = async (
   }
 
   const data = (await response.json()) as JsonRecord;
+  return toCurrentUser(data);
+};
+
+// ✅ Fetch any user by id (sanitized view for others)
+export const fetchUserById = async (userId: number, accessToken?: string) => {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
   return toCurrentUser(data);
 };
 

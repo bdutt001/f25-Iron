@@ -48,13 +48,13 @@ const sortMessages = (items: Message[]) =>
   );
 
 export default function ChatScreen() {
-  const { chatId, name, receiverId, profilePicture, returnToMessages } = useLocalSearchParams<{
+  const { chatId, name, receiverId, profilePicture } = useLocalSearchParams<{
     chatId: string;
     name?: string;
     receiverId?: string;
     profilePicture?: string;
-    returnToMessages?: string;
   }>();
+
   const navigation = useNavigation();
   const { currentUser, fetchWithAuth, setStatus, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
@@ -82,7 +82,6 @@ export default function ChatScreen() {
   const canSend = trimmedMessage.length > 0;
   const safeAreaEdges: Edge[] =
     Platform.OS === "ios" ? ["left", "right", "bottom"] : ["left", "right", "bottom"];
-  const shouldReturnToMessages = returnToMessages === "1" || returnToMessages === "true";
   const bottomInset = Math.max(insets.bottom, 8);
   const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + tabBarHeight : 0;
   const composerBottomPadding = Math.max(bottomInset, 10);
@@ -279,11 +278,30 @@ export default function ChatScreen() {
       if (!currentUser || !chatId) return;
       const showLoading = !options?.silent;
       if (showLoading) setLoading(true);
+
       try {
         const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/${chatId}`, {
           headers: { "Content-Type": "application/json" },
         });
-        if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
+
+        // 🔒 Special handling: if this chat is no longer allowed (e.g., blocked → 403),
+        // quietly send the user back to the Messages index instead of showing an error.
+        if (response.status === 403) {
+          if (!options?.silent) {
+            setError(null); // don't show "Failed to load messages (403)"
+
+            if (!hasNavigatedAwayRef.current) {
+              hasNavigatedAwayRef.current = true;
+              router.replace("/(tabs)/messages");
+            }
+          }
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`Failed to load messages (${response.status})`);
+        }
+
         const data = (await response.json()) as Message[];
         mergeMessages(data);
         if (showLoading) {
@@ -325,21 +343,22 @@ export default function ChatScreen() {
     }
   }, [chatId, currentUser, fetchWithAuth, mergeMessages, scrollToBottom, trimmedMessage]);
 
+  // ✅ ALWAYS send back to messages index when leaving this screen
   const goToMessagesList = useCallback(() => {
     if (hasNavigatedAwayRef.current) return;
     hasNavigatedAwayRef.current = true;
     router.replace("/(tabs)/messages");
   }, []);
 
+  // Intercept back (hardware, header, gestures) and redirect to Messages index
   useEffect(() => {
-    if (!shouldReturnToMessages) return;
     const unsubscribe = navigation.addListener("beforeRemove", (event) => {
       if (hasNavigatedAwayRef.current) return;
       event.preventDefault();
       goToMessagesList();
     });
     return unsubscribe;
-  }, [navigation, shouldReturnToMessages, goToMessagesList]);
+  }, [navigation, goToMessagesList]);
 
   useLayoutEffect(() => {
     if (!name) return;
@@ -351,7 +370,7 @@ export default function ChatScreen() {
       headerRightContainerStyle: { paddingRight: 6 },
       headerLeft: () => (
         <TouchableOpacity
-          onPress={() => (navigation as any)?.goBack?.()}
+          onPress={goToMessagesList}
           style={styles.headerIconButton}
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -387,7 +406,7 @@ export default function ChatScreen() {
         </TouchableOpacity>
       ),
     });
-  }, [name, navigation, receiverInitial, resolvedProfileImage, styles, tabHeaderOptions]);
+  }, [name, navigation, receiverInitial, resolvedProfileImage, styles, tabHeaderOptions, goToMessagesList]);
 
   useEffect(() => {
     if (!chatId || messages.length === 0) return;
@@ -476,15 +495,14 @@ export default function ChatScreen() {
 
       return (
         <View style={[styles.messageRow, { justifyContent: isMine ? "flex-end" : "flex-start" }]}>
-          {!isMine && (
-            resolvedProfileImage ? (
+          {!isMine &&
+            (resolvedProfileImage ? (
               <Image source={{ uri: resolvedProfileImage }} style={styles.avatarSmall} />
             ) : (
               <View style={styles.avatarSmall}>
                 <Text style={{ color: colors.text, fontWeight: "700" }}>{receiverInitial}</Text>
               </View>
-            )
-          )}
+            ))}
           <View
             style={[
               styles.bubbleBase,
@@ -668,11 +686,25 @@ export default function ChatScreen() {
         onClose={() => setMenuOpen(false)}
         targetUser={{ id: Number(receiverId ?? 0), name: name ?? "" }}
         onBlocked={() => {
+          setMenuOpen(false);
           try {
             (navigation as any).goBack?.();
           } catch {
             //
           }
+        }}
+        onReported={() => {
+          // optional: you can show a toast, etc.
+          setMenuOpen(false);
+        }}
+        onViewProfile={(userId) => {
+          // close the menu
+          setMenuOpen(false);
+          // navigate to the read-only profile screen
+          router.push({
+            pathname: "/user/[id]",
+            params: { id: String(userId), from: "messages" },  // 👈 coming from Messages
+          });
         }}
       />
     </SafeAreaView>

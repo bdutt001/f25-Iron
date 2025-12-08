@@ -11,6 +11,8 @@ type Props = {
   targetUser: { id: number; name?: string | null; email?: string | null } | null;
   onBlocked?: (userId: number) => void;
   onReported?: (userId: number) => void;
+  // ✅ Optional handler for "View Profile" (e.g., from map or messages tab)
+  onViewProfile?: (userId: number) => void;
 };
 
 export const REPORT_REASONS = [
@@ -28,7 +30,12 @@ type ReportReasonMenuProps = {
   subjectLabel: string;
 };
 
-export function ReportReasonMenu({ visible, onClose, onSelectReason, subjectLabel }: ReportReasonMenuProps) {
+export function ReportReasonMenu({
+  visible,
+  onClose,
+  onSelectReason,
+  subjectLabel,
+}: ReportReasonMenuProps) {
   const actions: OverflowAction[] = REPORT_REASONS.map((reason) => ({
     key: `report-${reason.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     label: reason,
@@ -53,9 +60,18 @@ export const REPORT_SUCCESS_NOTICE = {
   message: "Thank you for your report. We will review it promptly.",
 } as const;
 
-export default function UserOverflowMenu({ visible, onClose, targetUser, onBlocked, onReported }: Props) {
+export default function UserOverflowMenu({
+  visible,
+  onClose,
+  targetUser,
+  onBlocked,
+  onReported,
+  onViewProfile,
+}: Props) {
   const { currentUser, fetchWithAuth } = useUser();
-  const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(null);
+  const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(
+    null
+  );
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [notice, setNotice] = useState<typeof REPORT_SUCCESS_NOTICE | null>(null);
   const { showError } = useThemedAlert();
@@ -63,15 +79,21 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
   const resolveTarget = useCallback(() => {
     if (persisted) return persisted;
     if (!targetUser) return null;
-    return { id: targetUser.id, name: targetUser.name || targetUser.email || "User" };
+    return {
+      id: targetUser.id,
+      name: targetUser.name || targetUser.email || "User",
+    };
   }, [persisted, targetUser]);
 
-  // Persist user details while the menu is visible to avoid flicker to generic labels
+  // Persist user details while the menu is visible to avoid flicker
   useEffect(() => {
     if (visible && targetUser) {
-      setPersisted({ id: targetUser.id, name: targetUser.name || targetUser.email || "User" });
+      setPersisted({
+        id: targetUser.id,
+        name: targetUser.name || targetUser.email || "User",
+      });
     }
-    // Do not clear on close immediately; keeping snapshot eliminates closing flicker
+    // We intentionally *don’t* clear on close to avoid title flicker
   }, [visible, targetUser]);
 
   const doReport = async () => {
@@ -114,9 +136,12 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
       return;
     }
     try {
-      const res = await fetchWithAuth(`${API_BASE_URL}/api/users/${effective.id}/block`, {
-        method: "POST",
-      });
+      const res = await fetchWithAuth(
+        `${API_BASE_URL}/api/users/${effective.id}/block`,
+        {
+          method: "POST",
+        }
+      );
       if (!res.ok) throw new Error(`Failed to block (${res.status})`);
       onBlocked?.(effective.id);
     } catch (e: any) {
@@ -124,12 +149,50 @@ export default function UserOverflowMenu({ visible, onClose, targetUser, onBlock
     }
   };
 
-  const name = resolveTarget()?.name ?? targetUser?.name ?? targetUser?.email ?? "User";
+  const resolved = resolveTarget();
+  const name =
+    resolved?.name ?? targetUser?.name ?? targetUser?.email ?? "User";
+  const effectiveId = resolved?.id ?? targetUser?.id;
 
-  const actions: OverflowAction[] = [
-    { key: "report", label: `Report ${name}`, destructive: true, onPress: doReport, icon: "flag-outline" },
-    { key: "block", label: `Block ${name}`, destructive: true, onPress: doBlock, icon: "hand-left-outline" },
-  ];
+  // Only show "View Profile" when:
+  // - we have an id
+  // - a handler was provided
+  // - and it's not the current user
+  const canViewProfile =
+    !!onViewProfile &&
+    typeof effectiveId === "number" &&
+    (!currentUser || currentUser.id !== effectiveId);
+
+  const actions: OverflowAction[] = [];
+
+  if (canViewProfile) {
+    actions.push({
+      key: "view-profile",
+      label: `View ${name}'s Profile`,
+      icon: "person-circle-outline",
+      onPress: () => {
+        if (!effectiveId) return;
+        onViewProfile?.(effectiveId);
+      },
+    });
+  }
+
+  actions.push(
+    {
+      key: "report",
+      label: `Report ${name}`,
+      destructive: true,
+      onPress: doReport,
+      icon: "flag-outline",
+    },
+    {
+      key: "block",
+      label: `Block ${name}`,
+      destructive: true,
+      onPress: doBlock,
+      icon: "hand-left-outline",
+    }
+  );
 
   return (
     <>
