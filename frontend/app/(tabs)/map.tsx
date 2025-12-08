@@ -12,12 +12,13 @@ import MapView, { Marker } from "react-native-maps";
 import { Image as ExpoImage } from "expo-image";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
-import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
+import { ApiUser, NearbyUser } from "../../utils/geo";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAppTheme } from "../../context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
+import * as Location from "expo-location";
 // Overlay implementation removed in favor of native sprites
 
 const DARK_MAP_STYLE = [
@@ -42,6 +43,7 @@ const DARK_MAP_STYLE = [
 ];
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
+const NEARBY_RADIUS_METERS = 500;
 const BASE_AVATAR_SIZE = 46;
 const BASE_AVATAR_BORDER = 3;
 const MAX_ANDROID_MARKER_PX = 100;
@@ -52,6 +54,11 @@ type AvatarMetrics = {
   image: number;
   font: number;
 };
+
+const normalizeTags = (tags: unknown): string[] =>
+  Array.isArray(tags)
+    ? tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    : [];
 
 const computeAvatarMetrics = (): AvatarMetrics => {
   const imageFrom = (size: number, border: number) => Math.max(size - border * 2, 0);
@@ -92,8 +99,8 @@ type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
 
 export default function MapScreen() {
-  const [center] = useState<Coords>(ODU_CENTER);
-  const [myCoords] = useState<Coords>(ODU_CENTER);
+  const [center, setCenter] = useState<Coords>(ODU_CENTER);
+  const [myCoords, setMyCoords] = useState<Coords>(ODU_CENTER);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
@@ -111,8 +118,6 @@ export default function MapScreen() {
     setStatus,
     accessToken,
     currentUser,
-    prefetchedUsers,
-    setPrefetchedUsers,
     isStatusUpdating,
     fetchWithAuth,
   } = useUser();
@@ -146,38 +151,166 @@ export default function MapScreen() {
       }
     : null;
 
-  const loadUsers = useCallback(async () => {
-    userFetchAbortRef.current?.abort();
-    const controller = new AbortController();
-    userFetchAbortRef.current = controller;
-    setIsRefreshingUsers(true);
+  const fetchSavedLocation = useCallback(async (): Promise<Coords | null> => {
+    if (!accessToken) return null;
+
     try {
-      const response = await fetchWithAuth(
-        `${API_BASE_URL}/users`,
-        { signal: controller.signal, skipAuth: !accessToken }
-      );
-      if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
-      const data = (await response.json()) as ApiUser[];
-      const filtered = data.filter(
-        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
-      );
-      if (!isMountedRef.current || controller.signal.aborted) return;
-      setPrefetchedUsers(filtered);
-      setErrorMsg(null);
-    } catch (err) {
-      if ((err as Error)?.name === "AbortError") return;
-      console.error("? Unable to load users:", err);
-      if (!isMountedRef.current) return;
-      setErrorMsg("Unable to load users from the server");
-    } finally {
-      if (userFetchAbortRef.current?.signal === controller.signal) {
-        userFetchAbortRef.current = null;
-      }
-      if (isMountedRef.current) {
-        setIsRefreshingUsers(false);
-      }
+      const response = await fetchWithAuth(`${API_BASE_URL}/users/me/location`);
+      if (response.status === 404) return null;
+      if (!response.ok) return null;
+
+      const data = (await response.json()) as { latitude?: unknown; longitude?: unknown };
+      const latitude = Number(data?.latitude);
+      const longitude = Number(data?.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { latitude, longitude };
+    } catch {
+      return null;
     }
-  }, [accessToken, currentUserId, fetchWithAuth, setPrefetchedUsers]);
+  }, [accessToken, fetchWithAuth]);
+
+  const persistLocationToBackend = useCallback(
+    async (coords: Coords) => {
+      if (!accessToken) return;
+      try {
+        await fetch(`${API_BASE_URL}/users/me/location`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(coords),
+        });
+      } catch (err) {
+        console.warn("Failed to send location to backend:", err);
+      }
+    },
+    [accessToken]
+  );
+
+  const requestDeviceLocation = useCallback(async (): Promise<Coords | null> => {
+    try {
+      const { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permissionStatus !== "granted") {
+        return null;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+    } catch (err) {
+      console.warn("Unable to fetch device location, falling back to ODU coords:", err);
+      return null;
+    }
+  }, []);
+
+  const ensureLocation = useCallback(async (): Promise<Coords> => {
+    const saved = await fetchSavedLocation();
+    if (saved) {
+      setCenter(saved);
+      setMyCoords(saved);
+      return saved;
+    }
+
+    const deviceCoords = await requestDeviceLocation();
+    const fallback = deviceCoords ?? ODU_CENTER;
+    if (accessToken) {
+      await persistLocationToBackend(fallback);
+    }
+    setCenter(fallback);
+    setMyCoords(fallback);
+    return fallback;
+  }, [accessToken, fetchSavedLocation, persistLocationToBackend, requestDeviceLocation]);
+
+  const normalizeNearby = useCallback(
+    (payload: any): NearbyUser[] => {
+      const list = Array.isArray(payload?.users) ? payload.users : [];
+      return list
+        .map((item: any): NearbyUser | null => {
+          const id = Number(item?.id);
+          const latitude = Number(item?.latitude);
+          const longitude = Number(item?.longitude);
+          if (!Number.isFinite(id) || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            return null;
+          }
+          const email = typeof item?.email === "string" ? item.email : "";
+          const name = typeof item?.name === "string" ? item.name : email;
+          return {
+            id,
+            email,
+            name,
+            interestTags: normalizeTags(item?.interestTags),
+            profilePicture: typeof item?.profilePicture === "string" ? item.profilePicture : null,
+            coords: { latitude, longitude },
+            trustScore: Number.isFinite(Number(item?.trustScore)) ? Number(item?.trustScore) : 0,
+          };
+        })
+        .filter((u): u is NearbyUser => Boolean(u));
+    },
+    []
+  );
+
+  const loadNearbyUsers = useCallback(
+    async (coords: Coords) => {
+      userFetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      userFetchAbortRef.current = controller;
+      setIsRefreshingUsers(true);
+      try {
+        if (!accessToken) {
+          setErrorMsg("Please log in to view the map.");
+          setNearbyUsers([]);
+          return;
+        }
+
+        const params = new URLSearchParams({
+          radius: String(NEARBY_RADIUS_METERS),
+          sort: "distance",
+        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/nearby?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Failed to load nearby users (${response.status})`);
+        const payload = await response.json();
+        const users = normalizeNearby(payload).filter(
+          (u) => currentUserId ? u.id !== currentUserId : true
+        );
+        if (!isMountedRef.current || controller.signal.aborted) return;
+        setNearbyUsers(users);
+        setErrorMsg(null);
+
+        if (!hasAnimatedRegion.current && mapRef.current && users.length > 0) {
+          const first = users[0].coords;
+          mapRef.current.animateToRegion(
+            {
+              latitude: first.latitude,
+              longitude: first.longitude,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            },
+            400
+          );
+          hasAnimatedRegion.current = true;
+        }
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+        console.error("Unable to load nearby users:", err);
+        if (!isMountedRef.current) return;
+        setErrorMsg("Unable to load nearby users");
+      } finally {
+        if (userFetchAbortRef.current?.signal === controller.signal) {
+          userFetchAbortRef.current = null;
+        }
+        if (isMountedRef.current) {
+          setIsRefreshingUsers(false);
+        }
+      }
+    },
+    [accessToken, currentUserId, fetchWithAuth, normalizeNearby]
+  );
 
   // Compute simple match score (% overlap of tags using Jaccard)
   const matchPercent = useCallback(
@@ -234,44 +367,21 @@ export default function MapScreen() {
 
   // Actions handled by shared UserOverflowMenu
 
-  useEffect(() => {
-    if (prefetchedUsers && prefetchedUsers.length > 0) {
-      const filtered = prefetchedUsers.filter(
-        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
-      );
-      const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
-      setNearbyUsers(scattered);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void (async () => {
+        const coords = await ensureLocation();
+        if (!active) return;
+        await loadNearbyUsers(coords);
+      })();
 
-      // ? Only animate/zoom once on initial mount
-      if (!hasAnimatedRegion.current && mapRef.current && scattered.length > 0) {
-        const first = scattered[0].coords;
-        mapRef.current.animateToRegion(
-          {
-            latitude: first.latitude,
-            longitude: first.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          },
-          400
-        );
-        hasAnimatedRegion.current = true;
-      }
-      return;
-    }
-
-    if (!currentUser) return;
-    void loadUsers();
-  }, [prefetchedUsers, currentUser, currentUserId, center.latitude, center.longitude, loadUsers]);
-
-  // 🧠 Bridge effect for late prefetched users
-  useEffect(() => {
-    if (!prefetchedUsers?.length || nearbyUsers.length > 0) return;
-    const filtered = prefetchedUsers.filter(
-      (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
-    );
-    const scattered = scatterUsersAround(filtered, center.latitude, center.longitude);
-    setNearbyUsers(scattered);
-  }, [prefetchedUsers, nearbyUsers.length, currentUserId, center.latitude, center.longitude]);
+      return () => {
+        active = false;
+        userFetchAbortRef.current?.abort();
+      };
+    }, [ensureLocation, loadNearbyUsers])
+  );
 
   // Removed markerTracks effect
 
@@ -347,14 +457,14 @@ export default function MapScreen() {
     if (previousStatusRef.current === status) return;
     previousStatusRef.current = status;
 
-    if (status === "Hidden") {
-      setSelectedUser(null);
-      setMenuTarget(null);
-      return;
-    }
+    setSelectedUser(null);
+    setMenuTarget(null);
 
-    void loadUsers();
-  }, [status, loadUsers]);
+    void (async () => {
+      const coords = await ensureLocation();
+      await loadNearbyUsers(coords);
+    })();
+  }, [status, ensureLocation, loadNearbyUsers]);
 
   // Always refresh user list when the map tab gains focus (covers block/unblock changes)
   useFocusEffect(
@@ -363,7 +473,10 @@ export default function MapScreen() {
 
       const tick = () => {
         if (cancelled) return;
-        void loadUsers();
+        void (async () => {
+          const coords = await ensureLocation();
+          await loadNearbyUsers(coords);
+        })();
       };
 
       stopUserPolling();
@@ -374,7 +487,7 @@ export default function MapScreen() {
         cancelled = true;
         stopUserPolling();
       };
-    }, [loadUsers, stopUserPolling])
+    }, [ensureLocation, loadNearbyUsers, stopUserPolling])
   );
 
   const textColor = { color: colors.text };
@@ -434,8 +547,7 @@ export default function MapScreen() {
         targetUser={menuTarget}
         onBlocked={(uid) => {
           setNearbyUsers((prevUsers: NearbyUser[]) => prevUsers.filter((user) => user.id !== uid));
-          setPrefetchedUsers((prevUsers) => (prevUsers ? prevUsers.filter((user) => user.id !== uid) : prevUsers));
-          void loadUsers();
+          void loadNearbyUsers(center);
           setSelectedUser(null);
         }}
       />

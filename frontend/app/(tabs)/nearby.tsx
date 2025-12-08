@@ -1,7 +1,7 @@
 /**
  * NearbyScreen component displays nearby users based on the latest locations stored in the backend.
  * It ensures the viewer has a saved location (device or fallback), fetches nearby users with distance,
- * and lets the user sort by match or distance with a configurable radius cutoff.
+ * and lets the user sort by match or distance.
  */
 
 import * as Location from "expo-location";
@@ -31,7 +31,7 @@ import { ApiUser, formatDistance } from "../../utils/geo";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-const RADIUS_OPTIONS = [250, 500, 750, 1000] as const;
+const NEARBY_RADIUS_METERS = 500;
 
 type Coordinates = { latitude: number; longitude: number };
 type NearbyWithDistance = ApiUser & {
@@ -69,8 +69,6 @@ export default function NearbyScreen() {
   const [error, setError] = useState<string | null>(null);
   const [menuTarget, setMenuTarget] = useState<ApiUser | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("match");
-  const [radius, setRadius] = useState<number>(500);
-  const [radiusMenuOpen, setRadiusMenuOpen] = useState(false);
 
   const { status, setStatus, isStatusUpdating, accessToken, currentUser, fetchWithAuth } = useUser();
   const hasLoadedOnceRef = useRef(false);
@@ -126,9 +124,12 @@ export default function NearbyScreen() {
               typeof item?.locationUpdatedAt === "string" ? item.locationUpdatedAt : undefined,
           };
         })
-        .filter((item): item is NearbyWithDistance => !!item && item.distanceMeters <= radius);
+        .filter(
+          (item): item is NearbyWithDistance =>
+            !!item && item.distanceMeters <= NEARBY_RADIUS_METERS
+        );
     },
-    [radius]
+    []
   );
 
   const fetchSavedLocation = useCallback(async (): Promise<Coordinates | null> => {
@@ -226,7 +227,7 @@ export default function NearbyScreen() {
         if (!silent) setLoading(true);
 
         const params = new URLSearchParams({
-          radius: String(radius),
+          radius: String(NEARBY_RADIUS_METERS),
           sort: sortMode,
         });
         const response = await fetchWithAuth(`${API_BASE_URL}/users/nearby?${params.toString()}`);
@@ -237,7 +238,7 @@ export default function NearbyScreen() {
 
         const payload = await response.json();
         const normalized = normalizeNearbyResponse(payload).filter(
-          (user) => user.distanceMeters <= radius
+          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS
         );
 
         setUsers(normalized);
@@ -250,7 +251,7 @@ export default function NearbyScreen() {
         setRefreshing(false);
       }
     },
-    [accessToken, fetchWithAuth, normalizeNearbyResponse, radius, sortMode]
+    [accessToken, fetchWithAuth, normalizeNearbyResponse, sortMode]
   );
 
   const ensureAndLoad = useCallback(
@@ -304,7 +305,7 @@ export default function NearbyScreen() {
   useEffect(() => {
     if (!location) return;
     void loadNearbyUsers(location, { silent: false });
-  }, [location, loadNearbyUsers, sortMode, radius]);
+  }, [location, loadNearbyUsers, sortMode]);
 
   useEffect(() => {
     if (!hasLoadedOnceRef.current) return;
@@ -383,8 +384,8 @@ export default function NearbyScreen() {
   const textColor = useMemo(() => ({ color: colors.text }), [colors.text]);
   const mutedText = useMemo(() => ({ color: colors.muted }), [colors.muted]);
   const visibleUsers = useMemo(
-    () => users.filter((u) => u.distanceMeters <= radius),
-    [users, radius]
+    () => users.filter((u) => u.distanceMeters <= NEARBY_RADIUS_METERS),
+    [users]
   );
 
   const renderUserCard = useCallback(
@@ -616,132 +617,72 @@ export default function NearbyScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Sorting and radius controls */}
+      {/* Sorting controls */}
       <View style={styles.filterBar}>
-        <View style={{ flex: 1, flexDirection: "row" }}>
-          <Pressable
-            onPress={() => {
-              setSortMode("match");
-              setRadiusMenuOpen(false);
-            }}
-            style={({ pressed }) => [
-              styles.toggleOption,
-              {
-                borderColor: colors.border,
-                backgroundColor:
-                  sortMode === "match"
-                    ? isDark
-                      ? "rgba(0,123,255,0.2)"
-                      : "rgba(0,123,255,0.1)"
-                    : "transparent",
-              },
-              pressed && styles.togglePressed,
+        <Pressable
+          onPress={() => setSortMode("match")}
+          style={({ pressed }) => [
+            styles.toggleOption,
+            {
+              borderColor: colors.border,
+              backgroundColor:
+                sortMode === "match"
+                  ? isDark
+                    ? "rgba(0,123,255,0.25)"
+                    : "rgba(0,123,255,0.12)"
+                  : isDark
+                  ? "rgba(255,255,255,0.04)"
+                  : "rgba(0,0,0,0.02)",
+            },
+            pressed && styles.togglePressed,
+          ]}
+        >
+          <Ionicons
+            name="sparkles-outline"
+            size={16}
+            color={sortMode === "match" ? colors.accent : colors.text}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              { color: sortMode === "match" ? colors.accent : colors.text },
             ]}
           >
-            <Ionicons
-              name="sparkles-outline"
-              size={16}
-              color={sortMode === "match" ? colors.accent : colors.text}
-            />
-            <Text
-              style={[
-                styles.toggleText,
-                { color: sortMode === "match" ? colors.accent : colors.text },
-              ]}
-            >
-              Match %
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              setSortMode("distance");
-              setRadiusMenuOpen(false);
-            }}
-            style={({ pressed }) => [
-              styles.toggleOption,
-              {
-                borderColor: colors.border,
-                backgroundColor:
-                  sortMode === "distance"
-                    ? isDark
-                      ? "rgba(0,123,255,0.2)"
-                      : "rgba(0,123,255,0.1)"
-                    : "transparent",
-              },
-              pressed && styles.togglePressed,
+            Match %
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setSortMode("distance")}
+          style={({ pressed }) => [
+            styles.toggleOption,
+            {
+              borderColor: colors.border,
+              backgroundColor:
+                sortMode === "distance"
+                  ? isDark
+                    ? "rgba(0,123,255,0.25)"
+                    : "rgba(0,123,255,0.12)"
+                  : isDark
+                  ? "rgba(255,255,255,0.04)"
+                  : "rgba(0,0,0,0.02)",
+            },
+            pressed && styles.togglePressed,
+          ]}
+        >
+          <Ionicons
+            name="navigate-outline"
+            size={16}
+            color={sortMode === "distance" ? colors.accent : colors.text}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              { color: sortMode === "distance" ? colors.accent : colors.text },
             ]}
           >
-            <Ionicons
-              name="navigate-outline"
-              size={16}
-              color={sortMode === "distance" ? colors.accent : colors.text}
-            />
-            <Text
-              style={[
-                styles.toggleText,
-                { color: sortMode === "distance" ? colors.accent : colors.text },
-              ]}
-            >
-              Distance
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.radiusControl}>
-          <Pressable
-            onPress={() => setRadiusMenuOpen((open) => !open)}
-            style={({ pressed }) => [
-              styles.radiusButton,
-              {
-                borderColor: colors.border,
-                backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-              },
-              pressed && styles.togglePressed,
-            ]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.radiusLabel, { color: colors.muted }]}>Cutoff</Text>
-              <Text style={[styles.radiusValue, textColor]}>{radius} m</Text>
-            </View>
-            <Ionicons
-              name={radiusMenuOpen ? "chevron-up" : "chevron-down"}
-              size={16}
-              color={colors.text}
-            />
-          </Pressable>
-
-          {radiusMenuOpen && (
-            <View
-              style={[
-                styles.dropdown,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  shadowColor: isDark ? "#000" : "#0f172a",
-                },
-              ]}
-            >
-              {RADIUS_OPTIONS.map((option) => (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    setRadius(option);
-                    setRadiusMenuOpen(false);
-                  }}
-                  style={({ pressed }) => [
-                    styles.dropdownItem,
-                    pressed && styles.dropdownItemPressed,
-                  ]}
-                >
-                  <Text style={[styles.dropdownText, textColor]}>{option} m</Text>
-                  {option === radius && (
-                    <Ionicons name="checkmark" size={16} color={colors.accent} />
-                  )}
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
+            Distance
+          </Text>
+        </Pressable>
       </View>
 
       {loading && hasLoadedOnceRef.current && (
@@ -817,9 +758,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
   },
   toggleOption: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -827,44 +768,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    marginRight: 10,
+    flex: 1,
   },
-  toggleText: { fontSize: 14, fontWeight: "700" },
+  toggleText: { fontSize: 14, fontWeight: "700", marginLeft: 8 },
   togglePressed: { opacity: 0.85 },
-  radiusControl: { position: "relative", minWidth: 130 },
-  radiusButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  radiusLabel: { fontSize: 12, fontWeight: "600" },
-  radiusValue: { fontSize: 15, fontWeight: "700" },
-  dropdown: {
-    position: "absolute",
-    top: "100%",
-    right: 0,
-    marginTop: 6,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 4,
-    minWidth: 140,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  dropdownItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  dropdownItemPressed: { opacity: 0.85 },
-  dropdownText: { fontSize: 14, fontWeight: "600" },
   inlineLoader: {
     flexDirection: "row",
     alignItems: "center",
