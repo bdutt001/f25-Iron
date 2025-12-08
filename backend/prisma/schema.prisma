@@ -23,7 +23,7 @@ model User {
   tokenVersion   Int        @default(0)
   name           String?
   profilePicture String?
-  visibility     Boolean    @default(true)
+  visibility     Boolean    @default(false)
   trustScore     Int        @default(99)
   createdAt      DateTime   @default(now())
   lastLogin      DateTime?
