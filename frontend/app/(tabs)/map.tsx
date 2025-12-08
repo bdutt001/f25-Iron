@@ -136,6 +136,7 @@ export default function MapScreen() {
     fetchWithAuth,
   } = useUser();
   const currentUserId = currentUser?.id;
+  const deviceLocationAttemptedRef = useRef(false);
 
   const stopUserPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -223,14 +224,27 @@ export default function MapScreen() {
 
   const ensureLocation = useCallback(async (): Promise<Coords> => {
     const saved = await fetchSavedLocation();
-    if (saved) {
-      setCenter(saved);
-      setMyCoords(saved);
-      return saved;
+
+    let nextCoords: Coords | null = saved ?? null;
+    if (!deviceLocationAttemptedRef.current) {
+      deviceLocationAttemptedRef.current = true;
+      const deviceCoords = await requestDeviceLocation();
+      if (deviceCoords) {
+        nextCoords = deviceCoords;
+        if (accessToken) {
+          await persistLocationToBackend(deviceCoords);
+        }
+      }
     }
 
-    const deviceCoords = await requestDeviceLocation();
-    const fallback = deviceCoords ?? ODU_CENTER;
+    if (nextCoords) {
+      setCenter(nextCoords);
+      setMyCoords(nextCoords);
+      return nextCoords;
+    }
+
+    // If we failed to get device location, fall back to ODU without re-prompting.
+    const fallback = ODU_CENTER;
     if (accessToken) {
       await persistLocationToBackend(fallback);
     }

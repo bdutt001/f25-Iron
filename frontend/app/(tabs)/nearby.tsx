@@ -74,6 +74,7 @@ export default function NearbyScreen() {
   const { status, setStatus, isStatusUpdating, accessToken, currentUser, fetchWithAuth } = useUser();
   const hasLoadedOnceRef = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deviceLocationAttemptedRef = useRef(false);
 
   const normalizeNearbyResponse = useCallback(
     (payload: unknown): NearbyWithDistance[] => {
@@ -203,13 +204,26 @@ export default function NearbyScreen() {
     }
 
     const saved = await fetchSavedLocation();
-    if (saved) {
-      setLocation(saved);
-      return saved;
+
+    // Always try to get device location at least once per session,
+    // even if we already have a saved fallback (e.g., seeded ODU coords).
+    let nextCoords: Coordinates | null = saved ?? null;
+    if (!deviceLocationAttemptedRef.current) {
+      deviceLocationAttemptedRef.current = true;
+      const deviceCoords = await requestDeviceLocation();
+      if (deviceCoords) {
+        nextCoords = deviceCoords;
+        await persistLocationToBackend(deviceCoords);
+      }
     }
 
-    const deviceCoords = await requestDeviceLocation();
-    const fallbackCoords = deviceCoords ?? ODU_CENTER;
+    if (nextCoords) {
+      setLocation(nextCoords);
+      return nextCoords;
+    }
+
+    // If we failed to get device location, fall back to ODU without re-prompting.
+    const fallbackCoords = ODU_CENTER;
     await persistLocationToBackend(fallbackCoords);
     setLocation(fallbackCoords);
     return fallbackCoords;
