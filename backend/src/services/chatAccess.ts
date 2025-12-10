@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { isChatExpired, updateChatExpiry } from "./chatExpiry";
 
 type AccessCheckResult =
   | { allowed: true; otherUserId: number | null }
@@ -13,9 +14,17 @@ type AccessCheckResult =
 export const ensureChatAccess = async (chatSessionId: number, userId: number): Promise<AccessCheckResult> => {
   const chat = await prisma.chatSession.findUnique({
     where: { id: chatSessionId },
-    include: { participants: true },
+    select: {
+      expiresAt: true,
+      participants: true,
+    },
   });
   if (!chat) {
+    return { allowed: false, reason: "not_found" };
+  }
+
+  if (isChatExpired(chat.expiresAt)) {
+    await prisma.chatSession.delete({ where: { id: chatSessionId } }).catch(() => {});
     return { allowed: false, reason: "not_found" };
   }
 

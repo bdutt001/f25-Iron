@@ -4,6 +4,7 @@ import { authenticate } from "../middleware/authenticate";
 import { AuthenticatedUser } from "../types/auth";
 import { ensureChatAccess } from "../services/chatAccess";
 import { broadcastMessageToChat } from "../realtime/messageHub";
+import { updateChatExpiry } from "../services/chatExpiry";
 
 const router = Router();
 
@@ -153,12 +154,27 @@ router.get("/:chatId", authenticate, async (req: AuthRequest, res) => {
       return res.status(status).json({ message: "You cannot access this chat" });
     }
 
+    const expiryState = await updateChatExpiry(chatId);
+    if (expiryState?.deleted) {
+      return res.status(410).json({ message: "Chat expired" });
+    }
+
     const messages = await prisma.message.findMany({
       where: { chatSessionId: chatId },
       orderBy: { createdAt: "asc" },
     });
 
-    res.json(messages);
+    const expiresAt = expiryState?.expiresAt ?? null;
+    const expiresInSeconds =
+      expiresAt !== null ? Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000)) : null;
+
+    res.json({
+      messages,
+      expiresAt,
+      expiresInSeconds,
+      outOfRange: expiryState?.outOfRange ?? false,
+      distanceMeters: expiryState?.distanceMeters ?? null,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to load messages" });
@@ -179,6 +195,11 @@ router.post("/", authenticate, async (req: AuthRequest, res) => {
     if (access.allowed === false) {
       const status = access.reason === "not_found" ? 404 : 403;
       return res.status(status).json({ message: "You cannot send messages to this chat" });
+    }
+
+    const expiryState = await updateChatExpiry(chatSessionIdNum);
+    if (expiryState?.deleted) {
+      return res.status(410).json({ message: "Chat expired" });
     }
 
     const message = await prisma.message.create({

@@ -33,6 +33,16 @@ type Message = {
   createdAt: string;
 };
 
+type ChatMetaResponse =
+  | Message[]
+  | {
+      messages: Message[];
+      expiresAt?: string | null;
+      expiresInSeconds?: number | null;
+      outOfRange?: boolean;
+      distanceMeters?: number | null;
+    };
+
 type StreamEnvelope =
   | { type: "message"; data: Message }
   | { type: "connected" }
@@ -70,6 +80,10 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [invisibilityWarningDismissed, setInvisibilityWarningDismissed] = useState(false); // state for warning banner
   const [visibilityConfirmed, setVisibilityConfirmed] = useState(false); // ✅ state for confirmation banner
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+  const [outOfRange, setOutOfRange] = useState(false);
+  const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const flatListRef = useRef<FlatList<DisplayItem>>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -249,6 +263,24 @@ export default function ChatScreen() {
           fontWeight: "600",
           textAlign: "center",
         },
+        expiryBanner: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginHorizontal: 16,
+          marginBottom: 8,
+          padding: 12,
+          borderRadius: 12,
+          backgroundColor: isDark ? "rgba(220,38,38,0.15)" : "rgba(255,235,230,0.95)",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: isDark ? "rgba(220,38,38,0.5)" : "rgba(255,99,71,0.5)",
+        },
+        expiryText: {
+          flex: 1,
+          color: colors.text,
+          fontWeight: "700",
+          marginRight: 12,
+        },
         errorText: { color: isDark ? "#ffd7d5" : "#8b0000" },
         placeholderText: { color: colors.muted, textAlign: "center", marginTop: 12 },
       }),
@@ -283,9 +315,29 @@ export default function ChatScreen() {
         const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/${chatId}`, {
           headers: { "Content-Type": "application/json" },
         });
+        if (response.status === 410) {
+          setError("This chat expired because you were out of range for 24 hours.");
+          setMessages([]);
+          setExpiresAt(null);
+          setOutOfRange(false);
+          setDistanceMeters(null);
+          return;
+        }
         if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
-        const data = (await response.json()) as Message[];
-        mergeMessages(data);
+        const data = (await response.json()) as ChatMetaResponse;
+        const payloadMessages = Array.isArray(data) ? data : data.messages ?? [];
+        mergeMessages(payloadMessages);
+        if (!Array.isArray(data)) {
+          setExpiresAt(data.expiresAt ? new Date(data.expiresAt) : null);
+          setOutOfRange(Boolean(data.outOfRange));
+          setDistanceMeters(
+            typeof data.distanceMeters === "number" ? data.distanceMeters : null
+          );
+        } else {
+          setExpiresAt(null);
+          setOutOfRange(false);
+          setDistanceMeters(null);
+        }
         if (showLoading) {
           scrollToBottom(false);
         }
@@ -395,6 +447,12 @@ export default function ChatScreen() {
     if (!latest?.createdAt) return;
     void saveChatLastRead(String(chatId), latest.createdAt);
   }, [chatId, messages]);
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
 
   const connectStream = useCallback(() => {
     if (!chatId || !accessToken || !WS_BASE_URL) return;
@@ -607,6 +665,31 @@ export default function ChatScreen() {
             <View style={styles.confirmationBanner}>
               <Text style={styles.confirmationText}>
                 You are now visible to other users!
+              </Text>
+            </View>
+          )}
+
+          {expiresAt && (
+            <View style={styles.expiryBanner}>
+              <Text style={styles.expiryText}>
+                {outOfRange ? "You are over 1 km apart. " : ""}
+                This chat will be deleted in{" "}
+                {(() => {
+                  const remaining = Math.max(
+                    0,
+                    Math.floor((expiresAt.getTime() - nowTick) / 1000)
+                  );
+                  const hours = Math.floor(remaining / 3600);
+                  const minutes = Math.floor((remaining % 3600) / 60);
+                  const seconds = remaining % 60;
+                  const parts = [
+                    hours.toString().padStart(2, "0"),
+                    minutes.toString().padStart(2, "0"),
+                    seconds.toString().padStart(2, "0"),
+                  ];
+                  return parts.join(":");
+                })()}
+                .{distanceMeters !== null ? ` Distance: ${distanceMeters.toFixed(0)}m.` : ""}
               </Text>
             </View>
           )}
