@@ -1,11 +1,11 @@
 /**
- * NearbyScreen component displays a list of users nearby relative to the current user's location.
- * For demo purposes, it simulates user proximity centered around Old Dominion University (Norfolk, VA).
- * It fetches user data from the API, calculates distances, and allows toggling visibility status.
+ * NearbyScreen component displays nearby users based on the latest locations stored in the backend.
+ * It ensures the viewer has a saved location (device or fallback), fetches nearby users with distance,
+ * and lets the user sort by match or distance.
  */
 
 import * as Location from "expo-location";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Button,
@@ -17,30 +17,32 @@ import {
   Pressable,
   Alert,
   TouchableOpacity,
+  Platform,
 } from "react-native";
+import type { AlertOptions, ListRenderItemInfo } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
-import {
-  ApiUser,
-  NearbyUser,
-  formatDistance,
-  haversineDistanceMeters,
-  scatterUsersAround,
-} from "../../utils/geo";
-import { rankNearbyUsers } from "../../utils/rank";
-import ReportButton from "../../components/ReportButton";
+import { useAppTheme } from "../../context/ThemeContext";
+import { ApiUser, formatDistance } from "../../utils/geo";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
+const NEARBY_RADIUS_METERS = 1600; // ~1 mile for demo visibility
 
-// Types
-type NearbyWithDistance = NearbyUser & {
-  distanceMeters: number;   // for display only
-  score?: number;           // matchmaking score 0..1
+type Coordinates = { latitude: number; longitude: number };
+type NearbyWithDistance = ApiUser & {
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  matchPercent: number;
+  locationUpdatedAt?: string;
 };
+type SortMode = "match" | "distance";
 
 // Defensive tags normalization
 const normalizeTags = (tags: unknown): string[] =>
@@ -48,146 +50,244 @@ const normalizeTags = (tags: unknown): string[] =>
     ? tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
     : [];
 
+const trustColorForScore = (score: number) => {
+  if (score >= 90) return "#28a745";
+  if (score >= 70) return "#7ED957";
+  if (score >= 51) return "#FFC107";
+  return "#DC3545";
+};
+
 export default function NearbyScreen() {
-  const [location, setLocation] = useState<Location.LocationObjectCoords | null>({
-    latitude: ODU_CENTER.latitude,
-    longitude: ODU_CENTER.longitude,
-    altitude: undefined as any,
-    accuracy: undefined as any,
-    altitudeAccuracy: undefined as any,
-    heading: undefined as any,
-    speed: undefined as any,
-  });
+  const { colors, isDark } = useAppTheme();
+  const alertAppearance = useMemo<AlertOptions>(
+    () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
+    [isDark]
+  );
+  const [location, setLocation] = useState<Coordinates | null>(null);
   const [users, setUsers] = useState<NearbyWithDistance[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuTarget, setMenuTarget] = useState<ApiUser | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("match");
 
-  const {
-    status,
-    setStatus,
-    isStatusUpdating,
-    accessToken,
-    currentUser,
-    prefetchedUsers,
-    setPrefetchedUsers,
-  } = useUser();
+  const { status, setStatus, isStatusUpdating, accessToken, currentUser, fetchWithAuth } = useUser();
+  const hasLoadedOnceRef = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deviceLocationAttemptedRef = useRef(false);
 
-  /**
-   * Build final ranked list:
-   * 1) filter (visibility, not current user)
-   * 2) scatter (demo coords)
-   * 3) rank by SCORE ONLY (tagSim weight 1.0, distance weight 0.0)
-   * 4) compute distance for display (does NOT affect order)
-   */
-  const buildRankedList = useCallback(
-    (rawUsers: ApiUser[], coords: Location.LocationObjectCoords): NearbyWithDistance[] => {
-      const filtered = Array.isArray(rawUsers)
-        ? rawUsers.filter(
-            (u) => (u.visibility ?? true) && (currentUser ? u.id !== currentUser.id : true)
-          )
+  const normalizeNearbyResponse = useCallback(
+    (payload: unknown): NearbyWithDistance[] => {
+      const rawList: any[] = Array.isArray((payload as any)?.users)
+        ? (payload as any).users
+        : Array.isArray(payload)
+        ? (payload as any)
         : [];
 
-      const scattered = scatterUsersAround(filtered, coords.latitude, coords.longitude);
+      return rawList
+        .map((item: any): NearbyWithDistance | null => {
+          const id = Number(item?.id);
+          const latitude = Number(item?.latitude);
+          const longitude = Number(item?.longitude);
+          const distanceMeters = Number(item?.distanceMeters);
 
-      const ranked = rankNearbyUsers(
-        {
-          id: currentUser?.id ?? -1,
-          interestTags: normalizeTags(currentUser?.interestTags),
-          coords: { latitude: coords.latitude, longitude: coords.longitude },
-        },
-        scattered,
-        {
-          weights: { tagSim: 1.0, distance: 0.0 }, // 👈 rank strictly by tag similarity (score)
-          // halfLifeMeters still accepted but irrelevant with distance weight 0
-          halfLifeMeters: 1200,
-        }
-      );
+          if (
+            !Number.isFinite(id) ||
+            !Number.isFinite(latitude) ||
+            !Number.isFinite(longitude) ||
+            !Number.isFinite(distanceMeters)
+          ) {
+            return null;
+          }
 
-      // Preserve ranked order; enrich with distance for UI only
-      const rankedWithDistance: NearbyWithDistance[] = ranked.map((u) => ({
-        ...u,
-        distanceMeters: haversineDistanceMeters(
-          coords.latitude,
-          coords.longitude,
-          u.coords.latitude,
-          u.coords.longitude
-        ),
-      }));
+          const matchPercentRaw = Number(item?.matchPercent);
+          const matchPercent = Number.isFinite(matchPercentRaw)
+            ? Math.max(0, Math.min(100, Math.round(matchPercentRaw)))
+            : 0;
 
-      return rankedWithDistance;
+          const trustScoreRaw = Number(item?.trustScore);
+          const trustScore = Number.isFinite(trustScoreRaw) ? trustScoreRaw : 0;
+
+          const email = typeof item?.email === "string" ? item.email : "";
+          const name = typeof item?.name === "string" ? item.name : email;
+
+          return {
+            id,
+            email,
+            name,
+            interestTags: normalizeTags(item?.interestTags),
+            profilePicture: typeof item?.profilePicture === "string" ? item.profilePicture : null,
+            trustScore,
+            visibility: item?.visibility ?? true,
+            latitude,
+            longitude,
+            distanceMeters,
+            matchPercent,
+            locationUpdatedAt:
+              typeof item?.locationUpdatedAt === "string" ? item.locationUpdatedAt : undefined,
+          };
+        })
+        .filter(
+          (item): item is NearbyWithDistance =>
+            !!item && item.distanceMeters <= NEARBY_RADIUS_METERS
+        );
     },
-    [currentUser]
+    []
   );
 
-  /**
-   * Fetches users and sets ranked list (score-only ordering).
-   */
-  const loadUsers = useCallback(
-    async (
-      coords: Location.LocationObjectCoords,
-      options?: { silent?: boolean }
-    ) => {
-      try {
-        if (!accessToken) {
-          // Demo users when not authenticated
-          const demoUsers: ApiUser[] = [
-            {
-              id: 1,
-              name: "Alice Demo",
-              email: "alice@example.com",
-              interestTags: ["Coffee", "Reading"],
-              profilePicture: null,
-              visibility: true,
-            } as unknown as ApiUser,
-            {
-              id: 2,
-              name: "Bob Demo",
-              email: "bob@example.com",
-              interestTags: ["Gaming", "Movies"],
-              profilePicture: null,
-              visibility: true,
-            } as unknown as ApiUser,
-            {
-              id: 3,
-              name: "Charlie Demo",
-              email: "charlie@example.com",
-              interestTags: ["Running"],
-              profilePicture: null,
-              visibility: true,
-            } as unknown as ApiUser,
-          ];
+  const fetchSavedLocation = useCallback(async (): Promise<Coordinates | null> => {
+    if (!accessToken) return null;
 
-          const rankedList = buildRankedList(demoUsers, coords);
-          setUsers(rankedList);
-          setError(null);
-          if (!options?.silent) setLoading(false);
-          return;
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/users/me/location`);
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        const message = await response.text().catch(() => "");
+        throw new Error(message || `Failed to fetch location (${response.status})`);
+      }
+
+      const data = (await response.json()) as { latitude?: unknown; longitude?: unknown };
+      const latitude = Number(data?.latitude);
+      const longitude = Number(data?.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+      return { latitude, longitude };
+    } catch (err) {
+      console.warn("Failed to fetch saved location:", err);
+      return null;
+    }
+  }, [accessToken, fetchWithAuth]);
+
+  const persistLocationToBackend = useCallback(
+    async (coords: Coordinates) => {
+      if (!accessToken) return;
+      try {
+        await fetch(`${API_BASE_URL}/users/me/location`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(coords),
+        });
+      } catch (err) {
+        console.warn("Failed to send location to backend:", err);
+      }
+    },
+    [accessToken]
+  );
+
+  const requestDeviceLocation = useCallback(async (): Promise<Coordinates | null> => {
+    try {
+      const { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permissionStatus !== "granted") {
+        return null;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+    } catch (err) {
+      console.warn("Unable to fetch device location, falling back to ODU coords:", err);
+      return null;
+    }
+  }, []);
+
+  const ensureLocation = useCallback(async (): Promise<Coordinates> => {
+    if (!accessToken) {
+      throw new Error("Please log in to view nearby users.");
+    }
+
+    const saved = await fetchSavedLocation();
+
+    // Always try to get device location at least once per session,
+    // even if we already have a saved fallback (e.g., seeded ODU coords).
+    let nextCoords: Coordinates | null = saved ?? null;
+    if (!deviceLocationAttemptedRef.current) {
+      deviceLocationAttemptedRef.current = true;
+      const deviceCoords = await requestDeviceLocation();
+      if (deviceCoords) {
+        nextCoords = deviceCoords;
+        await persistLocationToBackend(deviceCoords);
+      }
+    }
+
+    if (nextCoords) {
+      setLocation(nextCoords);
+      return nextCoords;
+    }
+
+    // If we failed to get device location, fall back to ODU without re-prompting.
+    const fallbackCoords = ODU_CENTER;
+    await persistLocationToBackend(fallbackCoords);
+    setLocation(fallbackCoords);
+    return fallbackCoords;
+  }, [accessToken, fetchSavedLocation, persistLocationToBackend, requestDeviceLocation]);
+
+  const loadNearbyUsers = useCallback(
+    async (_coords: Coordinates, options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!accessToken) {
+        setError("Please log in to view nearby users.");
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      try {
+        if (!silent) setLoading(true);
+
+        const params = new URLSearchParams({
+          radius: String(NEARBY_RADIUS_METERS),
+          sort: sortMode,
+        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/nearby?${params.toString()}`);
+        if (!response.ok) {
+          const message = await response.text().catch(() => "");
+          throw new Error(message || `Failed to load nearby users (${response.status})`);
         }
 
-        const response = await fetch(`${API_BASE_URL}/users`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
+        const payload = await response.json();
+        const normalized = normalizeNearbyResponse(payload).filter(
+          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS
+        );
 
-        const data = (await response.json()) as ApiUser[];
-
-        // Keep a warm cache of raw users
-        setPrefetchedUsers(data);
-
-        // Build ranked output strictly by score
-        const rankedList = buildRankedList(data, coords);
-        setUsers(rankedList);
+        setUsers(normalized);
         setError(null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : "Failed to load nearby users";
         setError(message);
       } finally {
-        if (!options?.silent) setLoading(false);
+        if (!silent) setLoading(false);
         setRefreshing(false);
       }
     },
-    [accessToken, setPrefetchedUsers, buildRankedList]
+    [accessToken, fetchWithAuth, normalizeNearbyResponse, sortMode]
+  );
+
+  const ensureAndLoad = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? hasLoadedOnceRef.current;
+
+      try {
+        if (!silent) setLoading(true);
+        const coords = await ensureLocation();
+        await loadNearbyUsers(coords, { silent: true });
+        hasLoadedOnceRef.current = true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load nearby users";
+        setError(message);
+      } finally {
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [ensureLocation, loadNearbyUsers]
   );
 
   /**
@@ -196,9 +296,7 @@ export default function NearbyScreen() {
   const refreshTrustScore = useCallback(
     async (userId: number) => {
       try {
-        const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const response = await fetchWithAuth(`${API_BASE_URL}/users/${userId}`);
         if (!response.ok) throw new Error(`Failed to fetch user ${userId} (${response.status})`);
         const updatedUser = (await response.json()) as ApiUser;
 
@@ -213,136 +311,316 @@ export default function NearbyScreen() {
         console.error("Failed to refresh trust score:", err);
       }
     },
-    [accessToken]
+    [fetchWithAuth]
   );
 
-  /**
-   * Request (simulated) location and load users.
-   */
-  const hasLoadedOnceRef = useRef(false);
-
-  const requestAndLoad = useCallback(
-    async (options?: { silent?: boolean }) => {
-      const silent = options?.silent ?? hasLoadedOnceRef.current;
-
-      try {
-        if (!silent) setLoading(true);
-
-        const coords = {
-          latitude: ODU_CENTER.latitude,
-          longitude: ODU_CENTER.longitude,
-          altitude: undefined as any,
-          accuracy: undefined as any,
-          altitudeAccuracy: undefined as any,
-          heading: undefined as any,
-          speed: undefined as any,
-        };
-        setLocation(coords);
-        await loadUsers(coords, { silent });
-        hasLoadedOnceRef.current = true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setError(message);
-        if (!silent) setLoading(false);
-      }
-    },
-    [loadUsers]
-  );
-
-  /**
-   * Rebuild from warm cache when it changes.
-   * Still rank strictly by score; distance only displayed.
-   */
   useEffect(() => {
-    if (!prefetchedUsers) return;
+    void ensureAndLoad({ silent: false });
+  }, [ensureAndLoad]);
 
-    const coords =
-      location ?? {
-        latitude: ODU_CENTER.latitude,
-        longitude: ODU_CENTER.longitude,
-        altitude: undefined as any,
-        accuracy: undefined as any,
-        altitudeAccuracy: undefined as any,
-        heading: undefined as any,
-        speed: undefined as any,
-      };
-
-    const rankedList = buildRankedList(prefetchedUsers, coords);
-    setUsers(rankedList);
-    setLoading(false);
-    hasLoadedOnceRef.current = true;
-  }, [prefetchedUsers, location, buildRankedList]);
-
-  // Reload when profile picture or visibility changes
   useEffect(() => {
-    void requestAndLoad({ silent: hasLoadedOnceRef.current });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.profilePicture, currentUser?.visibility]);
+    if (!location) return;
+    const silent = hasLoadedOnceRef.current;
+    void loadNearbyUsers(location, { silent });
+  }, [location, loadNearbyUsers, sortMode]);
+
+  useEffect(() => {
+    if (!hasLoadedOnceRef.current) return;
+    void ensureAndLoad({ silent: true });
+  }, [currentUser?.profilePicture, currentUser?.visibility, ensureAndLoad]);
 
   // Pull-to-refresh
   const onRefresh = useCallback(async () => {
-    if (!location) {
-      await requestAndLoad({ silent: false });
-      return;
-    }
     setRefreshing(true);
-    await loadUsers(location);
-  }, [loadUsers, location, requestAndLoad]);
+    try {
+      const coords = location ?? (await ensureLocation());
+      await loadNearbyUsers(coords, { silent: true });
+      hasLoadedOnceRef.current = true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to refresh nearby users";
+      setError(message);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [ensureLocation, loadNearbyUsers, location]);
+
+  // Lightweight polling while the tab is focused (mirrors map tab behavior)
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      const tick = async () => {
+        if (cancelled) return;
+        try {
+          const coords = location ?? (await ensureLocation());
+          if (!coords) return;
+          await loadNearbyUsers(coords, { silent: true });
+          hasLoadedOnceRef.current = true;
+        } catch {
+          // ignore transient polling errors
+        }
+      };
+
+      void tick();
+      pollTimerRef.current = setInterval(tick, 8000);
+
+      return () => {
+        cancelled = true;
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      };
+    }, [ensureLocation, loadNearbyUsers, location])
+  );
 
   /**
    * Start a new chat session (fetch latest receiver first).
    */
-  const startChat = async (receiverId: number, receiverName: string) => {
-    if (!currentUser) return Alert.alert("Not logged in", "Please log in to start a chat.");
+  const startChat = useCallback(
+    async (receiverId: number, receiverName: string) => {
+      if (!currentUser)
+        return Alert.alert(
+          "Not logged in",
+          "Please log in to start a chat.",
+          undefined,
+          alertAppearance
+        );
 
-    try {
-      // Fetch latest receiver (for name/picture)
-      const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      let latestUser: ApiUser | null = null;
-      if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
+      try {
+        // Fetch latest receiver (for name/picture)
+        const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`);
+        let latestUser: ApiUser | null = null;
+        if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
-      // Create or get chat session
-      const response = await fetch(`${API_BASE_URL}/api/messages/session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({
-          participants: [currentUser.id, receiverId],
-        }),
-      });
-      if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
+        // Create or get chat session
+        const response = await fetchWithAuth(`${API_BASE_URL}/api/messages/session`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            participants: [currentUser.id, receiverId],
+          }),
+        });
+        if (!response.ok) throw new Error(`Failed to start chat (${response.status})`);
 
-      const data = (await response.json()) as { chatId: number };
-      const { chatId } = data;
+        const data = (await response.json()) as { chatId: number };
+        const { chatId } = data;
 
-      // Navigate with latest user info
-      router.push({
-        pathname: "/(tabs)/messages/[chatId]",
-        params: {
-          chatId: String(chatId),
-          name: latestUser?.name || receiverName,
-          receiverId: String(receiverId),
-          profilePicture: (latestUser?.profilePicture as string) || "",
-        },
-      });
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to start chat. Please try again.");
-    }
-  };
+        // Navigate with latest user info
+        router.push({
+          pathname: "/(tabs)/messages/[chatId]",
+          params: {
+            chatId: String(chatId),
+            name: latestUser?.name || receiverName,
+            receiverId: String(receiverId),
+            profilePicture: (latestUser?.profilePicture as string) || "",
+            returnToMessages: "1",
+          },
+        });
+      } catch (err) {
+        console.error(err);
+        Alert.alert("Error", "Failed to start chat. Please try again.", undefined, alertAppearance);
+      }
+    },
+    [alertAppearance, currentUser, fetchWithAuth]
+  );
 
-  // Loading and error UI
   const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
+  const textColor = useMemo(() => ({ color: colors.text }), [colors.text]);
+  const mutedText = useMemo(() => ({ color: colors.muted }), [colors.muted]);
+  const visibleUsers = useMemo(
+    () => users.filter((u) => u.distanceMeters <= NEARBY_RADIUS_METERS),
+    [users]
+  );
+
+  const renderUserCard = useCallback(
+    ({ item, index }: ListRenderItemInfo<NearbyWithDistance>) => {
+      const imageUri =
+        item.profilePicture && item.profilePicture.startsWith("http")
+          ? item.profilePicture
+          : item.profilePicture
+          ? `${API_BASE_URL}${item.profilePicture}`
+          : null;
+
+      const trustScore = item.trustScore ?? 0;
+      const trustColor = trustColorForScore(trustScore);
+      const matchPercent =
+        Number.isFinite(item.matchPercent) && item.matchPercent >= 0
+          ? Math.round(item.matchPercent)
+          : null;
+      const userTags = normalizeTags(item.interestTags);
+
+      // Make the whole card pressable to open the user's profile (keeps Tabs visible)
+      return (
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/user/[id]",
+              params: { id: String(item.id), from: "nearby" },
+            })
+          }
+          style={({ pressed }) => [
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: isDark ? "#000" : "#0f172a",
+            },
+            index === 0 && [styles.cardFeatured, { borderColor: colors.accent }],
+            pressed && { opacity: 0.96 },
+          ]}
+        >
+          <View style={styles.cardTop}>
+            <View style={styles.avatarRow}>
+              <View style={[styles.avatarShell, { borderColor: colors.border }]}>
+                {imageUri ? (
+                  <ExpoImage
+                    source={{ uri: imageUri }}
+                    style={styles.avatar}
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.avatar,
+                      styles.avatarPlaceholder,
+                      { backgroundColor: isDark ? "#2c3653" : "#e2e8f0" },
+                    ]}
+                  >
+                    <Text style={[styles.avatarInitial, textColor]}>
+                      {item.name?.[0]?.toUpperCase() ?? "?"}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.nameBlock}>
+                <Text style={[styles.cardTitle, textColor]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                {matchPercent !== null && (
+                  <View
+                    style={[
+                      styles.metaPill,
+                      styles.matchPill,
+                      {
+                        borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+                        backgroundColor: isDark ? "rgba(0,123,255,0.2)" : "rgba(0,123,255,0.08)",
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.metaText, { color: colors.accent }]}>
+                      {matchPercent}% match
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.metricsColumn}>
+              <Text style={[styles.metricValue, textColor]}>
+                {formatDistance(item.distanceMeters)}
+              </Text>
+              <Text style={[styles.metricValueSmall, { color: trustColor }]}>
+                Trust Score: <Text style={{ color: trustColor }}>{trustScore}</Text>
+              </Text>
+            </View>
+          </View>
+
+          {userTags.length > 0 && (
+            <View style={styles.tagsRow}>
+              {userTags.map((tag) => (
+                <View
+                  key={tag}
+                  style={[
+                    styles.tagChip,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,123,255,0.06)",
+                    },
+                  ]}
+                >
+                  <Text style={[styles.tagText, { color: colors.accent }]}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.cardFooter}>
+            {/* Chat stays a separate, tappable target */}
+            <Pressable
+              onPress={() => startChat(item.id, item.name || item.email)}
+              style={({ pressed }) => [
+                styles.iconButton,
+                styles.primaryIconButton,
+                { backgroundColor: colors.accent },
+                pressed && styles.iconButtonPressed,
+              ]}
+            >
+              <Ionicons
+                name="chatbubble"
+                size={18}
+                color="white"
+                style={
+                  Platform.OS === "android"
+                    ? {
+                        includeFontPadding: false,
+                        textAlignVertical: "center",
+                        lineHeight: 18,
+                      }
+                    : undefined
+                }
+              />
+            </Pressable>
+
+            <View style={{ flex: 1 }} />
+
+            {/* Overflow (•••) opens block/report etc. */}
+            <TouchableOpacity
+              onPress={() => setMenuTarget(item as unknown as ApiUser)}
+              style={[
+                styles.iconButton,
+                {
+                  backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+                  borderColor: colors.border,
+                },
+              ]}
+              activeOpacity={0.8}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Ionicons
+                name="ellipsis-vertical"
+                size={18}
+                color={colors.icon}
+                style={
+                  Platform.OS === "android"
+                    ? {
+                        includeFontPadding: false,
+                        textAlignVertical: "center",
+                        lineHeight: 18,
+                      }
+                    : undefined
+                }
+              />
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      );
+    },
+    [colors, isDark, startChat, textColor]
+  );
 
   if (showInitialLoader) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.note}>Locating you and finding nearby users...</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={[styles.note, mutedText]}>Locating you and finding nearby users...</Text>
       </View>
     );
   }
@@ -354,7 +632,7 @@ export default function NearbyScreen() {
         <Button
           title="Try Again"
           onPress={() => {
-            void requestAndLoad({ silent: false });
+            void ensureAndLoad({ silent: false });
           }}
         />
       </View>
@@ -364,19 +642,29 @@ export default function NearbyScreen() {
   if (!location) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.note}>Location unavailable. Pull to refresh to retry.</Text>
+        <Text style={[styles.note, mutedText]}>Location unavailable. Pull to refresh to retry.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Visibility: {status}</Text>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            shadowColor: isDark ? "#000" : "#0f172a",
+          },
+        ]}
+      >
+        <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
         <TouchableOpacity
           style={[
             styles.visibilityToggle,
+            { backgroundColor: colors.accent },
             status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
             isStatusUpdating && styles.visibilityToggleDisabled,
           ]}
@@ -398,205 +686,260 @@ export default function NearbyScreen() {
         </TouchableOpacity>
       </View>
 
-      {loading && hasLoadedOnceRef.current && (
-        <View style={styles.inlineLoader}>
-          <ActivityIndicator size="small" color="#007BFF" />
-          <Text style={styles.inlineLoaderText}>Updating nearby users…</Text>
-        </View>
-      )}
-
       {/* User list */}
       <FlatList
-        data={users}
+        data={visibleUsers}
         keyExtractor={(item) => item.id.toString()}
+        ListHeaderComponent={
+          <View>
+            <View style={styles.filterBar}>
+              <Pressable
+                onPress={() => setSortMode("match")}
+                style={({ pressed }) => [
+                  styles.toggleOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor:
+                      sortMode === "match"
+                        ? isDark
+                          ? "rgba(0,123,255,0.25)"
+                          : "rgba(0,123,255,0.12)"
+                        : isDark
+                        ? "rgba(255,255,255,0.04)"
+                        : "rgba(0,0,0,0.02)",
+                  },
+                  pressed && styles.togglePressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: sortMode === "match" ? colors.accent : colors.text },
+                  ]}
+                >
+                  Sort by Match %
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSortMode("distance")}
+                style={({ pressed }) => [
+                  styles.toggleOption,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor:
+                      sortMode === "distance"
+                        ? isDark
+                          ? "rgba(0,123,255,0.25)"
+                          : "rgba(0,123,255,0.12)"
+                        : isDark
+                        ? "rgba(255,255,255,0.04)"
+                        : "rgba(0,0,0,0.02)",
+                  },
+                  pressed && styles.togglePressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: sortMode === "distance" ? colors.accent : colors.text },
+                  ]}
+                >
+                  Sort by Distance
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        }
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.centered}>
-            <Text style={styles.note}>No other users nearby right now.</Text>
+            <Text style={[styles.note, mutedText]}>No other users nearby right now.</Text>
           </View>
         }
-        renderItem={({ item, index }) => {
-          const imageUri =
-            item.profilePicture && item.profilePicture.startsWith("http")
-              ? item.profilePicture
-              : item.profilePicture
-              ? `${API_BASE_URL}${item.profilePicture}`
-              : null;
-
-          // Dynamic color based on trust score
-          const scoreTS = item.trustScore ?? 0;
-          let trustColor = "#007BFF";
-          if (scoreTS >= 90) trustColor = "#28a745";
-          else if (scoreTS >= 70) trustColor = "#7ED957";
-          else if (scoreTS >= 51) trustColor = "#FFC107";
-          else trustColor = "#DC3545";
-
-          return (
-            <View style={[styles.card, index === 0 && styles.closestCard]}>
-              <View style={styles.cardHeader}>
-                <View style={styles.userInfo}>
-                  {imageUri ? (
-                    <ExpoImage
-                      source={{ uri: imageUri }}
-                      style={styles.avatar}
-                      cachePolicy="memory-disk"
-                      transition={0}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Text style={styles.avatarInitial}>
-                        {item.name?.[0]?.toUpperCase() ?? "?"}
-                      </Text>
-                    </View>
-                  )}
-                  <View>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                    {/* ✅ show score-only % match */}
-                    {typeof item.score === "number" && (
-                      <Text style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
-                        {Math.round(item.score * 100)}% match
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                <Text style={styles.cardDistance}>{formatDistance(item.distanceMeters)}</Text>
-              </View>
-
-              {item.interestTags.length > 0 && (
-                <View style={styles.cardTagsWrapper}>
-                  {item.interestTags.map((tag) => (
-                    <View key={tag} style={styles.cardTagChip}>
-                      <Text style={styles.cardTagText}>{tag}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Bottom action bar */}
-              <View style={styles.cardFooter}>
-                {/* Chat button */}
-                <Pressable
-                  onPress={() => startChat(item.id, item.name || item.email)}
-                  style={({ pressed }) => [styles.chatButton, pressed && { opacity: 0.8 }]}
-                >
-                  <Ionicons name="chatbubble" size={18} color="white" />
-                </Pressable>
-
-                {/* Report + Trust score */}
-                <View style={styles.reportContainer}>
-                  <ReportButton
-                    reportedUserId={item.id}
-                    reportedUserName={item.name}
-                    size="small"
-                    onReportSuccess={() => {
-                      refreshTrustScore(item.id);
-                    }}
-                  />
-                  <Text style={[styles.trustScoreLabel, { color: trustColor }]}>
-                    Trust Score: {scoreTS}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          );
-        }}
-        contentContainerStyle={users.length === 0 ? styles.flexGrow : undefined}
+        renderItem={renderUserCard}
+        contentContainerStyle={[styles.listContent, visibleUsers.length === 0 && styles.flexGrow]}
+        showsVerticalScrollIndicator={false}
       />
+      <UserOverflowMenu
+        visible={!!menuTarget}
+        onClose={() => setMenuTarget(null)}
+        targetUser={menuTarget}
+        onBlocked={(uid) => {
+          setUsers((prev) => prev.filter((u) => u.id !== uid));
+        }}
+        onReported={(uid) => {
+          void refreshTrustScore(uid);
+        }}
+        onViewProfile={(userId) => {
+          // Close the menu first
+          setMenuTarget(null);
+          // Navigate to the same profile screen you use when pressing the card
+          router.push({
+            pathname: "/user/[id]",
+            params: { id: String(userId), from: "nearby" }, // mark origin
+          });
+        }}
+      />
+      {loading && hasLoadedOnceRef.current && (
+        <View
+          style={[
+            styles.floatingLoader,
+            {
+              backgroundColor: isDark
+                ? "rgba(0,0,0,0.55)"
+                : "rgba(255,255,255,0.78)",
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#f5f7fa" },
+  container: { flex: 1, padding: 16 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
-  note: { marginTop: 12, fontSize: 16, textAlign: "center", color: "#555" },
+  note: { marginTop: 12, fontSize: 16, textAlign: "center" },
   error: { marginBottom: 12, fontSize: 16, textAlign: "center", color: "#c00" },
   header: {
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 12,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 14,
     backgroundColor: "#fff",
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    elevation: 2,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
   visibilityToggle: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 22,
     minWidth: 120,
     alignItems: "center",
-    backgroundColor: "#007BFF",
   },
   visibilityShow: {},
   visibilityHide: {},
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  inlineLoader: {
+  filterBar: {
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  toggleOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+  },
+  toggleText: { fontSize: 14, fontWeight: "700" },
+  togglePressed: { opacity: 0.85 },
+  listContent: { paddingBottom: 24 },
+  flexGrow: { flexGrow: 1 },
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+  },
+  cardFeatured: { borderWidth: 1 },
+  cardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  avatarRow: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
+  avatarShell: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 2,
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  avatar: { width: "100%", height: "100%", borderRadius: 14 },
+  avatarPlaceholder: { justifyContent: "center", alignItems: "center" },
+  avatarInitial: { fontSize: 18, fontWeight: "700", color: "#555" },
+  nameBlock: { flex: 1, minWidth: 0 },
+  cardTitle: { fontSize: 18, fontWeight: "700" },
+  metaPill: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    marginBottom: 12,
-  },
-  inlineLoaderText: { marginLeft: 8, fontSize: 13, color: "#555" },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-  },
-  closestCard: { borderWidth: 1, borderColor: "#007BFF" },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  userInfo: { flexDirection: "row", alignItems: "center" },
-  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
-  avatarPlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
-  avatarInitial: { fontSize: 18, fontWeight: "bold", color: "#555" },
-  cardTitle: { fontSize: 18, fontWeight: "600" },
-  cardDistance: { fontSize: 16, fontWeight: "500", color: "#007BFF" },
-  cardTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
-  cardTagChip: {
-    backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 14,
-    marginRight: 6,
-    marginBottom: 6,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 6,
   },
-  cardTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
-
-  /* Bottom buttons layout */
-  cardFooter: {
-    marginTop: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
+  matchPill: {},
+  metaText: { fontSize: 12, fontWeight: "600" },
+  metricsColumn: { marginLeft: 12, alignItems: "flex-end", minWidth: 96, gap: 4 },
+  metricValue: { fontSize: 16, fontWeight: "700", textAlign: "right" },
+  metricValueSmall: { fontSize: 14, fontWeight: "700", textAlign: "right" },
+  tagsRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
+  tagChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginRight: 8,
+    marginBottom: 8,
   },
-  chatButton: {
+  tagText: { fontSize: 12, fontWeight: "700" },
+  divider: { height: StyleSheet.hairlineWidth, marginTop: 12, marginBottom: 10 },
+  cardFooter: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  iconButton: {
     width: 44,
     height: 44,
-    backgroundColor: "#007BFF",
     borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  reportContainer: { alignItems: "center" },
-  trustScoreLabel: { marginTop: 6, fontSize: 13, fontWeight: "700" },
-  flexGrow: { flexGrow: 1 },
+  primaryIconButton: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  iconButtonPressed: { opacity: 0.9 },
+  floatingLoader: {
+    position: "absolute",
+    right: 16,
+    bottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
+  },
 });

@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { router } from "expo-router";
-import { Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
+import { useAppTheme } from "../context/ThemeContext";
+import { AppNotice } from "../components/ui/AppNotice";
 
 type AuthSuccess = {
   tokenType?: string;
@@ -27,7 +29,7 @@ const isAuthSuccess = (v: unknown): v is AuthSuccess =>
 const toUserOrFallback = (value: unknown): CurrentUser => {
   try {
     return toCurrentUser((value ?? {}) as Record<string, unknown>);
-  } catch (error) {
+  } catch {
     return {
       id: 0,
       email: "",
@@ -40,6 +42,11 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { setCurrentUser, setTokens, setPrefetchedUsers } = useUser();
+  const [signupSuccessVisible, setSignupSuccessVisible] = useState(false);
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [authModalTitle, setAuthModalTitle] = useState("");
+  const [authModalMessage, setAuthModalMessage] = useState("");
+  const { colors, isDark } = useAppTheme();
 
   const preloadVisibleUsers = async (accessToken: string) => {
     try {
@@ -79,17 +86,23 @@ export default function LoginScreen() {
       }
 
       const data = (await response.json()) as HealthResponse;
-      Alert.alert("Backend online", data.status ?? "ok");
+      setAuthModalTitle("Backend online");
+      setAuthModalMessage(data.status ?? "ok");
+      setAuthModalVisible(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert("Backend test failed", message);
+      setAuthModalTitle("Backend test failed");
+      setAuthModalMessage(message);
+      setAuthModalVisible(true);
     }
   };
 
   const handleLogin = async () => {
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed || !password) {
-      Alert.alert("Login", "Please enter email and password");
+      setAuthModalTitle("Login");
+      setAuthModalMessage("Please enter email and password.");
+      setAuthModalVisible(true);
       return;
     }
     try {
@@ -113,14 +126,18 @@ export default function LoginScreen() {
       router.replace("/(tabs)/profile");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert("Login failed", message);
+      setAuthModalTitle("Login failed");
+      setAuthModalMessage(message);
+      setAuthModalVisible(true);
     }
   };
 
   const handleSignup = async () => {
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed || !password) {
-      Alert.alert("Create Account", "Please enter email and password");
+      setAuthModalTitle("Create Account");
+      setAuthModalMessage("Please enter email and password.");
+      setAuthModalVisible(true);
       return;
     }
     try {
@@ -145,59 +162,123 @@ export default function LoginScreen() {
       } else {
         setCurrentUser(toUserOrFallback(json));
       }
-      Alert.alert("Account created", "You are now logged in.");
-      router.replace("/onboarding");
+      setSignupSuccessVisible(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      Alert.alert("Signup failed", message);
+      setAuthModalTitle("Signup failed");
+      setAuthModalMessage(message);
+      setAuthModalVisible(true);
     }
   };
 
+  const goToOnboarding = useCallback(() => {
+    setSignupSuccessVisible(false);
+    router.replace("/onboarding");
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setAuthModalVisible(false);
+  }, []);
+
   return (
-    <View style={styles.container}>
-      {/* Logo */}
-      <Image
-        source={require("../assets/images/MingleMap-title.png")}
-        style={styles.logo}
-        resizeMode="contain"
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.logoRow}>
+        <Image
+          source={require("../assets/images/MingleMap-title.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </View>
+
+      <View style={styles.cardContainer}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: isDark ? "#000" : "#0f172a",
+            },
+          ]}
+        >
+          <Text style={[styles.label, { color: colors.muted }]}>Email</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="you@example.com"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            placeholderTextColor={colors.muted}
+          />
+
+          <Text style={[styles.label, { color: colors.muted }]}>Password</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="Enter your password"
+            value={password}
+            onChangeText={setPassword}
+            placeholderTextColor={colors.muted}
+            secureTextEntry
+            textContentType="password"
+            autoComplete="password"
+          />
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: colors.accent }]}
+            onPress={handleLogin}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryText}>Login</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: colors.border }]}
+            onPress={handleSignup}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.secondaryText, { color: colors.text }]}>Create Account</Text>
+          </TouchableOpacity>
+
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.linkBtn}
+              onPress={handleTestConnection}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.linkText, { color: colors.accent }]}>Test Backend Connection</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <AppNotice
+        visible={signupSuccessVisible}
+        onClose={goToOnboarding}
+        title="Account created"
+        message="You are now logged in."
+        actionLabel="Continue to onboarding"
       />
-
-      {/* Input fields */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        placeholderTextColor="#888"
+      <AppNotice
+        visible={authModalVisible}
+        onClose={closeAuthModal}
+        title={authModalTitle || "Notice"}
+        message={authModalMessage}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        placeholderTextColor="#888"
-        secureTextEntry
-        textContentType="password"
-        autoComplete="password"
-      />
-
-      {/* Primary button (Login) */}
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}>
-        <Text style={styles.primaryText}>Login</Text>
-      </TouchableOpacity>
-
-      {/* Secondary button (Go to Signup) */}
-      <TouchableOpacity style={styles.secondaryBtn} onPress={handleSignup}>
-        <Text style={styles.secondaryText}>Create Account</Text>
-      </TouchableOpacity>
-
-      {__DEV__ && (
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleTestConnection}>
-          <Text style={styles.secondaryText}>Test Backend Connection</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -208,49 +289,67 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
-    backgroundColor: "#121212",
+  },
+  logoRow: {
+    alignItems: "center",
+    marginBottom: 12,
   },
   logo: {
     width: 280,
     height: 100,
-    marginBottom: 30,
   },
+  cardContainer: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  label: { fontSize: 13, fontWeight: "600", marginTop: 6, marginBottom: 6 },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    marginBottom: 12,
-    padding: 10,
-    borderRadius: 6,
-    backgroundColor: "#fff",
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
     width: "100%",
-    color: "#000",
+    fontSize: 15,
   },
   primaryBtn: {
-    backgroundColor: "#007BFF", // blue
-    paddingVertical: 12,
-    borderRadius: 6,
-    marginTop: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 4,
     width: "100%",
     alignItems: "center",
   },
   primaryText: {
     color: "#fff",
+    fontWeight: "700",
     fontSize: 16,
-    fontWeight: "bold",
   },
   secondaryBtn: {
-    borderColor: "#ccc",
     borderWidth: 1,
     paddingVertical: 12,
-    borderRadius: 6,
-    marginTop: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 12,
     width: "100%",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
   },
   secondaryText: {
-    color: "#333",
-    fontSize: 16,
+    fontWeight: "700",
+    fontSize: 15,
   },
+  linkBtn: { alignItems: "center", paddingVertical: 12 },
+  linkText: { fontWeight: "700", fontSize: 14 },
 });
 

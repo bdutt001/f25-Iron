@@ -5,6 +5,7 @@ import prisma from "../prisma";
 import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
+import { randomOduLocation } from "../config/location";
 import {
   addTagToUser,
   buildConnectOrCreate,
@@ -14,7 +15,10 @@ import {
   serializeUser,
   userWithTagsSelect,
   updateUserVisibility,
+  deleteUserAndRelations,
+  SerializedUser,
 } from "../services/users.services";
+import { haversineMeters } from "../utils/geo";
 
 // Load environment variables early
 dotenv.config();
@@ -37,6 +41,56 @@ cloudinary.config({
 const toNumberId = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
+};
+
+const toCoord = (value: unknown): number => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "") return Number(value);
+  return NaN;
+};
+
+const isValidLatitude = (value: number) => Number.isFinite(value) && value >= -90 && value <= 90;
+const isValidLongitude = (value: number) => Number.isFinite(value) && value >= -180 && value <= 180;
+
+const DEFAULT_RADIUS_METERS = 500;
+const MIN_RADIUS_METERS = 50;
+const MAX_RADIUS_METERS = 1000;
+
+const parseRadiusMeters = (value: unknown): number | null => {
+  if (value === undefined) return DEFAULT_RADIUS_METERS;
+
+  const radius = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(radius)) return null;
+
+  const clamped = Math.max(MIN_RADIUS_METERS, Math.min(MAX_RADIUS_METERS, radius));
+  return clamped;
+};
+
+const normalizedTagSet = (tags: string[]) => {
+  const normalized = normalizeTagNames(tags).map((tag) => tag.toLowerCase());
+  return new Set(normalized);
+};
+
+const computeMatchPercent = (mine: string[], theirs: string[]) => {
+  const a = normalizedTagSet(mine);
+  const b = normalizedTagSet(theirs);
+  if (a.size === 0 && b.size === 0) return 0;
+
+  let intersection = 0;
+  for (const tag of a) {
+    if (b.has(tag)) intersection += 1;
+  }
+
+  const union = a.size + b.size - intersection;
+  return union > 0 ? Math.round((intersection / union) * 100) : 0;
+};
+
+type NearbyUserPayload = SerializedUser & {
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  matchPercent: number;
+  locationUpdatedAt: Date;
 };
 
 // ---------- Create User ----------
@@ -69,9 +123,23 @@ export const createUser = async (req: Request, res: Response) => {
       };
     }
 
-    const user = await prisma.user.create({
-      data,
-      select: userWithTagsSelect,
+    const user = await prisma.$transaction(async (tx) => {
+      const oduCoords = randomOduLocation();
+
+      const createdUser = await tx.user.create({
+        data,
+        select: userWithTagsSelect,
+      });
+
+      await tx.userLocation.create({
+        data: {
+          userId: createdUser.id,
+          latitude: oduCoords.latitude,
+          longitude: oduCoords.longitude,
+        },
+      });
+
+      return createdUser;
     });
 
     res.status(201).json(serializeUser(user));
@@ -82,10 +150,25 @@ export const createUser = async (req: Request, res: Response) => {
 };
 
 // ---------- Get All Users ----------
-export const getUsers = async (_req: Request, res: Response) => {
+export const getUsers = async (req: Request, res: Response) => {
   try {
+    const currentUserId = req.user?.id;
+    if (!currentUserId) return res.status(401).json({ error: "Unauthorized" });
+
     const users = await prisma.user.findMany({
-      where: { visibility: true },
+      where: {
+        visibility: true,
+        NOT: {
+          OR: [
+            // Exclude users that current user has blocked
+            { blocksReceived: { some: { blockerId: currentUserId } } },
+            // Exclude users that have blocked current user
+            { blocksMade: { some: { blockedId: currentUserId } } },
+          ],
+        },
+        // Exclude self defensively
+        id: { not: currentUserId },
+      },
       select: userWithTagsSelect,
     });
     res.json(users.map(serializeUser));
@@ -106,6 +189,15 @@ export const getUserById = async (req: Request, res: Response) => {
       select: userWithTagsSelect,
     });
     if (!user) return res.status(404).json({ error: "User not found" });
+
+
+    // ✅ Enforce visibility for non-owners
+    const viewerId = req.user?.id ?? null;  // set by authenticate middleware
+    const isSelf = viewerId === user.id;
+    if (!isSelf && user.visibility === false) {
+      return res.status(404).json({ error: "User not found" }); // or 403 if you prefer
+    }
+
     res.json(serializeUser(user));
   } catch (err) {
     console.error("Failed to fetch user", err);
@@ -129,6 +221,13 @@ export const updateUser = async (req: Request, res: Response) => {
     : null;
   const visibilityRaw =
     typeof req.body.visibility === "boolean" ? req.body.visibility : undefined;
+  const profilePictureRaw = req.body.profilePicture;
+  const profileStatusRaw =
+  typeof req.body.profileStatus === "string"
+    ? req.body.profileStatus.trim()
+    : req.body.profileStatus === null
+    ? null
+    : undefined;
 
   try {
     const data: Prisma.UserUpdateInput = {};
@@ -155,6 +254,20 @@ export const updateUser = async (req: Request, res: Response) => {
       data.visibility = visibilityRaw;
     }
 
+    if (profilePictureRaw === null) {
+      data.profilePicture = null;
+    } else if (typeof profilePictureRaw === "string") {
+      const trimmed = profilePictureRaw.trim();
+      if (trimmed) data.profilePicture = trimmed;
+    }
+
+    if (profileStatusRaw === null) {
+      // allow clearing the status (set to NULL in DB)
+      data.profileStatus = null;
+    } else if (typeof profileStatusRaw === "string" && profileStatusRaw.length > 0) {
+      // set to a non-empty custom or preset status
+      data.profileStatus = profileStatusRaw;
+    }
     const user = await prisma.user.update({
       where: { id: userId },
       data,
@@ -174,8 +287,19 @@ export const deleteUser = async (req: Request, res: Response) => {
   const userId = toNumberId(req.params.id);
   if (!userId) return res.status(400).json({ error: "User not found" });
 
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  if (req.user.id !== userId)
+    return res.status(403).json({ error: "You can only delete your own account" });
+
   try {
-    await prisma.user.delete({ where: { id: userId } });
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!existing) return res.status(404).json({ error: "User not found" });
+
+    await deleteUserAndRelations(userId);
     res.status(204).send();
   } catch (err: any) {
     if (err?.code === "P2025")
@@ -250,6 +374,161 @@ export const getUsersByTag = async (req: Request, res: Response) => {
   }
 };
 
+// ---------- User Location (self) ----------
+export const getNearbyUsers = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const radiusMeters = parseRadiusMeters(req.query?.radius);
+  if (radiusMeters === null) {
+    return res.status(400).json({
+      error: `radius must be a number between ${MIN_RADIUS_METERS} and ${MAX_RADIUS_METERS} meters`,
+    });
+  }
+
+  const sortRaw = typeof req.query?.sort === "string" ? req.query.sort.toLowerCase() : "";
+  const sortMode: "match" | "distance" = sortRaw === "distance" ? "distance" : "match";
+
+  try {
+    const myLocation = await prisma.userLocation.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      select: { latitude: true, longitude: true, updatedAt: true },
+    });
+
+    if (!myLocation) {
+      return res.status(400).json({ error: "No location set for current user" });
+    }
+
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { interestTags: { select: { name: true } } },
+    });
+    const myTags = normalizeTagNames(me?.interestTags.map((tag) => tag.name) ?? []);
+
+    const candidateSelect = {
+      ...userWithTagsSelect,
+      locations: {
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        select: { latitude: true, longitude: true, updatedAt: true },
+      },
+    } satisfies Prisma.UserSelect;
+
+    const candidates = await prisma.user.findMany({
+      where: {
+        visibility: true,
+        id: { not: userId },
+        NOT: {
+          OR: [
+            { blocksReceived: { some: { blockerId: userId } } },
+            { blocksMade: { some: { blockedId: userId } } },
+          ],
+        },
+      },
+      select: candidateSelect,
+    });
+
+    const nearby: NearbyUserPayload[] = candidates
+      .map((candidate) => {
+        const latest = candidate.locations[0];
+        if (!latest) return null;
+
+        const distanceMeters = haversineMeters(
+          myLocation.latitude,
+          myLocation.longitude,
+          latest.latitude,
+          latest.longitude
+        );
+        if (!Number.isFinite(distanceMeters) || distanceMeters > radiusMeters) return null;
+
+        const base = serializeUser(candidate);
+        const matchPercent = computeMatchPercent(myTags, base.interestTags);
+
+        return {
+          ...base,
+          latitude: latest.latitude,
+          longitude: latest.longitude,
+          distanceMeters,
+          matchPercent,
+          locationUpdatedAt: latest.updatedAt,
+        };
+      })
+      .filter((value): value is NearbyUserPayload => Boolean(value));
+
+    nearby.sort((a, b) => {
+      if (sortMode === "distance") {
+        return (
+          a.distanceMeters - b.distanceMeters ||
+          b.matchPercent - a.matchPercent ||
+          a.id - b.id
+        );
+      }
+
+      return (
+        b.matchPercent - a.matchPercent ||
+        a.distanceMeters - b.distanceMeters ||
+        a.id - b.id
+      );
+    });
+
+    return res.json({
+      users: nearby,
+      radius: radiusMeters,
+      sort: sortMode,
+      center: { latitude: myLocation.latitude, longitude: myLocation.longitude },
+    });
+  } catch (error) {
+    console.error("Failed to load nearby users", error);
+    return res.status(500).json({ error: "Failed to load nearby users" });
+  }
+};
+
+export const setMyLocation = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const latitude = toCoord(req.body?.latitude);
+  const longitude = toCoord(req.body?.longitude);
+
+  if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) {
+    return res.status(400).json({
+      error: "latitude must be between -90 and 90 and longitude between -180 and 180",
+    });
+  }
+
+  try {
+    const location = await prisma.userLocation.create({
+      data: { userId, latitude, longitude },
+      select: { userId: true, latitude: true, longitude: true, updatedAt: true },
+    });
+
+    return res.status(201).json(location);
+  } catch (error) {
+    console.error("Failed to save user location", error);
+    return res.status(500).json({ error: "Failed to save location" });
+  }
+};
+
+export const getMyLocation = async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const location = await prisma.userLocation.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      select: { userId: true, latitude: true, longitude: true, updatedAt: true },
+    });
+
+    if (!location) return res.status(404).json({ error: "Location not found" });
+    return res.json(location);
+  } catch (error) {
+    console.error("Failed to fetch user location", error);
+    return res.status(500).json({ error: "Failed to fetch location" });
+  }
+};
+
 // ---------- Remove Tag ----------
 export const deleteTagFromUser = async (req: Request, res: Response) => {
   try {
@@ -319,5 +598,83 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("❌ Error uploading profile picture:", error);
     return res.status(500).json({ error: "Failed to upload profile picture" });
+  }
+};
+
+// ---------- Blocking ----------
+export const blockUser = async (req: Request, res: Response) => {
+  try {
+    const blockerId = req.user?.id;
+    if (!blockerId) return res.status(401).json({ error: "Unauthorized" });
+
+    const blockedId = Number(req.params.id);
+    if (!Number.isFinite(blockedId) || blockedId <= 0)
+      return res.status(400).json({ error: "Invalid user ID" });
+    if (blockedId === blockerId)
+      return res.status(400).json({ error: "Cannot block yourself" });
+
+    // Ensure target exists (optional but clearer responses)
+    const target = await prisma.user.findUnique({ where: { id: blockedId }, select: { id: true } });
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    const block = await prisma.block.upsert({
+      where: {
+        blockerId_blockedId: { blockerId, blockedId },
+      },
+      update: {},
+      create: { blockerId, blockedId },
+    });
+
+    return res.status(201).json({ success: true, block });
+  } catch (error: any) {
+    console.error("Failed to block user", error);
+    return res.status(500).json({ error: "Failed to block user" });
+  }
+};
+
+export const unblockUser = async (req: Request, res: Response) => {
+  try {
+    const blockerId = req.user?.id;
+    if (!blockerId) return res.status(401).json({ error: "Unauthorized" });
+
+    const blockedId = Number(req.params.id);
+    if (!Number.isFinite(blockedId) || blockedId <= 0)
+      return res.status(400).json({ error: "Invalid user ID" });
+    if (blockedId === blockerId)
+      return res.status(400).json({ error: "Cannot unblock yourself" });
+
+    await prisma.block.delete({
+      where: {
+        blockerId_blockedId: { blockerId, blockedId },
+      },
+    });
+
+    return res.status(204).send();
+  } catch (error: any) {
+    if (error?.code === "P2025") {
+      // Not found: treat as idempotent
+      return res.status(204).send();
+    }
+    console.error("Failed to unblock user", error);
+    return res.status(500).json({ error: "Failed to unblock user" });
+  }
+};
+
+export const listMyBlockedUsers = async (req: Request, res: Response) => {
+  try {
+    const blockerId = req.user?.id;
+    if (!blockerId) return res.status(401).json({ error: "Unauthorized" });
+
+    const blocks = await prisma.block.findMany({
+      where: { blockerId },
+      include: { blocked: { select: userWithTagsSelect } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const users = blocks.map((b) => serializeUser(b.blocked));
+    return res.json(users);
+  } catch (error) {
+    console.error("Failed to list blocked users", error);
+    return res.status(500).json({ error: "Failed to list blocked users" });
   }
 };

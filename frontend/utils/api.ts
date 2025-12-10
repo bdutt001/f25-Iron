@@ -1,13 +1,30 @@
 import { Platform } from "react-native";
 import type { CurrentUser } from "../context/UserContext";
 
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ??
-  (Platform.OS === "android"
+type FetchInput = Parameters<typeof fetch>[0];
+export type AuthorizedRequestInit = RequestInit & { skipAuth?: boolean };
+export type AuthorizedFetch = (
+  input: FetchInput,
+  init?: AuthorizedRequestInit
+) => Promise<Response>;
+
+const envApiUrl = (process.env.EXPO_PUBLIC_API_URL ?? "").trim();
+const devFallback =
+  Platform.OS === "android"
     ? "http://10.0.2.2:8000" // Android emulator
-    : "http://localhost:8000"); // iOS simulator or web
+    : "http://localhost:8000"; // iOS simulator or web
+const prodFallback = "https://f25-iron.onrender.com";
+
+export const API_BASE_URL = envApiUrl || (__DEV__ ? devFallback : prodFallback);
+export const WS_BASE_URL = API_BASE_URL.replace(/^http/i, "ws");
 
 type JsonRecord = Record<string, unknown>;
+
+// ✅ Shared auth header helper
+export const buildAuthHeaders = (
+  accessToken: string | null | undefined
+): Record<string, string> =>
+  accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 
 const normalizeString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
@@ -61,7 +78,7 @@ const resolveProfilePictureUrl = (path: unknown): string | null => {
   return `${API_BASE_URL}${path}`;
 };
 
-// ✅ Updated user parser (includes trustScore + profilePicture)
+// ✅ Updated user parser (includes trustScore + profilePicture + profileStatus)
 export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   id: parseUserId(payload.id),
   username:
@@ -70,15 +87,13 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   email: normalizeString(payload.email),
   name: normalizeOptionalString(payload.name),
   createdAt: normalizeOptionalString(payload.createdAt),
+  lastLogin: normalizeOptionalString(payload.lastLogin),
   interestTags: normalizeStringArray(payload.interestTags),
   trustScore: normalizeOptionalNumber(payload.trustScore),
   profilePicture: resolveProfilePictureUrl(payload.profilePicture),
   visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
   isAdmin: normalizeOptionalBoolean(payload.isAdmin),
-});
-
-const buildAuthHeaders = (token: string): Record<string, string> => ({
-  Authorization: `Bearer ${token}`,
+  profileStatus: normalizeOptionalString(payload.profileStatus),
 });
 
 const extractErrorMessage = async (response: Response): Promise<string> => {
@@ -92,7 +107,9 @@ const extractErrorMessage = async (response: Response): Promise<string> => {
 };
 
 // ✅ Fetch logged-in user's profile
-export const fetchProfile = async (accessToken: string): Promise<CurrentUser> => {
+export const fetchProfile = async (
+  accessToken: string
+): Promise<CurrentUser> => {
   const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
     headers: buildAuthHeaders(accessToken),
   });
@@ -106,10 +123,10 @@ export const fetchProfile = async (accessToken: string): Promise<CurrentUser> =>
 };
 
 // ✅ Fetch available tags
-export const fetchTagCatalog = async (accessToken: string): Promise<string[]> => {
-  const response = await fetch(`${API_BASE_URL}/tags/catalog`, {
-    headers: buildAuthHeaders(accessToken),
-  });
+export const fetchTagCatalog = async (
+  fetcher: AuthorizedFetch
+): Promise<string[]> => {
+  const response = await fetcher(`${API_BASE_URL}/tags/catalog`);
 
   if (!response.ok) {
     throw new Error(await extractErrorMessage(response));
@@ -124,29 +141,32 @@ export type UpdateUserProfilePayload = {
   name?: string | null;
   interestTags?: string[];
   visibility?: boolean;
+  profilePicture?: string | null;
+  profileStatus?: string | null;
 };
 
-// ✅ Update user profile details (name, tags, etc.)
+// ✅ Update user profile details (name, tags, status, etc.)
 export const updateUserProfile = async (
   userId: number,
   payload: UpdateUserProfilePayload,
-  accessToken: string
+  fetcher: AuthorizedFetch
 ): Promise<CurrentUser> => {
   const body: Record<string, unknown> = {};
 
   if ("name" in payload) body.name = payload.name;
   if ("interestTags" in payload) body.interestTags = payload.interestTags;
   if ("visibility" in payload) body.visibility = payload.visibility;
+  if ("profilePicture" in payload) body.profilePicture = payload.profilePicture;
+  if ("profileStatus" in payload) body.profileStatus = payload.profileStatus;
 
   if (Object.keys(body).length === 0) {
     throw new Error("No profile fields provided.");
   }
 
-  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+  const response = await fetcher(`${API_BASE_URL}/users/${userId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(accessToken),
     },
     body: JSON.stringify(body),
   });
@@ -161,13 +181,12 @@ export const updateUserProfile = async (
 
 export const updateUserVisibility = async (
   visibility: boolean,
-  accessToken: string
+  fetcher: AuthorizedFetch
 ): Promise<CurrentUser> => {
-  const response = await fetch(`${API_BASE_URL}/users/me/visibility`, {
+  const response = await fetcher(`${API_BASE_URL}/users/me/visibility`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(accessToken),
     },
     body: JSON.stringify({ visibility }),
   });
@@ -178,4 +197,33 @@ export const updateUserVisibility = async (
 
   const data = (await response.json()) as JsonRecord;
   return toCurrentUser(data);
+};
+
+// ✅ Fetch any user by id (sanitized view for others)
+export const fetchUserById = async (userId: number, accessToken?: string) => {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+  return toCurrentUser(data);
+};
+
+export const deleteAccount = async (
+  userId: number,
+  fetcher: AuthorizedFetch
+): Promise<void> => {
+  const response = await fetcher(`${API_BASE_URL}/users/${userId}`, {
+    method: "DELETE",
+  });
+
+  if (response.status === 204) return;
+
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
 };

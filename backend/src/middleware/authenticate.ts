@@ -25,12 +25,14 @@ const buildUserFromRecord = (record: {
   id: number;
   email: string | null;
   name: string | null;
-  isAdmin: boolean;
+  profilePicture: string | null;
+  visibility: boolean | null;
 }): AuthenticatedUser => ({
   id: record.id,
   email: record.email,
   name: record.name,
-  isAdmin: record.isAdmin,
+  profilePicture: record.profilePicture,
+  visibility: record.visibility ?? true,
 });
 
 // Express middleware to authenticate requests using JWT
@@ -74,6 +76,8 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         id: true,
         email: true,
         name: true,
+        profilePicture: true,
+        visibility: true,
         tokenVersion: true,
         isAdmin: true,
       },

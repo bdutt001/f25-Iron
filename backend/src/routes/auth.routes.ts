@@ -10,6 +10,7 @@ import bcrypt from "bcrypt";
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/authenticate";
 import prisma from "../prisma";
+import { randomOduLocation } from "../config/location";
 import {
   invalidateUserSessions,
   issueTokenPair,
@@ -47,6 +48,7 @@ const serializeUser = (user: any) => ({
   profilePicture: user.profilePicture ?? null,
   interestTags: (user.interestTags ?? []).map((t: any) => t.name),
   visibility: user.visibility ?? false,
+  lastLogin: user.lastLogin ?? null,
 });
 
 /**
@@ -62,6 +64,8 @@ const userAuthSelect = {
   interestTags: { select: { name: true } }, // ✅ added
   createdAt: true,
   visibility: true,
+  profileStatus: true, // ✅ from profile-status branch
+  lastLogin: true,     // ✅ from main
 } as const;
 
 type UserAuthRecord = {
@@ -74,6 +78,8 @@ type UserAuthRecord = {
   interestTags?: { name: string }[];
   createdAt: Date;
   visibility: boolean;
+  profileStatus?: string | null;
+  lastLogin: Date | null;
 };
 
 /**
@@ -83,7 +89,7 @@ const buildAuthResponse = (user: UserAuthRecord) => {
   const tokens = issueTokenPair({
     id: user.id,
     email: user.email,
-    name: user.name ?? undefined,
+    name: user.name ?? null,
     tokenVersion: user.tokenVersion,
   });
 
@@ -96,10 +102,12 @@ const buildAuthResponse = (user: UserAuthRecord) => {
     user: toAuthenticatedUser({
       id: user.id,
       email: user.email,
-      name: user.name ?? undefined,
+      name: user.name ?? null,
       profilePicture: user.profilePicture ?? null,
       interestTags: user.interestTags ?? [],
       visibility: user.visibility,
+      profileStatus: user.profileStatus ?? null,
+      lastLogin: user.lastLogin ?? null,
     }),
   };
 };
@@ -123,13 +131,28 @@ router.post("/register", async (req: Request, res: Response) => {
 
   try {
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: name || undefined,
-        password: hashedPassword,
-      },
-      select: userAuthSelect,
+    const user = await prisma.$transaction(async (tx) => {
+      const oduCoords = randomOduLocation();
+
+      const createdUser = await tx.user.create({
+        data: {
+          email,
+          name: name || null,
+          password: hashedPassword,
+          lastLogin: new Date(),
+        },
+        select: userAuthSelect,
+      });
+
+      await tx.userLocation.create({
+        data: {
+          userId: createdUser.id,
+          latitude: oduCoords.latitude,
+          longitude: oduCoords.longitude,
+        },
+      });
+
+      return createdUser;
     });
 
     return res.status(201).json(buildAuthResponse(user));
@@ -166,7 +189,13 @@ router.post("/login", async (req: Request, res: Response) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
-    return res.json(buildAuthResponse(user));
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() },
+      select: userAuthSelect,
+    });
+
+    return res.json(buildAuthResponse(updatedUser));
   } catch (error) {
     console.error("Login Error:", error);
     return res.status(500).json({ error: "Login failed" });
@@ -235,18 +264,21 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
   try {
+    const profileSelect = {
+      id: true,
+      email: true,
+      name: true,
+      profileStatus: true,
+      visibility: true,
+      profilePicture: true,
+      interestTags: { select: { name: true } },
+      createdAt: true,
+      lastLogin: true,
+    } as const;
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        status: true,
-        visibility: true,
-        profilePicture: true,
-        interestTags: { select: { name: true } },
-        createdAt: true,
-      },
+      select: profileSelect,
     });
 
     if (!user) return res.status(404).json({ error: "User not found" });

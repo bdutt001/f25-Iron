@@ -1,7 +1,10 @@
 import React, { useState } from "react";
-import { Alert, StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, TouchableOpacity } from "react-native";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
+import { useThemedAlert } from "../hooks/useThemedAlert";
+import { ReportReasonMenu, REPORT_SUCCESS_NOTICE } from "./UserOverflowMenu";
+import { AppNotice } from "./ui/AppNotice";
 
 type ReportButtonProps = {
   reportedUserId: number;
@@ -21,62 +24,45 @@ export default function ReportButton({
   defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
-  const { currentUser, isLoggedIn, accessToken } = useUser();
+  const [showReasonMenu, setShowReasonMenu] = useState(false);
+  const [notice, setNotice] =
+    useState<typeof REPORT_SUCCESS_NOTICE | null>(null);
+  const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
+  const { showError } = useThemedAlert();
 
   const handleReport = async () => {
-    // ✅ Check if user is logged in
-    if (!isLoggedIn || !currentUser || !accessToken) {
-      Alert.alert("Error", "You must be logged in to report users.");
+    if (!isLoggedIn || !currentUser) {
+      showError("You must be logged in to report users.");
       return;
     }
 
     const reporterId = currentUser.id;
 
-    // ✅ Prevent self-reporting
     if (reporterId === reportedUserId) {
-      Alert.alert("Error", "You cannot report yourself.");
+      showError("You cannot report yourself.");
       return;
     }
 
-    // ✅ Confirm before reporting
-    Alert.alert(
-      "Report User",
-      `Are you sure you want to report ${reportedUserName}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Report", style: "destructive", onPress: () => showReasonDialog() },
-      ]
-    );
-  };
-
-  const showReasonDialog = () => {
-    // ✅ Display predefined report reasons
-    Alert.alert("Reason for Report", "Why are you reporting this user?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Inappropriate Behavior", onPress: () => submitReport("Inappropriate Behavior") },
-      { text: "Spam/Fake Profile", onPress: () => submitReport("Spam/Fake Profile") },
-      { text: "Harassment", onPress: () => submitReport("Harassment") },
-      { text: "Other", onPress: () => submitReport("Other") },
-    ]);
+    setShowReasonMenu(true);
   };
 
   const submitReport = async (reason: string, severityOverride?: number) => {
-    if (!currentUser || !accessToken) return;
+    if (!currentUser) return;
 
+    setShowReasonMenu(false);
     setIsReporting(true);
 
     try {
       const severity =
-        typeof severityOverride === "number" && Number.isFinite(severityOverride)
+        typeof severityOverride === "number" &&
+        Number.isFinite(severityOverride)
           ? severityOverride
           : defaultSeverity;
 
-      // ✅ Send the report to the backend
-      const response = await fetch(`${API_BASE_URL}/api/report`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           reportedId: reportedUserId,
@@ -85,7 +71,10 @@ export default function ReportButton({
         }),
       });
 
-      const payload = (await response.json()) as { trustScore?: number; error?: string };
+      const payload = (await response.json()) as {
+        trustScore?: number;
+        error?: string;
+      };
 
       if (!response.ok || typeof payload.trustScore !== "number") {
         const message = payload?.error ?? "Failed to submit report";
@@ -94,13 +83,14 @@ export default function ReportButton({
 
       let latestTrustScore = payload.trustScore;
 
-      // ✅ Refresh trust score from backend after report
       try {
-        const trustResponse = await fetch(`${API_BASE_URL}/api/users/${reportedUserId}/trust`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const trustResponse = await fetchWithAuth(
+          `${API_BASE_URL}/api/users/${reportedUserId}/trust`
+        );
         if (trustResponse.ok) {
-          const trustData = (await trustResponse.json()) as { trustScore?: number };
+          const trustData = (await trustResponse.json()) as {
+            trustScore?: number;
+          };
           if (typeof trustData.trustScore === "number") {
             latestTrustScore = trustData.trustScore;
           }
@@ -109,12 +99,12 @@ export default function ReportButton({
         console.warn("Unable to refresh trust score after report:", error);
       }
 
-      Alert.alert("Report Submitted", "Thank you for your report. We will review it promptly.");
+      setNotice(REPORT_SUCCESS_NOTICE);
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to submit report";
-      Alert.alert("Error", message);
+      showError(message);
     } finally {
       setIsReporting(false);
     }
@@ -134,14 +124,29 @@ export default function ReportButton({
   ];
 
   return (
-    <TouchableOpacity
-      style={buttonStyles}
-      onPress={handleReport}
-      disabled={isReporting}
-      activeOpacity={0.7}
-    >
-      <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity
+        style={buttonStyles}
+        onPress={handleReport}
+        disabled={isReporting}
+        activeOpacity={0.7}
+      >
+        <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
+      </TouchableOpacity>
+
+      <ReportReasonMenu
+        visible={showReasonMenu}
+        onClose={() => setShowReasonMenu(false)}
+        subjectLabel={reportedUserName}
+        onSelectReason={(reason) => submitReport(reason)}
+      />
+      <AppNotice
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title ?? ""}
+        message={notice?.message}
+      />
+    </>
   );
 }
 
