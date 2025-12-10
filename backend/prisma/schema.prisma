@@ -23,7 +23,7 @@ model User {
   tokenVersion   Int        @default(0)
   name           String?
   profilePicture String?
-  visibility     Boolean    @default(false)
+  visibility     Boolean    @default(true)
   trustScore     Int        @default(99)
   createdAt      DateTime   @default(now())
   lastLogin      DateTime?
@@ -63,12 +63,15 @@ model UserLocation {
 
 // Chat sessions
 model ChatSession {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int       @id @default(autoincrement())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  expiresAt  DateTime?
 
   messages     Message[]
   participants ChatParticipant[]
+
+  @@index([expiresAt])
 }
 
 // Chat participants
