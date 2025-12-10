@@ -17,16 +17,40 @@ import type { AlertOptions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useUser, type CurrentUser } from "../../context/UserContext";
-import { fetchTagCatalog, updateUserProfile, API_BASE_URL, deleteAccount } from "@/utils/api";
+import {
+  fetchTagCatalog,
+  updateUserProfile,
+  API_BASE_URL,
+  deleteAccount,
+} from "@/utils/api";
 import type { ApiUser } from "../../utils/geo";
 import { ThemeMode, useAppTheme } from "../../context/ThemeContext";
-import OverflowMenu, { type OverflowAction } from "../../components/ui/OverflowMenu";
+import OverflowMenu, {
+  type OverflowAction,
+} from "../../components/ui/OverflowMenu";
 import { AppNotice } from "../../components/ui/AppNotice";
 
 const sortTags = (tags: string[]): string[] =>
   [...tags].sort((a, b) => a.localeCompare(b));
 
 const MAX_INTEREST_TAGS = 10;
+
+// ✅ Profile status options
+const STATUS_OPTIONS = ["Looking to Mingle", "Idle", "Do Not Disturb"] as const;
+
+// ✅ Helper: map status text → dot color (same idea as [id].tsx)
+const getStatusDotColor = (status: string, accent: string) => {
+  const s = status.toLowerCase();
+
+  if (s.includes("do not disturb") || s.includes("dnd")) return "#ef4444"; // red
+  if (s.includes("idle")) return "#facc15"; // yellow
+  if (s.includes("looking to mingle")) return "#22c55e"; // green
+
+  // Custom / unknown → accent color
+  return accent;
+};
+
+type StatusMode = "PRESET" | "CUSTOM";
 
 const normalizeQuery = (value: string): string => value.trim().toLowerCase();
 
@@ -40,7 +64,8 @@ const computeFuzzyScore = (
   const directMatchIndex = normalizedCandidate.indexOf(normalizedQuery);
   if (directMatchIndex !== -1) {
     const penalty =
-      directMatchIndex * 5 + (normalizedCandidate.length - normalizedQuery.length);
+      directMatchIndex * 5 +
+      (normalizedCandidate.length - normalizedQuery.length);
     return 200 - penalty;
   }
 
@@ -76,8 +101,17 @@ const fuzzyFilter = (items: string[], query: string): string[] => {
 };
 
 export default function ProfileScreen() {
-  const { status, currentUser, setCurrentUser, accessToken, setPrefetchedUsers, fetchWithAuth, logout } = useUser();
-  const { colors, mode: themeMode, setMode: setThemeMode, isDark } = useAppTheme();
+  const {
+    status,
+    currentUser,
+    setCurrentUser,
+    accessToken,
+    setPrefetchedUsers,
+    fetchWithAuth,
+    logout,
+  } = useUser();
+  const { colors, mode: themeMode, setMode: setThemeMode, isDark } =
+    useAppTheme();
   const alertAppearance = useMemo<AlertOptions>(
     () => ({ userInterfaceStyle: isDark ? "dark" : "light" }),
     [isDark]
@@ -114,6 +148,20 @@ export default function ProfileScreen() {
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
+  // ✅ Profile Status (synced with backend)
+  const initialStatus = currentUser?.profileStatus ?? "Looking to Mingle";
+  const [profileStatus, setProfileStatus] = useState<string>(initialStatus);
+  const [savingProfileStatus, setSavingProfileStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const isInitialPreset = STATUS_OPTIONS.includes(initialStatus as any);
+  const [statusMode, setStatusMode] = useState<StatusMode>(
+    isInitialPreset ? "PRESET" : "CUSTOM"
+  );
+  const [customStatus, setCustomStatus] = useState<string>(
+    isInitialPreset ? "" : initialStatus
+  );
+
   const applyUserUpdate = (updated: CurrentUser) => {
     if (!currentUser) {
       setCurrentUser(updated);
@@ -123,8 +171,7 @@ export default function ProfileScreen() {
     setCurrentUser({
       ...currentUser,
       ...updated,
-      interestTags:
-        updated.interestTags ?? currentUser.interestTags,
+      interestTags: updated.interestTags ?? currentUser.interestTags,
       profilePicture:
         updated.profilePicture !== undefined
           ? updated.profilePicture
@@ -133,8 +180,22 @@ export default function ProfileScreen() {
         typeof updated.visibility === "boolean"
           ? updated.visibility
           : currentUser.visibility,
+      profileStatus:
+        typeof updated.profileStatus === "string"
+          ? updated.profileStatus
+          : currentUser.profileStatus,
     });
   };
+
+  // ✅ Keep local status in sync if currentUser changes (e.g., after refresh/login)
+  useEffect(() => {
+    if (!currentUser) return;
+    const serverStatus = currentUser.profileStatus ?? "Looking to Mingle";
+    setProfileStatus(serverStatus);
+    const isPreset = STATUS_OPTIONS.includes(serverStatus as any);
+    setStatusMode(isPreset ? "PRESET" : "CUSTOM");
+    setCustomStatus(isPreset ? "" : serverStatus);
+  }, [currentUser?.profileStatus, currentUser]);
 
   useEffect(() => {
     setSelectedTags(currentUser?.interestTags ?? []);
@@ -205,19 +266,27 @@ export default function ProfileScreen() {
     setBlockedLoading(true);
     loadBlocked().finally(() => setBlockedLoading(false));
   }, [currentUser, loadBlocked]);
+
   useFocusEffect(
     React.useCallback(() => {
       let active = true;
-      (async () => { if (active) await loadBlocked(); })();
-      return () => { active = false; };
+      (async () => {
+        if (active) await loadBlocked();
+      })();
+      return () => {
+        active = false;
+      };
     }, [loadBlocked])
   );
 
   const handleUnblock = async (userId: number) => {
     try {
-      const res = await fetchWithAuth(`${API_BASE_URL}/api/users/${userId}/block`, {
-        method: "DELETE",
-      });
+      const res = await fetchWithAuth(
+        `${API_BASE_URL}/api/users/${userId}/block`,
+        {
+          method: "DELETE",
+        }
+      );
       if (res.ok || res.status === 204) {
         setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
       }
@@ -228,7 +297,11 @@ export default function ProfileScreen() {
 
   const onRefreshBlocked = async () => {
     setBlockedLoading(true);
-    try { await loadBlocked(); } finally { setBlockedLoading(false); }
+    try {
+      await loadBlocked();
+    } finally {
+      setBlockedLoading(false);
+    }
   };
 
   const handleNameInputChange = (value: string) => {
@@ -267,7 +340,11 @@ export default function ProfileScreen() {
     setNameError(null);
 
     try {
-      const updated = await updateUserProfile(currentUser.id, { name: trimmed }, fetchWithAuth);
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { name: trimmed },
+        fetchWithAuth
+      );
       applyUserUpdate(updated);
       setNameInput(updated.name ?? trimmed);
       setIsEditingName(false);
@@ -297,7 +374,12 @@ export default function ProfileScreen() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to delete account";
-      Alert.alert("Unable to delete account", message, undefined, alertAppearance);
+      Alert.alert(
+        "Unable to delete account",
+        message,
+        undefined,
+        alertAppearance
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -362,13 +444,19 @@ export default function ProfileScreen() {
       setPhotoSuccessVisible(true);
     } catch (error) {
       console.error("Error uploading image:", error);
-      Alert.alert("Upload failed", "Please try again later.", undefined, alertAppearance);
+      Alert.alert(
+        "Upload failed",
+        "Please try again later.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
   const pickImageFromLibrary = async () => {
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert(
           "Permission required",
@@ -390,13 +478,19 @@ export default function ProfileScreen() {
       await uploadSelectedAsset(result.assets[0]);
     } catch (error) {
       console.error("Error picking image from library:", error);
-      Alert.alert("Unable to open library", "Please try again.", undefined, alertAppearance);
+      Alert.alert(
+        "Unable to open library",
+        "Please try again.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
   const takePhoto = async () => {
     try {
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      const permissionResult =
+        await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert(
           "Permission required",
@@ -417,7 +511,12 @@ export default function ProfileScreen() {
       await uploadSelectedAsset(result.assets[0]);
     } catch (error) {
       console.error("Error capturing photo:", error);
-      Alert.alert("Unable to open camera", "Please try again.", undefined, alertAppearance);
+      Alert.alert(
+        "Unable to open camera",
+        "Please try again.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
@@ -431,10 +530,20 @@ export default function ProfileScreen() {
       );
       applyUserUpdate(updated);
       setProfilePicture(null);
-      Alert.alert("Removed", "Profile picture removed.", undefined, alertAppearance);
+      Alert.alert(
+        "Removed",
+        "Profile picture removed.",
+        undefined,
+        alertAppearance
+      );
     } catch (error) {
       console.error("Error removing profile picture:", error);
-      Alert.alert("Unable to remove picture", "Please try again later.", undefined, alertAppearance);
+      Alert.alert(
+        "Unable to remove picture",
+        "Please try again later.",
+        undefined,
+        alertAppearance
+      );
     }
   };
 
@@ -445,7 +554,11 @@ export default function ProfileScreen() {
       "This will revert to your initials across the app.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => void removeProfilePicture() },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => void removeProfilePicture(),
+        },
       ],
       alertAppearance
     );
@@ -457,7 +570,12 @@ export default function ProfileScreen() {
 
   const profilePictureActions = useMemo<OverflowAction[]>(() => {
     const actions: OverflowAction[] = [
-      { key: "camera", label: "Take Photo", icon: "camera-outline", onPress: () => void takePhoto() },
+      {
+        key: "camera",
+        label: "Take Photo",
+        icon: "camera-outline",
+        onPress: () => void takePhoto(),
+      },
       {
         key: "library",
         label: "Choose From Library",
@@ -500,7 +618,11 @@ export default function ProfileScreen() {
     setTagError(null);
 
     try {
-      const updated = await updateUserProfile(currentUser.id, { interestTags: sortedNext }, fetchWithAuth);
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { interestTags: sortedNext },
+        fetchWithAuth
+      );
       applyUserUpdate(updated);
       setSelectedTags(updated.interestTags ?? []);
     } catch (error) {
@@ -510,6 +632,65 @@ export default function ProfileScreen() {
       setSelectedTags(previous);
     } finally {
       setSavingTags(false);
+    }
+  };
+
+  // ✅ Save profile status to backend
+  const saveProfileStatus = async (value: string) => {
+    if (!currentUser) return;
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setStatusError("Status cannot be empty.");
+      return;
+    }
+
+    setSavingProfileStatus(true);
+    setStatusError(null);
+
+    try {
+      const updated = await updateUserProfile(
+        currentUser.id,
+        { profileStatus: trimmed },
+        fetchWithAuth
+      );
+      applyUserUpdate(updated as CurrentUser);
+      const finalStatus = updated.profileStatus ?? trimmed;
+      setProfileStatus(finalStatus);
+      if (statusMode === "CUSTOM") {
+        setCustomStatus(finalStatus);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update status";
+      setStatusError(message);
+    } finally {
+      setSavingProfileStatus(false);
+    }
+  };
+
+  // ✅ Change profile status to a PRESET (saves immediately)
+  const handleChangeProfileStatus = (value: string) => {
+    if (value === profileStatus && statusMode === "PRESET") return;
+    setStatusMode("PRESET");
+    setCustomStatus("");
+    setProfileStatus(value);
+    void saveProfileStatus(value);
+  };
+
+  // ✅ Switch to CUSTOM mode (save when user finishes editing)
+  const handleSelectCustomStatus = () => {
+    setStatusMode("CUSTOM");
+    setStatusError(null);
+
+    if (!customStatus.trim()) {
+      const seed =
+        profileStatus && !STATUS_OPTIONS.includes(profileStatus as any)
+          ? profileStatus
+          : "Looking to Mingle";
+      setCustomStatus(seed);
+      setProfileStatus(seed);
+    } else {
+      setProfileStatus(customStatus);
     }
   };
 
@@ -565,377 +746,662 @@ export default function ProfileScreen() {
 
   return (
     <>
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.scrollContent}
-    >
-      <View style={[styles.card, cardSurface]}>
-        <TouchableOpacity
-          style={[styles.cardHeader, styles.appearanceHeader]}
-          onPress={() => setShowThemeOptions((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel="Toggle appearance options"
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.sectionTitle, primaryText]}>Appearance</Text>
-          <Ionicons
-            name={isDark ? "moon" : "sunny"}
-            size={24}
-            color={colors.accent}
-          />
-        </TouchableOpacity>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={[styles.card, cardSurface]}>
+          {/* Appearance header from main */}
+          <TouchableOpacity
+            style={[styles.cardHeader, styles.appearanceHeader]}
+            onPress={() => setShowThemeOptions((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle appearance options"
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.sectionTitle, primaryText]}>Appearance</Text>
+            <Ionicons
+              name={isDark ? "moon" : "sunny"}
+              size={24}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
 
-        {showThemeOptions && (
-          <>
-            <Text style={[styles.themeNote, mutedText]}>
-              Choose Light or Dark, or follow your device setting.
-            </Text>
-            <View style={styles.themeRow}>
-              {themeOptions.map((opt) => {
-                const active = themeMode === opt.key;
-                return (
-                  <TouchableOpacity
-                    key={opt.key}
+          {showThemeOptions && (
+            <>
+              <Text style={[styles.themeNote, mutedText]}>
+                Choose Light or Dark, or follow your device setting.
+              </Text>
+              <View style={styles.themeRow}>
+                {themeOptions.map((opt) => {
+                  const active = themeMode === opt.key;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[
+                        styles.themeChip,
+                        active && styles.themeChipActive,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: isDark ? colors.background : "#fff",
+                        },
+                        active && {
+                          backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
+                        },
+                      ]}
+                      onPress={() => setThemeMode(opt.key)}
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[
+                          styles.themeChipText,
+                          active && styles.themeChipTextActive,
+                          { color: active ? colors.accent : colors.text },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View
+                style={[styles.divider, { backgroundColor: colors.border }]}
+              />
+            </>
+          )}
+
+          {/* ✅ Profile Picture Section */}
+          <View style={styles.profilePictureSection}>
+            <View style={styles.profilePictureWrapper}>
+              {profilePicture ? (
+                <Image
+                  source={{ uri: profilePicture }}
+                  style={[
+                    styles.profilePicture,
+                    { borderColor: colors.border },
+                  ]}
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.profilePicture,
+                    styles.profilePlaceholder,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={primaryText}>No Picture</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={handleProfilePicturePress}
+                style={[
+                  styles.profileUploadFab,
+                  { backgroundColor: colors.accent },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Upload profile picture"
+              >
+                <Ionicons name="camera" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.displayNameRow}>
+              {isEditingName ? (
+                <View style={styles.inlineNameEditRow}>
+                  <TextInput
+                    value={nameInput}
+                    onChangeText={handleNameInputChange}
+                    placeholder="Enter your name"
+                    autoCapitalize="words"
+                    returnKeyType="done"
+                    editable={!savingName}
+                    onSubmitEditing={() => {
+                      if (!savingName) void handleSaveName();
+                    }}
                     style={[
-                      styles.themeChip,
-                      active && styles.themeChipActive,
-                      { borderColor: colors.border, backgroundColor: isDark ? colors.background : "#fff" },
-                      active && { backgroundColor: isDark ? "#0f172a" : "#e6f0ff" },
+                      styles.nameInput,
+                      styles.inlineNameInput,
+                      inputSurface,
+                      { textAlign: "center" },
                     ]}
-                    onPress={() => setThemeMode(opt.key)}
-                    accessibilityRole="button"
+                    accessibilityLabel="Name input"
+                    placeholderTextColor={colors.muted}
+                  />
+                  <TouchableOpacity
+                    onPress={handleSaveName}
+                    disabled={savingName}
+                    style={styles.inlineNameIcon}
+                    accessibilityLabel="Save name"
                   >
+                    <Ionicons name="checkmark" size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleCancelNameEdit}
+                    disabled={savingName}
+                    style={styles.inlineNameIcon}
+                    accessibilityLabel="Cancel name edit"
+                  >
+                    <Ionicons name="close" size={20} color={colors.muted} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.inlineNameReadRow}>
+                  <View
+                    style={styles.inlineNameIconGhost}
+                    pointerEvents="none"
+                  />
+                  <Text
+                    style={[
+                      styles.displayNameText,
+                      styles.displayNameTextFull,
+                      primaryText,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {displayName}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={startNameEdit}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit display name"
+                    style={[styles.inlineNameIcon, styles.inlineNameEditButton]}
+                  >
+                    <Ionicons name="pencil" size={18} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              {nameError && (
+                <Text style={[styles.errorText, styles.nameError]}>
+                  {nameError}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <Text style={[styles.label, primaryText]}>Email:</Text>
+          <Text style={[styles.value, primaryText]}>
+            {currentUser?.email || "-"}
+          </Text>
+          <Text style={[styles.label, primaryText]}>Visibility:</Text>
+          <Text style={[styles.value, primaryText]}>{status}</Text>
+
+          {/* ✅ Profile Status row with Custom option (backend-synced) */}
+          <Text style={[styles.label, primaryText]}>Status:</Text>
+
+          <View style={styles.statusRow}>
+            {/* Preset options */}
+            {STATUS_OPTIONS.map((opt) => {
+              const active = statusMode === "PRESET" && profileStatus === opt;
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => handleChangeProfileStatus(opt)}
+                  disabled={savingProfileStatus}
+                  style={[
+                    styles.statusChip,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: isDark ? colors.background : "#fff",
+                    },
+                    active && {
+                      backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
+                      borderColor: colors.accent,
+                    },
+                    savingProfileStatus && { opacity: 0.8 },
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.statusChipInner}>
+                    <View
+                      style={[
+                        styles.statusDotTiny,
+                        {
+                          backgroundColor: getStatusDotColor(
+                            opt,
+                            colors.accent
+                          ),
+                        },
+                      ]}
+                    />
                     <Text
                       style={[
-                        styles.themeChipText,
-                        active && styles.themeChipTextActive,
+                        styles.statusChipText,
                         { color: active ? colors.accent : colors.text },
                       ]}
                     >
-                      {opt.label}
+                      {opt}
                     </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          </>
-        )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
 
-
-        {/* ✅ Profile Picture Section */}
-        <View style={styles.profilePictureSection}>
-          <View style={styles.profilePictureWrapper}>
-            {profilePicture ? (
-              <Image source={{ uri: profilePicture }} style={[styles.profilePicture, { borderColor: colors.border }]} />
-            ) : (
-              <View style={[styles.profilePicture, styles.profilePlaceholder, { borderColor: colors.border }]}>
-                <Text style={primaryText}>No Picture</Text>
-              </View>
-            )}
+            {/* Custom option */}
             <TouchableOpacity
-              onPress={handleProfilePicturePress}
-              style={[styles.profileUploadFab, { backgroundColor: colors.accent }]}
+              onPress={handleSelectCustomStatus}
+              disabled={savingProfileStatus}
+              style={[
+                styles.statusChip,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: isDark ? colors.background : "#fff",
+                },
+                statusMode === "CUSTOM" && {
+                  backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
+                  borderColor: colors.accent,
+                },
+                savingProfileStatus && { opacity: 0.8 },
+              ]}
               accessibilityRole="button"
-              accessibilityLabel="Upload profile picture"
             >
-              <Ionicons name="camera" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.displayNameRow}>
-            {isEditingName ? (
-              <View style={styles.inlineNameEditRow}>
-                <TextInput
-                  value={nameInput}
-                  onChangeText={handleNameInputChange}
-                  placeholder="Enter your name"
-                  autoCapitalize="words"
-                  returnKeyType="done"
-                  editable={!savingName}
-                  onSubmitEditing={() => {
-                    if (!savingName) void handleSaveName();
-                  }}
-                  style={[styles.nameInput, styles.inlineNameInput, inputSurface, { textAlign: "center" }]}
-                  accessibilityLabel="Name input"
-                  placeholderTextColor={colors.muted}
-                />
-                <TouchableOpacity
-                  onPress={handleSaveName}
-                  disabled={savingName}
-                  style={styles.inlineNameIcon}
-                  accessibilityLabel="Save name"
-                >
-                  <Ionicons name="checkmark" size={20} color={colors.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleCancelNameEdit}
-                  disabled={savingName}
-                  style={styles.inlineNameIcon}
-                  accessibilityLabel="Cancel name edit"
-                >
-                  <Ionicons name="close" size={20} color={colors.muted} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.inlineNameReadRow}>
-                <View style={styles.inlineNameIconGhost} pointerEvents="none" />
-                <Text style={[styles.displayNameText, styles.displayNameTextFull, primaryText]} numberOfLines={1}>
-                  {displayName}
-                </Text>
-                <TouchableOpacity
-                  onPress={startNameEdit}
-                  accessibilityRole="button"
-                  accessibilityLabel="Edit display name"
-                  style={[styles.inlineNameIcon, styles.inlineNameEditButton]}
-                >
-                  <Ionicons name="pencil" size={18} color={colors.accent} />
-                </TouchableOpacity>
-              </View>
-            )}
-            {nameError && <Text style={[styles.errorText, styles.nameError]}>{nameError}</Text>}
-          </View>
-        </View>
-
-        <Text style={[styles.label, primaryText]}>Email:</Text>
-        <Text style={[styles.value, primaryText]}>{currentUser?.email || "-"}</Text>
-        <Text style={[styles.label, primaryText]}>Visibility:</Text>
-        <Text style={[styles.value, primaryText]}>{status}</Text>
-
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-        {/* ✅ Interest Tags Section (unchanged) */}
-        <View style={styles.tagHeader}>
-          <Text style={[styles.label, primaryText]}>
-            Interest Tags
-            {expanded && (
-              <Text style={[styles.labelCount, { color: colors.accent }]}>{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
-            )}
-          </Text>
-          <View style={styles.tagHeaderActions}>
-            {savingTags && (
-              <ActivityIndicator
-                size="small"
-                color="#007BFF"
-                style={styles.savingIndicator}
-              />
-            )}
-            <TouchableOpacity onPress={() => setExpanded((prev) => !prev)}>
-              <Text style={styles.toggleText}>{expanded ? "Hide" : "Edit"}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {collapsedMessage ? (
-          <Text style={[styles.emptyTags, mutedText]}>{collapsedMessage}</Text>
-        ) : (
-          <View style={styles.selectedTagsWrapper}>
-              {displayedSelectedTags.map((tag) => (
+              <View style={styles.statusChipInner}>
                 <View
-                  key={tag}
                   style={[
-                    styles.selectedChip,
-                    { backgroundColor: isDark ? colors.background : "#e6f0ff", borderColor: colors.border },
+                    styles.statusDotTiny,
+                    {
+                      backgroundColor: getStatusDotColor(
+                        statusMode === "CUSTOM" ? profileStatus : "custom",
+                        colors.accent
+                      ),
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.statusChipText,
+                    {
+                      color:
+                        statusMode === "CUSTOM" ? colors.accent : colors.text,
+                    },
                   ]}
                 >
-                  <Text style={[styles.selectedChipText, { color: colors.accent }]}>{tag}</Text>
-                </View>
-              ))}
+                  Custom
+                </Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {expanded && (
-          <View
-            style={[
-              styles.catalogSection,
-              { maxHeight: undefined, backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View
-              style={[
-                styles.tagSearchWrapper,
-                { backgroundColor: inputSurface.backgroundColor, borderColor: colors.border },
-              ]}
-            >
-              <TextInput
-                value={tagSearch}
-                onChangeText={setTagSearch}
-                placeholder="Search tags"
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="search"
-                style={[styles.tagSearchInput, { color: colors.text }]}
-                accessibilityLabel="Search interest tags"
-                placeholderTextColor={colors.muted}
+          {/* Text input appears only when Custom is active */}
+          {statusMode === "CUSTOM" && (
+            <View style={styles.statusCustomRow}>
+              <View
+                style={[
+                  styles.statusDotTiny,
+                  {
+                    backgroundColor: getStatusDotColor(
+                      customStatus || profileStatus,
+                      colors.accent
+                    ),
+                  },
+                ]}
               />
-              {hasSearch && (
-                <TouchableOpacity
-                  onPress={() => setTagSearch("")}
-                  style={styles.tagSearchClear}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.tagSearchClearText}>Clear</Text>
-                </TouchableOpacity>
-              )}
+              <TextInput
+                value={customStatus}
+                onChangeText={(text) => {
+                  setCustomStatus(text);
+                  setProfileStatus(text);
+                  if (statusError) setStatusError(null);
+                }}
+                placeholder="Type your status (e.g., Running errands, Going Shopping)…"
+                placeholderTextColor={colors.muted}
+                style={[
+                  styles.statusCustomInput,
+                  {
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: isDark ? colors.background : "#fff",
+                    flex: 1,
+                  },
+                ]}
+                maxLength={80}
+                onEndEditing={() => void saveProfileStatus(customStatus)}
+                onSubmitEditing={() => void saveProfileStatus(customStatus)}
+              />
             </View>
-            {loadingTags ? (
-              <View style={styles.catalogLoading}>
+          )}
+
+          {statusError && (
+            <Text style={[styles.errorText, { marginTop: 4 }]}>
+              {statusError}
+            </Text>
+          )}
+
+          <View
+            style={[styles.divider, { backgroundColor: colors.border }]}
+          />
+
+          {/* ✅ Interest Tags Section */}
+          <View style={styles.tagHeader}>
+            <Text style={[styles.label, primaryText]}>
+              Interest Tags
+              {expanded && (
+                <Text
+                  style={[
+                    styles.labelCount,
+                    { color: colors.accent },
+                  ]}
+                >{` (${selectedTags.length}/${MAX_INTEREST_TAGS})`}</Text>
+              )}
+            </Text>
+            <View style={styles.tagHeaderActions}>
+              {savingTags && (
                 <ActivityIndicator
                   size="small"
                   color="#007BFF"
                   style={styles.savingIndicator}
                 />
-                <Text style={[styles.helperText, styles.catalogLoadingText, mutedText]}>
-                  Loading tag catalog...
+              )}
+              <TouchableOpacity onPress={() => setExpanded((prev) => !prev)}>
+                <Text style={styles.toggleText}>
+                  {expanded ? "Hide" : "Edit"}
                 </Text>
-              </View>
-            ) : (
-              filteredTagOptions.length > 0 && (
-                <View>
-                  <View style={styles.catalogGrid}>
-                    {filteredTagOptions.map((tag) => {
-                      const selected = selectedTags.includes(tag);
-                      return (
-                        <TouchableOpacity
-                          key={tag}
-                          style={[
-                            styles.tagOption,
-                            selected && styles.tagOptionSelected,
-                            (savingTags || (!selected && limitReached)) &&
-                            styles.tagOptionDisabled,
-                            { backgroundColor: inputSurface.backgroundColor, borderColor: colors.border },
-                            selected && { backgroundColor: isDark ? "#0f172a" : "#e6f0ff", borderColor: colors.accent },
-                          ]}
-                          onPress={() => handleToggleTag(tag)}
-                          disabled={savingTags}
-                        >
-                          <Text
-                            style={[
-                              styles.tagOptionText,
-                              selected && styles.tagOptionTextSelected,
-                              { color: colors.text },
-                              selected && { color: colors.accent },
-                            ]}
-                          >
-                            {tag}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )
-            )}
-            {tagError && <Text style={[styles.errorText, { color: "#c00" }]}>{tagError}</Text>}
-            {noMatches && (
-              <Text style={[styles.helperText, mutedText]}>
-                {`No matches found for ${searchTerm}. Try a different keyword.`}
-              </Text>
-            )}
-            {noCatalogTags && (
-              <Text style={[styles.helperText, mutedText]}>
-                No tags available yet. Ask an admin to populate the catalog.
-              </Text>
-            )}
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
-      </View>
 
-      {/* Blocked accounts */}
-      <View style={[styles.blockedSection, cardSurface]}>
-        <View style={styles.blockedHeaderRow}>
-          <Text style={[styles.sectionTitle, primaryText]}>Blocked Accounts</Text>
-          <TouchableOpacity onPress={onRefreshBlocked} disabled={blockedLoading} accessibilityRole="button">
-            <Text style={[styles.link, blockedLoading && styles.linkDisabled]}>{blockedLoading ? "Refreshing..." : "Refresh"}</Text>
+          {collapsedMessage ? (
+            <Text style={[styles.emptyTags, mutedText]}>
+              {collapsedMessage}
+            </Text>
+          ) : (
+            <View style={styles.selectedTagsWrapper}>
+              {displayedSelectedTags.map((tag) => (
+                <View
+                  key={tag}
+                  style={[
+                    styles.selectedChip,
+                    {
+                      backgroundColor: isDark ? colors.background : "#e6f0ff",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.selectedChipText,
+                      { color: colors.accent },
+                    ]}
+                  >
+                    {tag}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {expanded && (
+            <View
+              style={[
+                styles.catalogSection,
+                {
+                  maxHeight: undefined,
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.tagSearchWrapper,
+                  {
+                    backgroundColor: inputSurface.backgroundColor,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <TextInput
+                  value={tagSearch}
+                  onChangeText={setTagSearch}
+                  placeholder="Search tags"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  style={[styles.tagSearchInput, { color: colors.text }]}
+                  accessibilityLabel="Search interest tags"
+                  placeholderTextColor={colors.muted}
+                />
+                {hasSearch && (
+                  <TouchableOpacity
+                    onPress={() => setTagSearch("")}
+                    style={styles.tagSearchClear}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.tagSearchClearText}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {loadingTags ? (
+                <View style={styles.catalogLoading}>
+                  <ActivityIndicator
+                    size="small"
+                    color="#007BFF"
+                    style={styles.savingIndicator}
+                  />
+                  <Text
+                    style={[
+                      styles.helperText,
+                      styles.catalogLoadingText,
+                      mutedText,
+                    ]}
+                  >
+                    Loading tag catalog...
+                  </Text>
+                </View>
+              ) : (
+                filteredTagOptions.length > 0 && (
+                  <View>
+                    <View style={styles.catalogGrid}>
+                      {filteredTagOptions.map((tag) => {
+                        const selected = selectedTags.includes(tag);
+                        return (
+                          <TouchableOpacity
+                            key={tag}
+                            style={[
+                              styles.tagOption,
+                              selected && styles.tagOptionSelected,
+                              (savingTags || (!selected && limitReached)) &&
+                                styles.tagOptionDisabled,
+                              {
+                                backgroundColor: inputSurface.backgroundColor,
+                                borderColor: colors.border,
+                              },
+                              selected && {
+                                backgroundColor: isDark ? "#0f172a" : "#e6f0ff",
+                                borderColor: colors.accent,
+                              },
+                            ]}
+                            onPress={() => handleToggleTag(tag)}
+                            disabled={savingTags}
+                          >
+                            <Text
+                              style={[
+                                styles.tagOptionText,
+                                selected && styles.tagOptionTextSelected,
+                                { color: colors.text },
+                                selected && { color: colors.accent },
+                              ]}
+                            >
+                              {tag}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )
+              )}
+              {tagError && (
+                <Text style={[styles.errorText, { color: "#c00" }]}>
+                  {tagError}
+                </Text>
+              )}
+              {noMatches && (
+                <Text style={[styles.helperText, mutedText]}>
+                  {`No matches found for ${searchTerm}. Try a different keyword.`}
+                </Text>
+              )}
+              {noCatalogTags && (
+                <Text style={[styles.helperText, mutedText]}>
+                  No tags available yet. Ask an admin to populate the catalog.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Blocked accounts */}
+        <View style={[styles.blockedSection, cardSurface]}>
+          <View style={styles.blockedHeaderRow}>
+            <Text style={[styles.sectionTitle, primaryText]}>
+              Blocked Accounts
+            </Text>
+            <TouchableOpacity
+              onPress={onRefreshBlocked}
+              disabled={blockedLoading}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.link,
+                  blockedLoading && styles.linkDisabled,
+                ]}
+              >
+                {blockedLoading ? "Refreshing..." : "Refresh"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {blockedLoading && blockedUsers.length === 0 ? (
+            <ActivityIndicator size="small" color="#007BFF" />
+          ) : blockedUsers.length === 0 ? (
+            <Text style={[styles.helperText, mutedText]}>
+              You haven&apos;t blocked anyone.
+            </Text>
+          ) : (
+            blockedUsers.map((u) => {
+              const pp = (u as any).profilePicture as
+                | string
+                | null
+                | undefined;
+              const uri = pp
+                ? pp.startsWith("http")
+                  ? pp
+                  : `${API_BASE_URL}${pp}`
+                : null;
+              const initial = (u.name || u.email || "?")
+                .charAt(0)
+                .toUpperCase();
+              return (
+                <View
+                  key={u.id}
+                  style={[
+                    styles.blockedRowItem,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
+                  {uri ? (
+                    <Image source={{ uri }} style={styles.blockedAvatar} />
+                  ) : (
+                    <View
+                      style={[
+                        styles.blockedAvatar,
+                        styles.blockedAvatarPlaceholder,
+                        { backgroundColor: colors.border },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.blockedAvatarInitial,
+                          primaryText,
+                        ]}
+                      >
+                        {initial}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.blockedNameText, primaryText]}
+                    >
+                      {u.name || u.email}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => void handleUnblock(u.id)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.unblockLink}>Unblock</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <View style={styles.logout}>
+          <TouchableOpacity
+            style={[styles.logoutPill, cardSurface]}
+            onPress={handleLogout}
+            accessibilityRole="button"
+          >
+            <Text style={styles.logoutPillText}>Logout</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.logoutPill,
+              styles.deleteAction,
+              isDeleting && styles.disabledAction,
+            ]}
+            onPress={confirmDeleteAccount}
+            disabled={isDeleting}
+            accessibilityRole="button"
+            accessibilityLabel="Delete my account"
+          >
+            {isDeleting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.deleteActionText}>Delete Account</Text>
+            )}
           </TouchableOpacity>
         </View>
-        {blockedLoading && blockedUsers.length === 0 ? (
-          <ActivityIndicator size="small" color="#007BFF" />
-        ) : blockedUsers.length === 0 ? (
-          <Text style={[styles.helperText, mutedText]}>You haven&apos;t blocked anyone.</Text>
-        ) : (
-          blockedUsers.map((u) => {
-            const pp = (u as any).profilePicture as string | null | undefined;
-            const uri = pp ? (pp.startsWith("http") ? pp : `${API_BASE_URL}${pp}`) : null;
-            const initial = (u.name || u.email || "?").charAt(0).toUpperCase();
-            return (
-              <View key={u.id} style={[styles.blockedRowItem, { borderBottomColor: colors.border }]}>
-                {uri ? (
-                  <Image source={{ uri }} style={styles.blockedAvatar} />
-                ) : (
-                  <View style={[styles.blockedAvatar, styles.blockedAvatarPlaceholder, { backgroundColor: colors.border }]}>
-                    <Text style={[styles.blockedAvatarInitial, primaryText]}>{initial}</Text>
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.blockedNameText, primaryText]}>{u.name || u.email}</Text>
-                </View>
-                <TouchableOpacity onPress={() => void handleUnblock(u.id)} accessibilityRole="button">
-                  <Text style={styles.unblockLink}>Unblock</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })
-        )}
-      </View>
+      </ScrollView>
 
-      <View style={styles.logout}>
-        <TouchableOpacity
-          style={[styles.logoutPill, cardSurface]}
-          onPress={handleLogout}
-          accessibilityRole="button"
-        >
-          <Text style={styles.logoutPillText}>Logout</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.logoutPill, styles.deleteAction, isDeleting && styles.disabledAction]}
-          onPress={confirmDeleteAccount}
-          disabled={isDeleting}
-          accessibilityRole="button"
-          accessibilityLabel="Delete my account"
-        >
-          {isDeleting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.deleteActionText}>Delete Account</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-    <OverflowMenu
-      visible={photoMenuVisible}
-      onClose={() => setPhotoMenuVisible(false)}
-      title="Profile picture"
-      actions={profilePictureActions}
-    />
-    <AppNotice
-      visible={photoSuccessVisible}
-      onClose={() => setPhotoSuccessVisible(false)}
-      title="Success"
-      message="Profile picture updated!"
-    />
-    <AppNotice
-      visible={nameSuccessVisible}
-      onClose={() => setNameSuccessVisible(false)}
-      title="Success"
-      message="Name updated!"
-    />
-    <OverflowMenu
-      visible={deleteConfirmVisible}
-      onClose={() => setDeleteConfirmVisible(false)}
-      title="Delete your account?"
-      message="This removes your profile, messages, waves, and blocks. This action cannot be undone."
-      actions={[
-        {
-          key: "delete",
-          label: isDeleting ? "Deleting..." : "Delete account",
-          destructive: true,
-          disabled: isDeleting,
-          icon: "trash-outline",
-          onPress: handleConfirmDelete,
-        },
-      ]}
-    />
+      <OverflowMenu
+        visible={photoMenuVisible}
+        onClose={() => setPhotoMenuVisible(false)}
+        title="Profile picture"
+        actions={profilePictureActions}
+      />
+
+      <AppNotice
+        visible={photoSuccessVisible}
+        onClose={() => setPhotoSuccessVisible(false)}
+        title="Success"
+        message="Profile picture updated!"
+      />
+      <AppNotice
+        visible={nameSuccessVisible}
+        onClose={() => setNameSuccessVisible(false)}
+        title="Success"
+        message="Name updated!"
+      />
+
+      <OverflowMenu
+        visible={deleteConfirmVisible}
+        onClose={() => setDeleteConfirmVisible(false)}
+        title="Delete your account?"
+        message="This removes your profile, messages, waves, and blocks. This action cannot be undone."
+        actions={[
+          {
+            key: "delete",
+            label: isDeleting ? "Deleting..." : "Delete account",
+            destructive: true,
+            disabled: isDeleting,
+            icon: "trash-outline",
+            onPress: handleConfirmDelete,
+          },
+        ]}
+      />
     </>
   );
 }
@@ -944,37 +1410,119 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f2f2f2" },
   scrollContent: { alignItems: "center", padding: 20, paddingBottom: 40 },
-  card: { backgroundColor: "white", padding: 20, borderRadius: 10, width: "100%", maxWidth: 580, marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3, borderWidth: StyleSheet.hairlineWidth },
-  cardHeader: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginBottom: 8 },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
+  card: {
+    backgroundColor: "white",
+    padding: 20,
+    borderRadius: 10,
+    width: "100%",
+    maxWidth: 580,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 15,
+    textAlign: "center",
+  },
   label: { fontSize: 16, fontWeight: "600", marginTop: 10 },
   labelCount: { fontSize: 13, color: "#66a8ff", fontWeight: "500" },
   value: { fontSize: 16, color: "#333" },
-  valueRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
+  valueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
   nameValue: { flex: 1, marginRight: 12 },
   nameEditContainer: { marginTop: 8, width: "100%" },
-  nameInput: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: "#333", backgroundColor: "#fff" },
-  nameActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 12 },
+  nameInput: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: "#333",
+    backgroundColor: "#fff",
+  },
+  nameActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 12,
+  },
   nameActionButton: { marginLeft: 12 },
   nameActionButtonFirst: { marginLeft: 0 },
   nameError: { marginTop: 8 },
   disabledAction: { opacity: 0.5 },
   divider: { marginVertical: 16, height: 1, backgroundColor: "#eee" },
-  tagHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  tagHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   tagHeaderActions: { flexDirection: "row", alignItems: "center" },
   savingIndicator: { marginRight: 8 },
   toggleText: { color: "#007BFF", fontWeight: "600" },
   emptyTags: { marginTop: 8, fontSize: 14, color: "#666" },
-  selectedTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
-  selectedChip: { backgroundColor: "#e6f0ff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth },
+  selectedTagsWrapper: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+  },
+  selectedChip: {
+    backgroundColor: "#e6f0ff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   selectedChipText: { color: "#66a8ff", fontSize: 14, fontWeight: "500" },
-  catalogSection: { marginTop: 16, borderWidth: 1, borderColor: "#ddd", borderRadius: 12, padding: 12, backgroundColor: "#fafafa" },
-  tagSearchWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingHorizontal: 12, marginBottom: 12, backgroundColor: "#fff" },
+  catalogSection: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: "#fafafa",
+  },
+  tagSearchWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+  },
   tagSearchInput: { flex: 1, paddingVertical: 8, fontSize: 14, color: "#333" },
   tagSearchClear: { marginLeft: 8 },
   tagSearchClearText: { color: "#007BFF", fontSize: 13, fontWeight: "600" },
   catalogGrid: { flexDirection: "row", flexWrap: "wrap" },
-  tagOption: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: "#ccc", backgroundColor: "#fff", marginRight: 8, marginBottom: 8 },
+  tagOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    backgroundColor: "#fff",
+    marginRight: 8,
+    marginBottom: 8,
+  },
   tagOptionSelected: { borderColor: "#007BFF", backgroundColor: "#e6f0ff" },
   tagOptionDisabled: { opacity: 0.6 },
   tagOptionText: { fontSize: 14, color: "#333" },
@@ -982,7 +1530,11 @@ const styles = StyleSheet.create({
   catalogLoading: { flexDirection: "row", alignItems: "center" },
   catalogLoadingText: { marginLeft: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
-  appearanceHeader: { justifyContent: "space-between", marginBottom: 0, paddingBottom: 4 },
+  appearanceHeader: {
+    justifyContent: "space-between",
+    marginBottom: 0,
+    paddingBottom: 4,
+  },
   themeRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   themeChip: {
     flex: 1,
@@ -1024,14 +1576,59 @@ const styles = StyleSheet.create({
   deleteActionText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   profilePictureSection: { alignItems: "center", marginBottom: 20 },
   profilePictureWrapper: { position: "relative" },
-  profilePicture: { width: 120, height: 120, borderRadius: 60, marginBottom: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e5e7eb" },
-  profilePlaceholder: { backgroundColor: "#ddd", justifyContent: "center", alignItems: "center" },
-  profileUploadFab: { position: "absolute", bottom: 6, right: 6, width: 40, height: 40, borderRadius: 20, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3, elevation: 4 },
-  displayNameText: { fontSize: 22, fontWeight: "700", marginTop: 6, marginBottom: 4, textAlign: "center" },
+  profilePicture: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginBottom: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb",
+  },
+  profilePlaceholder: {
+    backgroundColor: "#ddd",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  profileUploadFab: {
+    position: "absolute",
+    bottom: 6,
+    right: 6,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#2563eb",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  displayNameText: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginTop: 6,
+    marginBottom: 4,
+    textAlign: "center",
+  },
   displayNameTextFull: { flexShrink: 1 },
   displayNameRow: { marginTop: 4, width: "100%", alignItems: "center" },
-  inlineNameReadRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", alignSelf: "center", maxWidth: 360, width: "100%" },
-  inlineNameEditRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: 360 },
+  inlineNameReadRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    maxWidth: 360,
+    width: "100%",
+  },
+  inlineNameEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    maxWidth: 360,
+  },
   inlineNameIcon: { marginLeft: 8, padding: 6 },
   inlineNameEditButton: {},
   inlineNameIconGhost: { width: 30, height: 30, marginRight: 8 },
@@ -1051,15 +1648,62 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  blockedHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  blockedRowItem: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#e5e5e5" },
+  blockedHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  blockedRowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e5e5",
+  },
   blockedAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
-  blockedAvatarPlaceholder: { backgroundColor: "#eee", justifyContent: "center", alignItems: "center" },
+  blockedAvatarPlaceholder: {
+    backgroundColor: "#eee",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   blockedAvatarInitial: { fontSize: 14, fontWeight: "700", color: "#555" },
   blockedNameText: { fontSize: 16 },
   unblockLink: { color: "#dc3545", fontWeight: "700" },
   link: { color: "#007BFF", fontWeight: "600" },
   linkDisabled: { opacity: 0.5 },
+
+  // ✅ New status styles
+  statusRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 6 },
+  statusChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginRight: 8,
+    marginTop: 4,
+  },
+  statusChipText: { fontSize: 14, fontWeight: "600" },
+  statusChipInner: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusDotTiny: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusCustomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  statusCustomInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
 });
-
-

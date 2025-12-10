@@ -64,7 +64,8 @@ const userAuthSelect = {
   interestTags: { select: { name: true } }, // ✅ added
   createdAt: true,
   visibility: true,
-  lastLogin: true,
+  profileStatus: true, // ✅ from profile-status branch
+  lastLogin: true,     // ✅ from main
 } as const;
 
 type UserAuthRecord = {
@@ -77,6 +78,7 @@ type UserAuthRecord = {
   interestTags?: { name: string }[];
   createdAt: Date;
   visibility: boolean;
+  profileStatus?: string | null;
   lastLogin: Date | null;
 };
 
@@ -104,6 +106,7 @@ const buildAuthResponse = (user: UserAuthRecord) => {
       profilePicture: user.profilePicture ?? null,
       interestTags: user.interestTags ?? [],
       visibility: user.visibility,
+      profileStatus: user.profileStatus ?? null,
       lastLogin: user.lastLogin ?? null,
     }),
   };

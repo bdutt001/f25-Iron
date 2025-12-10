@@ -29,6 +29,8 @@ export type CurrentUser = {
   profilePicture?: string | null;
   trustScore?: number;
   visibility?: boolean;
+  /** Optional profile status shown on profile (e.g. "Looking to Mingle") */
+  profileStatus?: string | null;
 };
 
 /** Context state shape shared throughout the app */
@@ -103,23 +105,26 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     [persistTokens]
   );
 
-  const logout = useCallback(
-    async (message?: string) => {
-      refreshPromiseRef.current = null;
-      setCurrentUser(null);
-      setPrefetchedUsers(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-      setStatusRaw("Hidden");
-      setAuthStatus("unauthenticated");
-      await persistTokens(null, null);
-      if (message) {
-        Alert.alert("Session expired", message);
-      }
-      router.replace("/login");
-    },
-    [persistTokens]
-  );
+    const logout = useCallback(
+      async (message?: string) => {
+        refreshPromiseRef.current = null;
+        setCurrentUser(null);
+        setPrefetchedUsers(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+        setStatusRaw("Hidden");
+        setAuthStatus("unauthenticated");
+        await persistTokens(null, null);
+
+        if (message) {
+          Alert.alert("Session expired", message);
+        }
+
+        // ✅ Just navigate to login; remove the back arrow via Stack options
+        router.replace("/login");
+      },
+      [persistTokens]
+    );
 
   const refreshAccessToken = useCallback(async (): Promise<string> => {
     if (!refreshToken) {
@@ -252,6 +257,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
                   interestTags: updated.interestTags ?? prev.interestTags,
                   profilePicture: updated.profilePicture ?? prev.profilePicture,
                   visibility: updated.visibility ?? visibilityFlag,
+                  // ✅ keep profileStatus synced if backend returns it
+                  profileStatus: updated.profileStatus ?? prev.profileStatus,
                 }
               : updated
           );
@@ -340,4 +347,3 @@ export const useUser = () => {
   if (!ctx) throw new Error("useUser must be used within a UserProvider");
   return ctx;
 };
-

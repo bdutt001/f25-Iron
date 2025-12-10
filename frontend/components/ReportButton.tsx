@@ -25,7 +25,8 @@ export default function ReportButton({
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
   const [showReasonMenu, setShowReasonMenu] = useState(false);
-  const [notice, setNotice] = useState<typeof REPORT_SUCCESS_NOTICE | null>(null);
+  const [notice, setNotice] =
+    useState<typeof REPORT_SUCCESS_NOTICE | null>(null);
   const { currentUser, isLoggedIn, fetchWithAuth } = useUser();
   const { showError } = useThemedAlert();
 
@@ -53,7 +54,8 @@ export default function ReportButton({
 
     try {
       const severity =
-        typeof severityOverride === "number" && Number.isFinite(severityOverride)
+        typeof severityOverride === "number" &&
+        Number.isFinite(severityOverride)
           ? severityOverride
           : defaultSeverity;
 
@@ -69,7 +71,10 @@ export default function ReportButton({
         }),
       });
 
-      const payload = (await response.json()) as { trustScore?: number; error?: string };
+      const payload = (await response.json()) as {
+        trustScore?: number;
+        error?: string;
+      };
 
       if (!response.ok || typeof payload.trustScore !== "number") {
         const message = payload?.error ?? "Failed to submit report";
@@ -79,9 +84,13 @@ export default function ReportButton({
       let latestTrustScore = payload.trustScore;
 
       try {
-        const trustResponse = await fetchWithAuth(`${API_BASE_URL}/api/users/${reportedUserId}/trust`);
+        const trustResponse = await fetchWithAuth(
+          `${API_BASE_URL}/api/users/${reportedUserId}/trust`
+        );
         if (trustResponse.ok) {
-          const trustData = (await trustResponse.json()) as { trustScore?: number };
+          const trustData = (await trustResponse.json()) as {
+            trustScore?: number;
+          };
           if (typeof trustData.trustScore === "number") {
             latestTrustScore = trustData.trustScore;
           }
@@ -93,20 +102,35 @@ export default function ReportButton({
       setNotice(REPORT_SUCCESS_NOTICE);
       onReportSuccess?.(latestTrustScore);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to submit report";
+      const message =
+        error instanceof Error ? error.message : "Failed to submit report";
       showError(message);
     } finally {
       setIsReporting(false);
     }
   };
 
-  const buttonStyles = [styles.button, styles[size], isReporting && styles.disabled, style];
+  const buttonStyles = [
+    styles.button,
+    styles[size],
+    isReporting && styles.disabled,
+    style,
+  ];
 
-  const textStyles = [styles.text, styles[`${size}Text`], isReporting && styles.disabledText];
+  const textStyles = [
+    styles.text,
+    styles[`${size}Text`],
+    isReporting && styles.disabledText,
+  ];
 
   return (
     <>
-      <TouchableOpacity style={buttonStyles} onPress={handleReport} disabled={isReporting} activeOpacity={0.7}>
+      <TouchableOpacity
+        style={buttonStyles}
+        onPress={handleReport}
+        disabled={isReporting}
+        activeOpacity={0.7}
+      >
         <Text style={textStyles}>{isReporting ? "..." : "Report"}</Text>
       </TouchableOpacity>
 

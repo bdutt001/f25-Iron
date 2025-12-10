@@ -63,12 +63,15 @@ model UserLocation {
 
 // Chat sessions
 model ChatSession {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int       @id @default(autoincrement())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  expiresAt  DateTime?
 
   messages     Message[]
   participants ChatParticipant[]
+
+  @@index([expiresAt])
 }
 
 // Chat participants

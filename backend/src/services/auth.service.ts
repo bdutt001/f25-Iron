@@ -75,7 +75,7 @@ export const verifyRefreshToken = (token: string): AuthTokenPayload =>
 
 /**
  * Converts a user object to an AuthenticatedUser object.
- * Includes support for profilePicture and interestTags.
+ * Includes support for profilePicture, interestTags, profileStatus, and lastLogin.
  */
 export const toAuthenticatedUser = (user: {
   id: number;
@@ -84,6 +84,7 @@ export const toAuthenticatedUser = (user: {
   profilePicture?: string | null;
   interestTags?: { name: string }[];
   visibility?: boolean;
+  profileStatus?: string | null;
   lastLogin?: Date | string | null;
 }): AuthenticatedUser => ({
   id: user.id,
@@ -96,6 +97,7 @@ export const toAuthenticatedUser = (user: {
       )
     : [],
   visibility: user.visibility ?? false,
+  profileStatus: user.profileStatus ?? null,
   lastLogin:
     user.lastLogin instanceof Date
       ? user.lastLogin.toISOString()
