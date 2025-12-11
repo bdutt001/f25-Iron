@@ -42,6 +42,8 @@ type DisplayItem =
   | { kind: "separator"; id: string; label: string }
   | { kind: "message"; item: Message };
 
+type AppWebSocket = Omit<WebSocket, "ping"> & { ping?: () => void };
+
 const sortMessages = (items: Message[]) =>
   [...items].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -72,7 +74,7 @@ export default function ChatScreen() {
   const [visibilityConfirmed, setVisibilityConfirmed] = useState(false); // ✅ state for confirmation banner
 
   const flatListRef = useRef<FlatList<DisplayItem>>(null);
-  const socketRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<AppWebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const shouldReconnectRef = useRef(false);
@@ -426,7 +428,7 @@ export default function ChatScreen() {
     const url = `${WS_BASE_URL}/api/messages/live?chatId=${chatId}&token=${encodeURIComponent(
       accessToken
     )}`;
-    const socket = new WebSocket(url);
+    const socket: AppWebSocket = new WebSocket(url) as AppWebSocket;
     socketRef.current = socket;
 
     socket.onopen = () => {

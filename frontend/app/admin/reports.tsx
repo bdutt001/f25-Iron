@@ -4,9 +4,9 @@ import AdminReportsScreen from "@/app/(tabs)/AdminReportsScreen";
 import { useUser } from "@/context/UserContext";
 
 export default function AdminReportsRoute() {
-  const { user } = useUser();
+  const { currentUser } = useUser();
 
-  if (!user?.isAdmin) {
+  if (!currentUser?.isAdmin) {
     return <Redirect href="/" />; // back to home
   }
 

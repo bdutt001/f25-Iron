@@ -400,7 +400,8 @@ export default function MapScreen() {
         const response = await fetchWithAuth(
           `${API_BASE_URL}/users/nearby?${params.toString()}`,
           {
-            signal: controller.signal,
+            // react-native's signal typing differs from the standard AbortSignal, so cast for compatibility
+            signal: controller.signal as any,
           }
         );
         if (!response.ok)

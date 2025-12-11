@@ -221,7 +221,7 @@ export default function OnboardingScreen() {
       setIsUploading(true);
       const res = await fetchWithAuth(uploadUrl, {
         method: "POST",
-        body: form,
+        body: form as unknown as RequestInit["body"],
       });
 
       if (!res.ok) {
@@ -327,7 +327,7 @@ export default function OnboardingScreen() {
       setIsUploading(true);
       const res = await fetchWithAuth(uploadUrl, {
         method: "POST",
-        body: form,
+        body: form as unknown as RequestInit["body"],
       });
 
       if (!res.ok) {

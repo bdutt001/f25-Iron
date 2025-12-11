@@ -222,57 +222,10 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   /** Toggle user visibility (Visible / Hidden) and sync with backend */
-  const setStatus = (newStatus: "Visible" | "Hidden") => {
-    if (isStatusUpdating) {
-      console.log("⏳ Ignored toggle spam");
-      return;
-    }
-
-    if (newStatus === status) return;
-
-    const previousStatus = status;
-    const visibilityFlag = newStatus === "Visible";
-
-    setStatusRaw(newStatus);
-    setIsStatusUpdating(true);
-
-    const finish = () => setIsStatusUpdating(false);
-
-    // If user or token missing, update local state only
-    if (!currentUser || !accessToken) {
-      setCurrentUser((prev) => (prev ? { ...prev, visibility: visibilityFlag } : prev));
-      finish();
-      return;
-    }
-
-    // Otherwise, update backend
-    void (async () => {
-      try {
-        const updated = await updateUserVisibility(visibilityFlag, accessToken);
-
-        setCurrentUser((prev) =>
-          prev
-            ? {
-                ...prev,
-                ...updated,
-                interestTags: updated.interestTags ?? prev.interestTags,
-                profilePicture: updated.profilePicture ?? prev.profilePicture,
-                visibility: updated.visibility ?? visibilityFlag,
-                isAdmin: updated.isAdmin ?? prev.isAdmin,
-              }
-            : updated
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to update visibility";
-        console.error("Visibility toggle failed", error);
-        Alert.alert("Visibility", message);
-        setStatusRaw(previousStatus);
-      } finally {
-        finish();
   const setStatus = useCallback(
     (newStatus: "Visible" | "Hidden") => {
       if (isStatusUpdating) {
-        console.log("? Ignored toggle spam");
+        console.log("Ignored toggle spam");
         return;
       }
 
@@ -286,8 +239,9 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
 
       const finish = () => setIsStatusUpdating(false);
 
-      // If user missing, update local state only
-      if (!currentUser) {
+      // If user or token missing, update local state only
+      if (!currentUser || !accessToken) {
+        setCurrentUser((prev) => (prev ? { ...prev, visibility: visibilityFlag } : prev));
         finish();
         return;
       }
@@ -305,8 +259,9 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
                   interestTags: updated.interestTags ?? prev.interestTags,
                   profilePicture: updated.profilePicture ?? prev.profilePicture,
                   visibility: updated.visibility ?? visibilityFlag,
-                  // ✅ keep profileStatus synced if backend returns it
+                  // ? keep profileStatus synced if backend returns it
                   profileStatus: updated.profileStatus ?? prev.profileStatus,
+                  isAdmin: updated.isAdmin ?? prev.isAdmin,
                 }
               : updated
           );
@@ -320,7 +275,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
         }
       })();
     },
-    [currentUser, fetchWithAuth, isStatusUpdating, status]
+    [accessToken, currentUser, fetchWithAuth, isStatusUpdating, status]
   );
 
   /** Derived state: true if a user is currently logged in */

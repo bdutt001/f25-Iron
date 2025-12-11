@@ -35,19 +35,31 @@ export default function AdminReportsScreen({ navigation }: any) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/reports`, {
         // if your endpoint is protected, uncomment this:
-         headers: { Authorization: `Bearer ${accessToken}` },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
 
+      const payload = (await res.json().catch(() => null)) as unknown;
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Request failed with ${res.status}`);
+        const message =
+          payload &&
+          typeof payload === "object" &&
+          "error" in (payload as Record<string, unknown>) &&
+          typeof (payload as Record<string, unknown>).error === "string"
+            ? (payload as { error: string }).error
+            : `Request failed with ${res.status}`;
+        throw new Error(message);
       }
 
-      const data: Report[] = await res.json();
-      setReports(data);
-    } catch (err: any) {
+      if (!Array.isArray(payload)) {
+        throw new Error("Unexpected reports response");
+      }
+
+      setReports(payload as Report[]);
+    } catch (err) {
       console.error("Failed to load reports:", err);
-      setError(err.message || "Failed to load reports");
+      const message = err instanceof Error ? err.message : "Failed to load reports";
+      setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
