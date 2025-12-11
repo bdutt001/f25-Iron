@@ -10,7 +10,8 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.jacobneff.minglemap",
-      "buildNumber": "1",
+      "buildNumber": "2",
+      "icon": "./assets/images/icon.png",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
