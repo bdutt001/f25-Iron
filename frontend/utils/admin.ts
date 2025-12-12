@@ -128,7 +128,7 @@ export const fetchAdminReports = async (
   if (options?.order) params.set("order", options.order);
   const suffix = params.toString() ? `?${params.toString()}` : "";
 
-  const response = await fetcher(`${API_BASE_URL}/admin/reports${suffix}`);
+  const response = await fetcher(`${API_BASE_URL}/api/admin/reports${suffix}`);
   if (!response.ok) {
     throw new Error(await extractErrorMessage(response));
   }
@@ -145,7 +145,7 @@ export const fetchAdminReportDetail = async (
   reportId: number,
   fetcher: AuthorizedFetch
 ): Promise<AdminReportDetail> => {
-  const response = await fetcher(`${API_BASE_URL}/admin/reports/${reportId}`);
+  const response = await fetcher(`${API_BASE_URL}/api/admin/reports/${reportId}`);
   if (!response.ok) {
     throw new Error(await extractErrorMessage(response));
   }
@@ -164,7 +164,7 @@ export const updateReportStatus = async (
   fetcher: AuthorizedFetch,
   resolutionNote?: string | null
 ): Promise<AdminReportSummary> => {
-  const response = await fetcher(`${API_BASE_URL}/admin/reports/${reportId}/status`, {
+  const response = await fetcher(`${API_BASE_URL}/api/admin/reports/${reportId}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status, resolutionNote: resolutionNote ?? undefined }),
@@ -183,7 +183,7 @@ export const adjustTrustScore = async (
   fetcher: AuthorizedFetch,
   options: { delta?: number; setTo?: number }
 ): Promise<number> => {
-  const response = await fetcher(`${API_BASE_URL}/admin/users/${userId}/trust`, {
+  const response = await fetcher(`${API_BASE_URL}/api/admin/users/${userId}/trust`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(options),
@@ -202,7 +202,7 @@ export const banUser = async (
   fetcher: AuthorizedFetch,
   reason?: string
 ): Promise<{ banned: boolean; bannedAt: string | null; banReason: string | null }> => {
-  const response = await fetcher(`${API_BASE_URL}/admin/users/${userId}/ban`, {
+  const response = await fetcher(`${API_BASE_URL}/api/admin/users/${userId}/ban`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason: reason?.trim() || undefined }),
