@@ -39,6 +39,38 @@ export type AdminReportDetail = AdminReportSummary & {
   contextMessages: AdminContextMessage[];
 };
 
+export type BannedUser = {
+  id: number;
+  email?: string | null;
+  name?: string | null;
+  trustScore?: number | null;
+  bannedAt?: string | null;
+  banReason?: string | null;
+  lastLogin?: string | null;
+  createdAt?: string | null;
+};
+
+export type BannedUsersResponse = {
+  users: BannedUser[];
+  total: number;
+  limit: number;
+  offset: number;
+  query?: string;
+};
+
+export type AdminDashboardMetrics = {
+  totalUsers: number;
+  activePast24Hours: number;
+  newUsersPast7Days: number;
+  bannedUsers: number;
+  bansLast7Days: number;
+  openReports: number;
+  underReviewReports: number;
+  resolvedLast7Days: number;
+  averageTrustScore: number | null;
+  generatedAt: string;
+};
+
 const parseNumber = (value: unknown): number | null => {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -220,4 +252,80 @@ export const banUser = async (
     bannedAt: data.bannedAt ?? null,
     banReason: data.banReason ?? (reason ?? null),
   };
+};
+
+const parseBannedUser = (raw: any): BannedUser | null => {
+  const id = parseNumber(raw?.id);
+  if (!id) return null;
+  return {
+    id,
+    email: typeof raw?.email === "string" ? raw.email : null,
+    name: typeof raw?.name === "string" ? raw.name : null,
+    trustScore: parseNumber(raw?.trustScore),
+    bannedAt: typeof raw?.bannedAt === "string" ? raw.bannedAt : null,
+    banReason: typeof raw?.banReason === "string" ? raw.banReason : null,
+    lastLogin: typeof raw?.lastLogin === "string" ? raw.lastLogin : null,
+    createdAt: typeof raw?.createdAt === "string" ? raw.createdAt : null,
+  };
+};
+
+export const fetchBannedUsers = async (
+  fetcher: AuthorizedFetch,
+  options?: { query?: string; limit?: number; offset?: number }
+): Promise<BannedUsersResponse> => {
+  const params = new URLSearchParams();
+  if (options?.query) params.set("q", options.query);
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.offset) params.set("offset", String(options.offset));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+
+  const response = await fetcher(`${API_BASE_URL}/api/admin/users/banned${suffix}`);
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  const payload = (await response.json()) as any;
+  if (!payload || !Array.isArray(payload.users)) {
+    throw new Error("Unexpected banned users payload");
+  }
+  return {
+    users: payload.users
+      .map((item: any) => parseBannedUser(item))
+      .filter((user: BannedUser | null): user is BannedUser => user !== null),
+    total: parseNumber(payload.total) ?? payload.users.length,
+    limit: parseNumber(payload.limit) ?? options?.limit ?? payload.users.length ?? 0,
+    offset: parseNumber(payload.offset) ?? options?.offset ?? 0,
+    query: typeof payload.query === "string" ? payload.query : options?.query,
+  };
+};
+
+export const unbanUser = async (
+  userId: number,
+  fetcher: AuthorizedFetch
+): Promise<{ banned: boolean; bannedAt: string | null; banReason: string | null }> => {
+  const response = await fetcher(`${API_BASE_URL}/api/admin/users/${userId}/unban`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  const data = (await response.json()) as { banned?: boolean; bannedAt?: string | null; banReason?: string | null };
+  return {
+    banned: data.banned ?? false,
+    bannedAt: data.bannedAt ?? null,
+    banReason: data.banReason ?? null,
+  };
+};
+
+export const fetchAdminMetrics = async (
+  fetcher: AuthorizedFetch
+): Promise<AdminDashboardMetrics> => {
+  const response = await fetcher(`${API_BASE_URL}/api/admin/dashboard/metrics`);
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  const payload = (await response.json()) as AdminDashboardMetrics;
+  if (!payload || typeof payload.totalUsers !== "number") {
+    throw new Error("Invalid metrics payload");
+  }
+  return payload;
 };

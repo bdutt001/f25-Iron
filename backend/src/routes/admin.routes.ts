@@ -25,6 +25,11 @@ const normalizeStatuses = (raw: unknown): ReportStatus[] | null => {
   return valid.length ? valid : null;
 };
 
+const toNumberOrNull = (value: unknown): number | null => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
 router.get("/admin/reports", authenticate, requireAdmin, async (req, res) => {
   const statuses = normalizeStatuses(req.query.status);
   const order = req.query.order === "asc" ? "asc" : "desc";
@@ -192,6 +197,134 @@ router.post("/admin/users/:id/ban", authenticate, requireAdmin, async (req, res)
     const isMissing = error?.code === "P2025";
     console.error("Failed to ban user:", error);
     return res.status(isMissing ? 404 : 500).json({ error: isMissing ? "User not found" : "Failed to ban user" });
+  }
+});
+
+router.post("/admin/users/:id/unban", authenticate, requireAdmin, async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        banned: false,
+        bannedAt: null,
+        banReason: null,
+        bannedByAdminId: null,
+      },
+      select: {
+        id: true,
+        banned: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    return res.json(updated);
+  } catch (error: any) {
+    const isMissing = error?.code === "P2025";
+    console.error("Failed to unban user:", error);
+    return res.status(isMissing ? 404 : 500).json({ error: isMissing ? "User not found" : "Failed to unban user" });
+  }
+});
+
+router.get("/admin/users/banned", authenticate, requireAdmin, async (req, res) => {
+  const limitRaw = toNumberOrNull(req.query.limit) ?? 50;
+  const offsetRaw = toNumberOrNull(req.query.offset) ?? 0;
+  const limit = Math.min(Math.max(limitRaw, 1), 200);
+  const offset = Math.max(offsetRaw, 0);
+  const search = typeof req.query.q === "string" ? req.query.q.trim() : "";
+
+  const where = {
+    banned: true,
+    OR: search
+      ? [
+          { email: { contains: search, mode: "insensitive" as const } },
+          { name: { contains: search, mode: "insensitive" as const } },
+        ]
+      : undefined,
+  };
+
+  try {
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          trustScore: true,
+          banned: true,
+          bannedAt: true,
+          banReason: true,
+          lastLogin: true,
+          createdAt: true,
+        },
+        orderBy: { bannedAt: "desc" },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    return res.json({ users, total, limit, offset, query: search });
+  } catch (error) {
+    console.error("Failed to fetch banned users:", error);
+    return res.status(500).json({ error: "Failed to fetch banned users" });
+  }
+});
+
+router.get("/admin/dashboard/metrics", authenticate, requireAdmin, async (_req, res) => {
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  try {
+    const [
+      totalUsers,
+      activePast24Hours,
+      newUsersPast7Days,
+      bannedUsers,
+      openReports,
+      underReviewReports,
+      resolvedLast7Days,
+      avgTrustScore,
+      bansLast7Days,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { lastLogin: { gte: dayAgo } } }),
+      prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
+      prisma.user.count({ where: { banned: true } }),
+      prisma.report.count({ where: { status: ReportStatus.NEEDS_REVIEW } }),
+      prisma.report.count({ where: { status: ReportStatus.UNDER_REVIEW } }),
+      prisma.report.count({
+        where: {
+          status: { in: [ReportStatus.RESOLVED_ACTION, ReportStatus.RESOLVED_NO_ACTION] },
+          updatedAt: { gte: weekAgo },
+        },
+      }),
+      prisma.user.aggregate({ _avg: { trustScore: true } }),
+      prisma.user.count({ where: { banned: true, bannedAt: { gte: weekAgo } } }),
+    ]);
+
+    return res.json({
+      totalUsers,
+      activePast24Hours,
+      newUsersPast7Days,
+      bannedUsers,
+      bansLast7Days,
+      openReports,
+      underReviewReports,
+      resolvedLast7Days,
+      averageTrustScore: avgTrustScore._avg.trustScore ?? null,
+      generatedAt: now.toISOString(),
+    });
+  } catch (error) {
+    console.error("Failed to fetch admin metrics:", error);
+    return res.status(500).json({ error: "Failed to fetch dashboard metrics" });
   }
 });
 
