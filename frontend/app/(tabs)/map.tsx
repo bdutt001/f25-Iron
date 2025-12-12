@@ -1,3 +1,4 @@
+import * as Location from "expo-location";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,7 +10,7 @@ import {
   Alert,
   UIManager,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, Region } from "react-native-maps";
 import { Image as ExpoImage } from "expo-image";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
@@ -18,36 +19,148 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { AppScreen } from "@/components/layout/AppScreen";
-// Overlay implementation removed in favor of native sprites
+import { useAppTheme } from "../../context/ThemeContext";
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
 const IS_ANDROID = Platform.OS === "android";
-// Marker sizing tuned for Android to avoid clipping
 const MARKER_DIAMETER = IS_ANDROID ? 36 : 44;
 const MARKER_BORDER_WIDTH = IS_ANDROID ? 2 : 3;
 const MARKER_IMAGE_SIZE = MARKER_DIAMETER - MARKER_BORDER_WIDTH * 2;
-// Density-aware sizing (used by overlay avatars)
+const RECENTER_DELTA = 0.012;
+const CENTER_EPSILON = 0.0008;
+
+// Lightweight dark map style for night theme
+const DARK_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#0b1220" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#f1f5f9" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0b1220" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#334155" }] },
+  { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ color: "#64748b" }] },
+  { featureType: "poi", elementType: "geometry.stroke", stylers: [{ color: "#64748b" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#475569" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#f8fafc" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+  { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#12324f" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b2f4a" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+];
+
+const LIGHT_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#0f172a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#f8fafc" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }] },
+  { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }] },
+  { featureType: "poi", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#cbd5e1" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#475569" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
+  { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#d9f2e6" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#cfe8ff" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+];
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
 
+type AvatarMarkerProps = {
+  coordinate: Coords;
+  borderColor: string;
+  opacity?: number;
+  imageUri: string | null;
+  initial: string;
+  onPress: () => void;
+};
+
+const AvatarMarker = React.memo(function AvatarMarker({
+  coordinate,
+  borderColor,
+  opacity = 1,
+  imageUri,
+  initial,
+  onPress,
+}: AvatarMarkerProps) {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopTrackingSoon = useCallback(() => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    setTracksViewChanges(true);
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    return () => {
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    };
+  }, [borderColor, imageUri, initial, opacity, coordinate.latitude, coordinate.longitude]);
+
+  return (
+    <Marker
+      coordinate={coordinate}
+      onPress={onPress}
+      anchor={{ x: 0.5, y: 0.5 }}
+      centerOffset={{ x: 0, y: 0 }}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View
+        collapsable={false}
+        needsOffscreenAlphaCompositing
+        renderToHardwareTextureAndroid
+        style={[styles.markerWrap, { borderColor, opacity }]}
+      >
+        {imageUri ? (
+          <ExpoImage
+            source={{ uri: imageUri }}
+            style={styles.markerAvatar}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={0}
+            onLoad={stopTrackingSoon}
+            onError={stopTrackingSoon}
+          />
+        ) : (
+          <Text style={styles.markerInitial} onLayout={stopTrackingSoon}>
+            {initial}
+          </Text>
+        )}
+      </View>
+    </Marker>
+  );
+},
+// Avoid re-rendering markers on unrelated state changes (e.g. map panning UI state)
+(prev, next) =>
+  prev.coordinate.latitude === next.coordinate.latitude &&
+  prev.coordinate.longitude === next.coordinate.longitude &&
+  prev.borderColor === next.borderColor &&
+  prev.opacity === next.opacity &&
+  prev.imageUri === next.imageUri &&
+  prev.initial === next.initial
+);
+
 export default function MapScreen() {
-  const [center] = useState<Coords>(ODU_CENTER);
-  const [myCoords] = useState<Coords>(ODU_CENTER);
+  const { colors, isDark } = useAppTheme();
+  const [center, setCenter] = useState<Coords>(ODU_CENTER);
+  const [myCoords, setMyCoords] = useState<Coords | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
-  const [readyMarkers, setReadyMarkers] = useState<Record<string, boolean>>({});
-  // Keep stable map positions across refreshes to avoid jitter
   const positionsRef = useRef<Map<number, Coords>>(new Map());
-  
-  
+  const hasAnimatedRegion = useRef(false);
+  const hasAnimatedToUser = useRef(false);
+  const [isCenteredOnUser, setIsCenteredOnUser] = useState(true);
+
   // Enable LayoutAnimation on Android (skip on New Architecture to avoid warning)
   useEffect(() => {
     const isAndroid = Platform.OS === "android";
-    // Fabric/new architecture exposes __turboModuleProxy; avoid the no-op warning
     const isNewArch = Boolean((global as any).__turboModuleProxy);
     if (isAndroid && UIManager.setLayoutAnimationEnabledExperimental && !isNewArch) {
       try {
@@ -66,9 +179,12 @@ export default function MapScreen() {
     prefetchedUsers,
     setPrefetchedUsers,
     isStatusUpdating,
+    fetchWithAuth,
   } = useUser();
   const currentUserId = currentUser?.id;
   const isAdmin = currentUser?.isAdmin;
+
+  const markerBaseCoords = myCoords ?? center;
 
   const selfUser: SelectedUser | null = useMemo(
     () =>
@@ -79,34 +195,100 @@ export default function MapScreen() {
             email: currentUser.email,
             interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
             profilePicture: currentUser.profilePicture ?? null,
-            coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
+            coords: { latitude: markerBaseCoords.latitude, longitude: markerBaseCoords.longitude },
             trustScore: currentUser.trustScore ?? 99,
             isCurrentUser: true,
           }
         : null,
-    [currentUser, myCoords]
+    [currentUser, markerBaseCoords]
   );
   const selfPictureToken = (selfUser?.profilePicture as string | null) ?? null;
-  const selfReadyKey = `self:${selfPictureToken ?? "nop"}`;
   const selfImageUri = selfPictureToken
     ? selfPictureToken.startsWith("http")
       ? selfPictureToken
       : `${API_BASE_URL}${selfPictureToken}`
     : null;
 
-  const markMarkerReady = useCallback((key: string) => {
-    setReadyMarkers((prev) => {
-      if (prev[key]) return prev;
-      return { ...prev, [key]: true };
-    });
+  const fetchSavedLocation = useCallback(async (): Promise<Coords | null> => {
+    if (!accessToken) return null;
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/users/me/location`);
+      if (response.status === 404) return null;
+      if (!response.ok) return null;
+      const data = (await response.json()) as { latitude?: unknown; longitude?: unknown };
+      const latitude = Number(data?.latitude);
+      const longitude = Number(data?.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { latitude, longitude };
+    } catch (err) {
+      console.warn("Failed to fetch saved location:", err);
+      return null;
+    }
+  }, [accessToken, fetchWithAuth]);
+
+  const persistLocation = useCallback(
+    async (coords: Coords) => {
+      if (!accessToken) return;
+      try {
+        await fetchWithAuth(`${API_BASE_URL}/users/me/location`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(coords),
+        });
+      } catch (err) {
+        console.warn("Failed to persist location:", err);
+      }
+    },
+    [accessToken, fetchWithAuth]
+  );
+
+  const requestDeviceLocation = useCallback(async (): Promise<Coords | null> => {
+    try {
+      const { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permissionStatus !== "granted") return null;
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+    } catch (err) {
+      console.warn("Unable to fetch device location:", err);
+      return null;
+    }
   }, []);
 
+  const applyCenter = useCallback((coords: Coords) => {
+    setCenter((prev) => {
+      const sameLat = Math.abs(prev.latitude - coords.latitude) < 1e-6;
+      const sameLng = Math.abs(prev.longitude - coords.longitude) < 1e-6;
+      if (!sameLat || !sameLng) {
+        positionsRef.current.clear();
+        hasAnimatedRegion.current = false;
+        hasAnimatedToUser.current = false;
+      }
+      return coords;
+    });
+    setMyCoords(coords);
+  }, []);
+
+  const hydrateLocation = useCallback(async () => {
+    if (isAdmin) return;
+    setLoadingLocation(true);
+    try {
+      let coords = await fetchSavedLocation();
+      if (!coords) {
+        const deviceCoords = await requestDeviceLocation();
+        if (deviceCoords) {
+          coords = deviceCoords;
+          await persistLocation(deviceCoords);
+        }
+      }
+      applyCenter(coords ?? ODU_CENTER);
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, [applyCenter, fetchSavedLocation, isAdmin, persistLocation, requestDeviceLocation]);
 
   const loadUsers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/users`, {
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-      });
+      const response = await fetchWithAuth(`${API_BASE_URL}/users`);
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       const data = (await response.json()) as ApiUser[];
       const filtered = data.filter(
@@ -118,10 +300,10 @@ export default function MapScreen() {
       setPrefetchedUsers(filtered);
       setErrorMsg(null);
     } catch (err) {
-      console.error("❌ Unable to load users:", err);
+      console.error("Unable to load users:", err);
       setErrorMsg("Unable to load users from the server");
     }
-  }, [accessToken, currentUserId, setPrefetchedUsers]);
+  }, [currentUserId, fetchWithAuth, setPrefetchedUsers]);
 
   // Compute simple match score (% overlap of tags using Jaccard)
   const matchPercent = useCallback(
@@ -137,25 +319,17 @@ export default function MapScreen() {
     [currentUser?.interestTags]
   );
 
-  // Start a chat with selected user
   const startChat = useCallback(
     async (receiverId: number, receiverName: string) => {
       if (!currentUser) return;
       try {
-        // Fetch latest receiver for display info
-        const userResponse = await fetch(`${API_BASE_URL}/users/${receiverId}`, {
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-        });
+        const userResponse = await fetchWithAuth(`${API_BASE_URL}/users/${receiverId}`);
         let latestUser: ApiUser | null = null;
         if (userResponse.ok) latestUser = (await userResponse.json()) as ApiUser;
 
-        // Create or get chat session
-        const resp = await fetch(`${API_BASE_URL}/api/messages/session`, {
+        const resp = await fetchWithAuth(`${API_BASE_URL}/api/messages/session`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ participants: [currentUser.id, receiverId] }),
         });
         if (!resp.ok) throw new Error(`Failed to start chat (${resp.status})`);
@@ -173,12 +347,9 @@ export default function MapScreen() {
         console.error(e);
       }
     },
-    [accessToken, currentUser]
+    [currentUser, fetchWithAuth]
   );
 
-  // Actions handled by shared UserOverflowMenu
-
-  // Report flow (inline) similar to ReportButton
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const startReportFlow = useCallback(() => {
     if (!selectedUser || !accessToken || !currentUser) {
@@ -225,7 +396,6 @@ export default function MapScreen() {
           !u.isAdmin &&
           (currentUserId ? u.id !== currentUserId : true)
       );
-      // Only scatter for users without a stored position
       const missing = filtered.filter((u) => !positionsRef.current.has(u.id));
       if (missing.length) {
         const scattered = scatterUsersAround(missing, center.latitude, center.longitude);
@@ -244,18 +414,7 @@ export default function MapScreen() {
         if (prev.length === next.length && prev.every((p, i) => p.id === next[i].id)) return prev;
         return next;
       });
-      // Seed readyMarkers for new keys (false = not ready -> track until image loads)
-      setReadyMarkers((prev) => {
-        const keys = new Set<string>();
-        if (selfUser) keys.add(`self:${(selfUser.profilePicture as string | null) ?? "nop"}`);
-        for (const u of filtered) keys.add(`${u.id}:${(u.profilePicture as string | null) ?? "nop"}`);
-        const nextMap: Record<string, boolean> = {};
-        // false => not ready => tracksViewChanges stays true until image loads
-        for (const k of keys) nextMap[k] = k in prev ? prev[k] : false;
-        return nextMap;
-      });
 
-      // Animate to first result only once
       if (!hasAnimatedRegion.current && mapRef.current && next.length > 0) {
         const first = next[0].coords;
         mapRef.current.animateToRegion(
@@ -312,9 +471,50 @@ export default function MapScreen() {
     setNearbyUsers(next);
   }, [center.latitude, center.longitude, currentUserId, isAdmin, nearbyUsers.length, prefetchedUsers]);
 
-  // Removed markerTracks effect
+  useEffect(() => {
+    void hydrateLocation();
+  }, [hydrateLocation]);
 
-  const hasAnimatedRegion = useRef(false);
+  useEffect(() => {
+    if (!myCoords || !mapRef.current || hasAnimatedToUser.current) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: myCoords.latitude,
+        longitude: myCoords.longitude,
+        latitudeDelta: RECENTER_DELTA,
+        longitudeDelta: RECENTER_DELTA,
+      },
+      350
+    );
+    hasAnimatedToUser.current = true;
+  }, [myCoords]);
+
+  const recenterOnUser = useCallback(() => {
+    const target = myCoords ?? center;
+    if (!target || !mapRef.current) return;
+    setIsCenteredOnUser(true);
+    mapRef.current.animateToRegion(
+      {
+        latitude: target.latitude,
+        longitude: target.longitude,
+        latitudeDelta: RECENTER_DELTA,
+        longitudeDelta: RECENTER_DELTA,
+      },
+      300
+    );
+  }, [center, myCoords]);
+
+  const handleRegionChangeComplete = useCallback(
+    (region: Region) => {
+      const target = myCoords ?? center;
+      if (!target) return;
+      const latDiff = Math.abs(region.latitude - target.latitude);
+      const lngDiff = Math.abs(region.longitude - target.longitude);
+      const centered = latDiff < CENTER_EPSILON && lngDiff < CENTER_EPSILON;
+      setIsCenteredOnUser(centered);
+    },
+    [center, myCoords]
+  );
 
   // Helpers for UI coloring
   const trustColor = (score?: number) => {
@@ -325,11 +525,11 @@ export default function MapScreen() {
     return "#DC3545";
   };
 
+  const textPrimary = useMemo(() => ({ color: colors.text }), [colors.text]);
+  const textMuted = useMemo(() => ({ color: colors.muted }), [colors.muted]);
+
   return (
-    <AppScreen
-      edges={["left", "right"]}
-      style={isAdmin ? { backgroundColor: "#0f172a" } : undefined}
-    >
+    <AppScreen edges={["left", "right"]} style={{ backgroundColor: isAdmin ? "#0f172a" : colors.background }}>
       {isAdmin ? (
         <View style={[styles.centered, { padding: 24 }]}>
           <Text style={[styles.title, { color: "#fff" }]}>Admin-only account</Text>
@@ -344,272 +544,276 @@ export default function MapScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={{
-          latitude: center.latitude,
-          longitude: center.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
-      >
-        {/* 👤 Current user */}
-        {status === "Visible" && selfUser && (
-          <Marker
-            key={`self:${selfPictureToken ?? "nop"}`}
-            coordinate={myCoords}
-            onPress={() => setSelectedUser(selfUser)}
-            anchor={{ x: 0.5, y: 0.5 }}
-            centerOffset={{ x: 0, y: 0 }}
-            tracksViewChanges={IS_ANDROID ? !readyMarkers[selfReadyKey] : false}
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            initialRegion={{
+              latitude: center.latitude,
+              longitude: center.longitude,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }}
+            customMapStyle={isDark ? DARK_MAP_STYLE : LIGHT_MAP_STYLE}
+            onRegionChangeComplete={handleRegionChangeComplete}
           >
+            {/* Current user (opacity lowered when hidden) */}
+            {selfUser && (
+              <AvatarMarker
+                coordinate={selfUser.coords}
+                onPress={() => setSelectedUser(selfUser)}
+                borderColor={status === "Hidden" ? "#94a3b8" : "#1f5fbf"}
+                opacity={status === "Hidden" ? 0.35 : 1}
+                imageUri={selfImageUri}
+                initial={(selfUser.name || selfUser.email)?.charAt(0)?.toUpperCase() || "?"}
+              />
+            )}
+
+            {/* Other users */}
+            {nearbyUsers.map((user) => {
+              const pictureToken = (user.profilePicture as string | null) ?? null;
+              const markerKey = `${user.id}:${pictureToken ?? "nop"}`;
+              const uri =
+                pictureToken && pictureToken.length > 0
+                  ? pictureToken.startsWith("http")
+                    ? pictureToken
+                    : `${API_BASE_URL}${pictureToken}`
+                  : null;
+              return (
+                <AvatarMarker
+                  key={markerKey}
+                  coordinate={user.coords}
+                  onPress={() => setSelectedUser(user)}
+                  borderColor="#e63946"
+                  imageUri={uri}
+                  initial={(user.name || user.email)?.charAt(0)?.toUpperCase() || "?"}
+                />
+              );
+            })}
+          </MapView>
+
+          <UserOverflowMenu
+            visible={!!menuTarget}
+            onClose={() => setMenuTarget(null)}
+            targetUser={menuTarget}
+            onBlocked={(uid) => {
+              setNearbyUsers((prev) => prev.filter((u) => u.id !== uid));
+              setSelectedUser(null);
+            }}
+          />
+
+          {/* Floating enlarged preview */}
+          {selectedUser && (
             <View
-              collapsable={false}
-              needsOffscreenAlphaCompositing
-              renderToHardwareTextureAndroid
-              style={[styles.markerWrap, { borderColor: "#1f5fbf" }]}
+              pointerEvents="none"
+              style={[
+                styles.floatingMarker,
+                { top: "42%", left: "50%", transform: [{ translateX: -75 }, { translateY: -75 }] },
+              ]}
             >
-              {selfImageUri ? (
+              {selectedUser.profilePicture ? (
                 <ExpoImage
-                  source={{ uri: selfImageUri }}
-                  style={styles.markerAvatar}
-                  contentFit="cover"
+                  source={{
+                    uri: selectedUser.profilePicture.startsWith("http")
+                      ? selectedUser.profilePicture
+                      : `${API_BASE_URL}${selectedUser.profilePicture}`,
+                  }}
+                  style={[
+                    styles.floatingImage,
+                    { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
+                  ]}
                   cachePolicy="memory-disk"
                   transition={0}
-                  onLoad={() => markMarkerReady(selfReadyKey)}
-                  onError={() => markMarkerReady(selfReadyKey)}
+                  contentFit="cover"
                 />
               ) : (
-                <Text
-                  style={styles.markerInitial}
-                  onLayout={() => markMarkerReady(selfReadyKey)}
+                <View
+                  style={[
+                    styles.floatingPlaceholder,
+                    { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
+                  ]}
                 >
-                  {(selfUser.name || selfUser.email)?.charAt(0)?.toUpperCase() || "?"}
-                </Text>
+                  <Text style={styles.floatingInitials}>
+                    {selectedUser.name?.charAt(0)?.toUpperCase() || "?"}
+                  </Text>
+                </View>
               )}
             </View>
-          </Marker>
-        )}
-
-        {/* 👥 Other users */}
-        {nearbyUsers.map((user) => {
-          const pictureToken = (user.profilePicture as string | null) ?? null;
-          const markerKey = `${user.id}:${pictureToken ?? "nop"}`;
-          const uri =
-            pictureToken && pictureToken.length > 0
-              ? pictureToken.startsWith("http")
-                ? pictureToken
-                : `${API_BASE_URL}${pictureToken}`
-              : null;
-          return (
-            <Marker
-              key={markerKey}
-              coordinate={user.coords}
-              onPress={() => setSelectedUser(user)}
-              anchor={{ x: 0.5, y: 0.5 }}
-              centerOffset={{ x: 0, y: 0 }}
-              tracksViewChanges={IS_ANDROID ? !readyMarkers[markerKey] : false}
-            >
-              <View
-                collapsable={false}
-                needsOffscreenAlphaCompositing
-                renderToHardwareTextureAndroid
-                style={[styles.markerWrap, { borderColor: "#e63946" }]}
-              >
-                {uri ? (
-                  <ExpoImage
-                    source={{ uri }}
-                    style={styles.markerAvatar}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                    transition={0}
-                    onLoad={() => markMarkerReady(markerKey)}
-                    onError={() => markMarkerReady(markerKey)}
-                  />
-                ) : (
-                  <Text
-                    style={styles.markerInitial}
-                    onLayout={() => markMarkerReady(markerKey)}
-                  >
-                    {(user.name || user.email)?.charAt(0)?.toUpperCase() || "?"}
-                  </Text>
-                )}
-              </View>
-            </Marker>
-          );
-        })}
-      </MapView>
-
-      <UserOverflowMenu
-        visible={!!menuTarget}
-        onClose={() => setMenuTarget(null)}
-        targetUser={menuTarget}
-        onBlocked={(uid) => {
-          setNearbyUsers((prev) => prev.filter((u) => u.id !== uid));
-          setSelectedUser(null);
-        }}
-      />
-
-      {/* 🔍 Floating enlarged preview */}
-      {selectedUser && (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.floatingMarker,
-            { top: "42%", left: "50%", transform: [{ translateX: -75 }, { translateY: -75 }] },
-          ]}
-        >
-          {selectedUser.profilePicture ? (
-            <ExpoImage
-              source={{
-                uri: selectedUser.profilePicture.startsWith("http")
-                  ? selectedUser.profilePicture
-                  : `${API_BASE_URL}${selectedUser.profilePicture}`,
-              }}
-              style={[
-                styles.floatingImage,
-                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
-              ]}
-              cachePolicy="memory-disk"
-              transition={0}
-              contentFit="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.floatingPlaceholder,
-                { borderColor: selectedUser.isCurrentUser ? "#1f5fbf" : "#e63946" },
-              ]}
-            >
-              <Text style={styles.floatingInitials}>
-                {selectedUser.name?.charAt(0)?.toUpperCase() || "?"}
-              </Text>
-            </View>
           )}
-        </View>
-      )}
 
-      {/* 🧾 Bottom sheet */}
-      {selectedUser && (
-        <>
-          <TouchableOpacity
-            style={styles.backdrop}
-            activeOpacity={1}
-            onPress={() => setSelectedUser(null)}
-          />
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetHandle} />
-              <TouchableOpacity onPress={() => setSelectedUser(null)}>
-                <Text style={styles.sheetClose}>Close</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.calloutHeaderRow}>
-              <Text style={styles.calloutTitle}>{selectedUser.name || selectedUser.email}</Text>
-              {selectedUser.isCurrentUser && <Text style={styles.calloutBadge}>You</Text>}
-            </View>
-
-            <Text style={styles.calloutSubtitle}>{selectedUser.email}</Text>
-
-            {/* Color-coded trust score */}
-            <Text style={styles.trustScoreName}>
-              Trust Score:{" "}
-              <Text
+          {/* Bottom sheet */}
+          {selectedUser && (
+            <>
+              <TouchableOpacity
                 style={[
-                  styles.trustScoreNumber,
-                  { color: trustColor(selectedUser.trustScore) },
+                  styles.backdrop,
+                  { backgroundColor: isDark ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.15)" },
+                ]}
+                activeOpacity={1}
+                onPress={() => setSelectedUser(null)}
+              />
+              <View
+                style={[
+                  styles.sheet,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    shadowColor: isDark ? "#000" : "#0f172a",
+                  },
                 ]}
               >
-                {selectedUser.trustScore ?? "-"}
-              </Text>
-            </Text>
+                <View style={styles.sheetHeader}>
+                  <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+                  <TouchableOpacity onPress={() => setSelectedUser(null)}>
+                    <Text style={[styles.sheetClose, { color: colors.accent }]}>Close</Text>
+                  </TouchableOpacity>
+                </View>
 
-            {/* Match percent */}
-            {!selectedUser.isCurrentUser && (
-              <Text style={[styles.calloutSubtitle, { marginTop: 4 }]}>Match: {matchPercent(selectedUser)}%</Text>
-            )}
+                <View style={styles.calloutHeaderRow}>
+                  <Text style={[styles.calloutTitle, textPrimary]}>
+                    {selectedUser.name || selectedUser.email}
+                  </Text>
+                  {selectedUser.isCurrentUser && (
+                    <Text style={[styles.calloutBadge, { backgroundColor: colors.accent }]}>You</Text>
+                  )}
+                </View>
 
-            {selectedUser.interestTags.length > 0 ? (
-              <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
-                {selectedUser.interestTags.map((tag) => (
-                  <View key={tag} style={styles.calloutTagChip}>
-                    <Text style={styles.calloutTagText}>{tag}</Text>
+                <Text style={[styles.calloutSubtitle, textMuted]}>{selectedUser.email}</Text>
+
+                <Text style={[styles.trustScoreName, textPrimary]}>
+                  Trust Score:{" "}
+                  <Text style={[styles.trustScoreNumber, { color: trustColor(selectedUser.trustScore) }]}>
+                    {selectedUser.trustScore ?? "-"}
+                  </Text>
+                </Text>
+
+                {!selectedUser.isCurrentUser && (
+                  <Text style={[styles.calloutSubtitle, { marginTop: 4 }, textMuted]}>
+                    Match: {matchPercent(selectedUser)}%
+                  </Text>
+                )}
+
+                {selectedUser.interestTags.length > 0 ? (
+                  <View style={[styles.calloutTagsWrapper, { marginTop: 12 }]}>
+                    {selectedUser.interestTags.map((tag) => (
+                      <View
+                        key={tag}
+                        style={[
+                          styles.calloutTagChip,
+                          {
+                            backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "#e6f0ff",
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.calloutTagText, { color: colors.accent }]}>{tag}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                ) : (
+                  <Text style={[styles.calloutEmptyTags, textMuted]}>
+                    {selectedUser.isCurrentUser
+                      ? "You haven't added any interest tags yet."
+                      : "No tags selected"}
+                  </Text>
+                )}
+
+                {!selectedUser.isCurrentUser && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginTop: 16,
+                      alignItems: "center",
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={() => startChat(selectedUser.id, selectedUser.name || selectedUser.email)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: colors.accent,
+                        borderRadius: 18,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Ionicons name="chatbubble" size={18} color="#fff" />
+                      <Text style={{ color: "#fff", marginLeft: 8, fontWeight: "700" }}>Message</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setMenuTarget(selectedUser)}
+                      hitSlop={{ left: 8, right: 8, top: 6, bottom: 6 }}
+                      style={{ paddingHorizontal: 2, paddingVertical: 6 }}
+                    >
+                      <Ionicons name="ellipsis-vertical" size={20} color={colors.icon} />
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
-            ) : (
-              <Text style={styles.calloutEmptyTags}>
-                {selectedUser.isCurrentUser
-                  ? "You haven't added any interest tags yet."
-                  : "No tags selected"}
-              </Text>
-            )}
-
-            {/* Action bar: message + more menu (report/block) */}
-            {!selectedUser.isCurrentUser && (
-              <>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 16, alignItems: "center" }}>
-                <TouchableOpacity
-                  onPress={() => startChat(selectedUser.id, selectedUser.name || selectedUser.email)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: "#007BFF",
-                    borderRadius: 18,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                  }}
-                >
-                  <Ionicons name="chatbubble" size={18} color="#fff" />
-                  <Text style={{ color: "#fff", marginLeft: 8, fontWeight: "700" }}>Message</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setMenuTarget(selectedUser)}
-                  hitSlop={{ left: 8, right: 8, top: 6, bottom: 6 }}
-                  style={{ paddingHorizontal: 2, paddingVertical: 6 }}
-                >
-                  <Ionicons name="ellipsis-vertical" size={20} color="#333" />
-                </TouchableOpacity>
-              </View>
-              </>
-            )}
-          </View>
-
-          {/* Popover moved to screen root for proper z-ordering */}
-        </>
-      )}
-
-      {/* Inline actions are rendered inside the sheet above */}
-
-      {/* 🔘 Controls (lift when sheet is open) */}
-      <View style={[styles.controls, selectedUser ? { display: "none" } : null]}>
-        <Text style={styles.statusText}>Visibility: {status}</Text>
-        <TouchableOpacity
-          style={[
-            styles.visibilityToggle,
-            isStatusUpdating && styles.visibilityToggleDisabled,
-          ]}
-          onPress={() => {
-            if (isStatusUpdating) return;
-            setStatus(status === "Visible" ? "Hidden" : "Visible");
-          }}
-          activeOpacity={0.85}
-          disabled={isStatusUpdating}
-        >
-          {isStatusUpdating ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.visibilityToggleText}>
-              {status === "Visible" ? "Hide Me" : "Show Me"}
-            </Text>
+            </>
           )}
-        </TouchableOpacity>
-        {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
-      </View>
+
+          {/* Recenter button */}
+          {!selectedUser && myCoords && !isCenteredOnUser && (
+            <TouchableOpacity
+              style={[
+                styles.recenterButton,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  shadowColor: isDark ? "#000" : "#0f172a",
+                },
+                !myCoords ? styles.recenterButtonDisabled : null,
+              ]}
+              onPress={recenterOnUser}
+              activeOpacity={0.85}
+            >
+              {loadingLocation ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Ionicons name="locate" size={20} color={colors.icon} />
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Controls */}
+          <View
+            style={[
+              styles.controls,
+              {
+                backgroundColor: colors.card,
+                shadowColor: isDark ? "#000" : "#0f172a",
+                borderColor: colors.border,
+              },
+              selectedUser ? { display: "none" } : null,
+            ]}
+          >
+            <Text style={[styles.statusText, textPrimary]}>Visibility: {status}</Text>
+            <TouchableOpacity
+              style={[
+                styles.visibilityToggle,
+                isStatusUpdating && styles.visibilityToggleDisabled,
+                { backgroundColor: colors.accent },
+              ]}
+              onPress={() => {
+                if (isStatusUpdating) return;
+                setStatus(status === "Visible" ? "Hidden" : "Visible");
+              }}
+              activeOpacity={0.85}
+              disabled={isStatusUpdating}
+            >
+              {isStatusUpdating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.visibilityToggleText}>
+                  {status === "Visible" ? "Hide Me" : "Show Me"}
+                </Text>
+              )}
+            </TouchableOpacity>
+            {!!errorMsg && <Text style={[styles.errorText, textPrimary]}>{errorMsg}</Text>}
+          </View>
         </View>
       )}
     </AppScreen>
@@ -654,15 +858,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: MARKER_IMAGE_SIZE,
   },
-
   controls: {
     position: "absolute",
     bottom: 40,
     alignSelf: "center",
     alignItems: "center",
-    backgroundColor: "white",
     padding: 10,
     borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
   },
   statusText: { fontSize: 16, marginBottom: 8, fontWeight: "bold" },
   errorText: { marginTop: 8, color: "#c00", fontSize: 13 },
@@ -672,11 +879,9 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     minWidth: 120,
     alignItems: "center",
-    backgroundColor: "#007BFF",
   },
   visibilityToggleDisabled: { opacity: 0.6 },
   visibilityToggleText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-
   // Floating preview
   floatingMarker: {
     position: "absolute",
@@ -702,15 +907,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   floatingInitials: { fontSize: 50, fontWeight: "700", color: "#555" },
-
   // Bottom sheet
-  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.15)" },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   sheet: {
     position: "absolute",
     left: 12,
     right: 12,
     bottom: 12,
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 16,
     shadowColor: "#000",
@@ -718,6 +921,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   sheetHeader: {
     flexDirection: "row",
@@ -727,12 +931,10 @@ const styles = StyleSheet.create({
   },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd" },
   sheetClose: { color: "#1f5fbf", fontWeight: "600" },
-
   calloutHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   calloutTitle: { fontSize: 16, fontWeight: "600" },
   calloutSubtitle: { fontSize: 13, color: "#666", marginTop: 2 },
   calloutBadge: {
-    backgroundColor: "#1f5fbf",
     color: "#fff",
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -743,22 +945,20 @@ const styles = StyleSheet.create({
   },
   calloutTagsWrapper: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
   calloutTagChip: {
-    backgroundColor: "#e6f0ff",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 14,
     marginRight: 6,
     marginBottom: 6,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  calloutTagText: { fontSize: 12, color: "#1f5fbf", fontWeight: "500" },
-  calloutEmptyTags: { marginTop: 8, fontSize: 12, color: "#999" },
-
+  calloutTagText: { fontSize: 12, fontWeight: "500" },
+  calloutEmptyTags: { marginTop: 8, fontSize: 12 },
   trustScoreName: { textAlign: "right", fontSize: 15, marginTop: 6 },
   trustScoreNumber: { fontSize: 15, fontWeight: "700" },
-  
-  inlineActionsWrap: { overflow: 'hidden', flexDirection: 'row', alignItems: 'center', marginRight: 6 },
+  inlineActionsWrap: { overflow: "hidden", flexDirection: "row", alignItems: "center", marginRight: 6 },
   inlineActionsWrapClosed: { width: 0, opacity: 0 },
-  inlineActionsWrapOpen: { width: 'auto', opacity: 1 },
+  inlineActionsWrapOpen: { width: "auto", opacity: 1 },
   inlineActionDanger: {
     color: "#dc3545",
     fontWeight: "700",
@@ -773,5 +973,22 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  
+  // Recenter button
+  recenterButton: {
+    position: "absolute",
+    right: 16,
+    bottom: 40,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  recenterButtonDisabled: { opacity: 0.6 },
 });
