@@ -26,6 +26,7 @@ function RootNavigator() {
         <Stack.Screen
           name="login"
           options={{
+            headerShown: false,
             title: "Login",
             headerBackVisible: false,
             gestureEnabled: false,

@@ -9,10 +9,9 @@ import { AppNotice } from "./ui/AppNotice";
 type ReportButtonProps = {
   reportedUserId: number;
   reportedUserName: string;
-  onReportSuccess?: (updatedTrustScore: number) => void;
+  onReportSuccess?: () => void;
   size?: "small" | "medium" | "large";
   style?: any;
-  defaultSeverity?: number;
 };
 
 export default function ReportButton({
@@ -21,7 +20,6 @@ export default function ReportButton({
   onReportSuccess,
   size = "small",
   style,
-  defaultSeverity = 1,
 }: ReportButtonProps) {
   const [isReporting, setIsReporting] = useState(false);
   const [showReasonMenu, setShowReasonMenu] = useState(false);
@@ -46,19 +44,13 @@ export default function ReportButton({
     setShowReasonMenu(true);
   };
 
-  const submitReport = async (reason: string, contextNote?: string, severityOverride?: number) => {
+  const submitReport = async (reason: string, contextNote?: string) => {
     if (!currentUser) return;
 
     setShowReasonMenu(false);
     setIsReporting(true);
 
     try {
-      const severity =
-        typeof severityOverride === "number" &&
-        Number.isFinite(severityOverride)
-          ? severityOverride
-          : defaultSeverity;
-
       const response = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: {
@@ -68,40 +60,18 @@ export default function ReportButton({
           reportedId: reportedUserId,
           reason,
           contextNote: contextNote?.trim() || undefined,
-          severity,
         }),
       });
 
-      const payload = (await response.json()) as {
-        trustScore?: number;
-        error?: string;
-      };
+      const payload = (await response.json()) as { error?: string };
 
-      if (!response.ok || typeof payload.trustScore !== "number") {
+      if (!response.ok) {
         const message = payload?.error ?? "Failed to submit report";
         throw new Error(message);
       }
 
-      let latestTrustScore = payload.trustScore;
-
-      try {
-        const trustResponse = await fetchWithAuth(
-          `${API_BASE_URL}/api/users/${reportedUserId}/trust`
-        );
-        if (trustResponse.ok) {
-          const trustData = (await trustResponse.json()) as {
-            trustScore?: number;
-          };
-          if (typeof trustData.trustScore === "number") {
-            latestTrustScore = trustData.trustScore;
-          }
-        }
-      } catch (error) {
-        console.warn("Unable to refresh trust score after report:", error);
-      }
-
       setNotice(REPORT_SUCCESS_NOTICE);
-      onReportSuccess?.(latestTrustScore);
+      onReportSuccess?.();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to submit report";

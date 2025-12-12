@@ -1,24 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Keyboard,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import OverflowMenu, { type OverflowAction } from "./ui/OverflowMenu";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useThemedAlert } from "../hooks/useThemedAlert";
 import { AppNotice } from "./ui/AppNotice";
 import { useAppTheme } from "@/context/ThemeContext";
+import { CenterModal } from "./ui/CenterModal";
 
 type Props = {
   visible: boolean;
@@ -54,7 +42,6 @@ export function ReportReasonMenu({
   subjectLabel,
 }: ReportReasonMenuProps) {
   const { colors, isDark } = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [selectedReason, setSelectedReason] = useState<string>(REPORT_REASONS[0]);
   const [note, setNote] = useState<string>("");
 
@@ -66,173 +53,109 @@ export function ReportReasonMenu({
   }, [visible]);
 
   return (
-    <Modal
+    <CenterModal
       visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        Keyboard.dismiss();
+        onClose();
+      }}
+      cardStyle={reportStyles.card}
+      contentContainerStyle={reportStyles.modalContent}
     >
-      <View
-        style={[
-          reportStyles.backdrop,
-          { backgroundColor: isDark ? "rgba(2,6,23,0.78)" : "rgba(15,23,42,0.5)" },
-        ]}
-      >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={[
-            reportStyles.avoidingView,
-            { paddingBottom: Math.max(insets.bottom, 16) },
-          ]}
-          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 12 : 0}
-        >
-          <ScrollView
-            contentContainerStyle={[
-              reportStyles.scrollContainer,
-              { paddingBottom: Math.max(insets.bottom, 20) },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
-          >
-            <View
+      <Text style={[reportStyles.title, { color: colors.text }]}>
+        Report {subjectLabel}
+      </Text>
+      <Text style={[reportStyles.subtitle, { color: colors.muted }]}>
+        Choose a reason and add context so moderators can review quickly.
+      </Text>
+
+      <View style={reportStyles.chipRow}>
+        {REPORT_REASONS.map((reason) => {
+          const active = reason === selectedReason;
+          return (
+            <TouchableOpacity
+              key={reason}
+              onPress={() => {
+                Keyboard.dismiss();
+                setSelectedReason(reason);
+              }}
               style={[
-                reportStyles.sheet,
+                reportStyles.chip,
                 {
-                  backgroundColor: isDark ? "#0b1224" : "#ffffff",
-                  borderColor: colors.border,
-                  shadowColor: isDark ? "#000" : "#0f172a",
+                  borderColor: active ? colors.accent : colors.border,
+                  backgroundColor: active
+                    ? `${colors.accent}1A`
+                    : isDark
+                      ? "rgba(255,255,255,0.04)"
+                      : "#f8fafc",
                 },
               ]}
             >
-              <Text style={[reportStyles.title, { color: colors.text }]}>
-                Report {subjectLabel}
-              </Text>
-              <Text style={[reportStyles.subtitle, { color: colors.muted }]}>
-                Choose a reason and add context so moderators can review quickly.
-              </Text>
-
-              <View style={reportStyles.chipRow}>
-                {REPORT_REASONS.map((reason) => {
-                  const active = reason === selectedReason;
-                  return (
-                    <TouchableOpacity
-                      key={reason}
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        setSelectedReason(reason);
-                      }}
-                      style={[
-                        reportStyles.chip,
-                        {
-                          borderColor: active ? colors.accent : colors.border,
-                          backgroundColor: active
-                            ? `${colors.accent}1A`
-                            : isDark
-                              ? "rgba(255,255,255,0.04)"
-                              : "#f8fafc",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          reportStyles.chipText,
-                          { color: active ? colors.accent : colors.text },
-                        ]}
-                      >
-                        {reason}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TextInput
+              <Text
                 style={[
-                  reportStyles.input,
-                  {
-                    borderColor: colors.border,
-                    color: colors.text,
-                    backgroundColor: isDark ? "#0c1730" : "#f8fafc",
-                  },
+                  reportStyles.chipText,
+                  { color: active ? colors.accent : colors.text },
                 ]}
-                placeholder="Add an optional note (what happened, links, details)"
-                placeholderTextColor={colors.muted}
-                value={note}
-                onChangeText={setNote}
-                multiline
-                maxLength={1000}
-              />
-              <Text style={[reportStyles.counter, { color: colors.muted }]}>
-                {note.length}/1000
+              >
+                {reason}
               </Text>
-
-              <View style={reportStyles.actionsRow}>
-                <TouchableOpacity
-                style={[reportStyles.secondaryButton, { borderColor: colors.border }]}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  onClose();
-                }}
-                >
-                  <Text style={[reportStyles.secondaryText, { color: colors.text }]}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    reportStyles.primaryButton,
-                    { backgroundColor: colors.accent },
-                  ]}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    onSubmit(selectedReason, note.trim());
-                  }}
-                >
-                  <Text style={reportStyles.primaryText}>Submit</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-    </Modal>
+
+      <TextInput
+        style={[
+          reportStyles.input,
+          {
+            borderColor: colors.border,
+            color: colors.text,
+            backgroundColor: isDark ? "#0c1730" : "#f8fafc",
+          },
+        ]}
+        placeholder="Add an optional note (what happened, links, details)"
+        placeholderTextColor={colors.muted}
+        value={note}
+        onChangeText={setNote}
+        multiline
+        maxLength={1000}
+      />
+      <Text style={[reportStyles.counter, { color: colors.muted }]}>
+        {note.length}/1000
+      </Text>
+
+      <View style={reportStyles.actionsRow}>
+        <TouchableOpacity
+          style={[reportStyles.secondaryButton, { borderColor: colors.border }]}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        >
+          <Text style={[reportStyles.secondaryText, { color: colors.text }]}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            reportStyles.primaryButton,
+            { backgroundColor: colors.accent },
+          ]}
+          onPress={() => {
+            Keyboard.dismiss();
+            onSubmit(selectedReason, note.trim());
+          }}
+        >
+          <Text style={reportStyles.primaryText}>Submit</Text>
+        </TouchableOpacity>
+      </View>
+    </CenterModal>
   );
 }
 
 const reportStyles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "stretch",
-    padding: 16,
-  },
-  avoidingView: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "stretch",
-    paddingHorizontal: 12,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "stretch",
-    paddingHorizontal: 4,
-    width: "100%",
-  },
-  sheet: {
-    width: "100%",
-    maxHeight: "92%",
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10,
-  },
+  card: { maxWidth: 520 },
+  modalContent: { paddingBottom: 10 },
   title: { fontSize: 20, fontWeight: "800", marginBottom: 6, textAlign: "center" },
   subtitle: { fontSize: 14, marginBottom: 14, lineHeight: 20, textAlign: "center" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 14 },
@@ -347,7 +270,6 @@ export default function UserOverflowMenu({
         body: JSON.stringify({
           reportedId: effective.id,
           reason,
-          severity: 1,
           contextNote: contextNote?.trim() || undefined,
         }),
       });
@@ -384,7 +306,6 @@ export default function UserOverflowMenu({
   const name =
     resolved?.name ?? targetUser?.name ?? targetUser?.email ?? "User";
   const effectiveId = resolved?.id ?? targetUser?.id;
-  const subtitle = targetUser?.email || undefined;
 
   // Only show "View Profile" when:
   // - we have an id
@@ -431,8 +352,6 @@ export default function UserOverflowMenu({
       <OverflowMenu
         visible={visible}
         onClose={onClose}
-        title={name}
-        message={subtitle ? `Actions for ${subtitle}` : "Manage this user"}
         actions={actions}
       />
 
