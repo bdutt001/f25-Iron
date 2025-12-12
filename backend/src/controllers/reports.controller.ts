@@ -4,6 +4,10 @@ import prisma from "../prisma";
 // Create a new report
 export const createReport = async (req: Request, res: Response) => {
   const { reason, reporterId, reportedId } = req.body;
+  const contextNoteRaw =
+    typeof req.body.contextNote === "string" ? req.body.contextNote.trim() : "";
+  const contextNote =
+    contextNoteRaw && contextNoteRaw.length > 0 ? contextNoteRaw.slice(0, 1000) : undefined;
   
   // Validation
   if (!reason) return res.status(400).json({ error: "Reason is required" });
@@ -34,7 +38,8 @@ export const createReport = async (req: Request, res: Response) => {
       data: { 
         reason, 
         reporterId, 
-        reportedId 
+        reportedId,
+        contextNote,
       },
       include: {
         reporter: {
@@ -59,10 +64,10 @@ export const getReports = async (_req: Request, res: Response) => {
     const reports = await prisma.report.findMany({
       include: {
         reporter: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         },
         reported: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -88,10 +93,10 @@ export const getReportsByUserId = async (req: Request, res: Response) => {
       where: { reportedId: userIdNum },
       include: {
         reporter: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         },
         reported: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -117,10 +122,10 @@ export const getReportsByReporter = async (req: Request, res: Response) => {
       where: { reporterId: reporterIdNum },
       include: {
         reporter: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         },
         reported: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -146,10 +151,10 @@ export const getReportById = async (req: Request, res: Response) => {
       where: { id: reportId },
       include: {
         reporter: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         },
         reported: {
-          select: { id: true, email: true, name: true, trustScore: true, banned: true }
+          select: { id: true, email: true, name: true }
         }
       }
     });

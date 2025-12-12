@@ -30,6 +30,13 @@ router.post("/report", authenticate, async (req, res) => {
       return res.status(400).json({ error: "reason is required" });
     }
 
+    const contextNoteRaw =
+      typeof req.body.contextNote === "string" ? req.body.contextNote.trim() : "";
+    const contextNote =
+      contextNoteRaw && contextNoteRaw.length > 0
+        ? contextNoteRaw.slice(0, 1000)
+        : undefined;
+
     const reportedUser = await prisma.user.findUnique({
       where: { id: reportedId },
       select: { id: true, trustScore: true },
@@ -46,6 +53,7 @@ router.post("/report", authenticate, async (req, res) => {
       prisma.report.create({
         data: {
           reason: reasonRaw,
+          contextNote,
           reporterId: reporter.id,
           reportedId,
           severity,

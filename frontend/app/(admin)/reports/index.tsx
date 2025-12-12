@@ -221,6 +221,11 @@ export default function AdminReportsList() {
             {item.description}
           </Text>
         ) : null}
+        {item.contextNote ? (
+          <Text style={[styles.note, { color: colors.muted }]} numberOfLines={2}>
+            Reporter note: {item.contextNote}
+          </Text>
+        ) : null}
 
         <View style={styles.row}>
           <View style={styles.personBlock}>
@@ -374,6 +379,7 @@ const styles = StyleSheet.create({
   statusText: { fontWeight: "700", fontSize: 12 },
   reason: { fontSize: 15, fontWeight: "700" },
   description: { fontSize: 13, lineHeight: 18 },
+  note: { fontSize: 12, lineHeight: 17 },
   row: { flexDirection: "row", gap: 12, marginTop: 4 },
   personBlock: { flex: 1 },
   label: { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 },

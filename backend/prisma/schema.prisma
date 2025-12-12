@@ -137,6 +137,7 @@ model Report {
   id              Int          @id @default(autoincrement())
   reason          String
   description     String?
+  contextNote     String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @default(now()) @updatedAt
   status          ReportStatus @default(NEEDS_REVIEW)

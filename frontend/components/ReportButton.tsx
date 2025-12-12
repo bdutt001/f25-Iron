@@ -46,7 +46,7 @@ export default function ReportButton({
     setShowReasonMenu(true);
   };
 
-  const submitReport = async (reason: string, severityOverride?: number) => {
+  const submitReport = async (reason: string, contextNote?: string, severityOverride?: number) => {
     if (!currentUser) return;
 
     setShowReasonMenu(false);
@@ -67,6 +67,7 @@ export default function ReportButton({
         body: JSON.stringify({
           reportedId: reportedUserId,
           reason,
+          contextNote: contextNote?.trim() || undefined,
           severity,
         }),
       });
@@ -138,7 +139,7 @@ export default function ReportButton({
         visible={showReasonMenu}
         onClose={() => setShowReasonMenu(false)}
         subjectLabel={reportedUserName}
-        onSelectReason={(reason) => submitReport(reason)}
+        onSubmit={(reason, note) => submitReport(reason, note)}
       />
       <AppNotice
         visible={!!notice}

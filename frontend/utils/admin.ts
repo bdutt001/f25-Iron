@@ -25,6 +25,7 @@ export type AdminReportSummary = {
   id: number;
   reason: string;
   description?: string | null;
+  contextNote?: string | null;
   status: ReportStatus;
   createdAt: string;
   updatedAt?: string;
@@ -103,6 +104,7 @@ const parseReportSummary = (raw: any): AdminReportSummary | null => {
       id,
       reason: typeof raw?.reason === "string" ? raw.reason : "Report",
       description: typeof raw?.description === "string" ? raw.description : null,
+      contextNote: typeof raw?.contextNote === "string" ? raw.contextNote : null,
       status: parseStatus(raw?.status),
       createdAt: typeof raw?.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
       updatedAt: typeof raw?.updatedAt === "string" ? raw.updatedAt : undefined,
