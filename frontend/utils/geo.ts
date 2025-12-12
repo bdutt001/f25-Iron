@@ -6,6 +6,8 @@ export type ApiUser = {
   profilePicture?: string | null;
   trustScore?: number;
   visibility?: boolean | null;
+  isAdmin?: boolean;
+  banned?: boolean;
 };
 
 export type NearbyUser = {
