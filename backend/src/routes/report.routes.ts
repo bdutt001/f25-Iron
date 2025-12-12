@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/authenticate";
+import { rejectAdmin } from "../middleware/rejectAdmin";
 import prisma from "../prisma";
 import { applyTrustScoreDeduction, normalizeSeverity } from "../services/trust.service";
 
@@ -9,7 +10,7 @@ const router = Router();
  * POST /api/report
  * Create a report and decrement the reported user's trust score.
  */
-router.post("/report", authenticate, async (req, res) => {
+router.post("/report", authenticate, rejectAdmin, async (req, res) => {
   try {
     const reporter = req.user;
     if (!reporter) {
@@ -30,6 +31,13 @@ router.post("/report", authenticate, async (req, res) => {
       return res.status(400).json({ error: "reason is required" });
     }
 
+    const contextNoteRaw =
+      typeof req.body.contextNote === "string" ? req.body.contextNote.trim() : "";
+    const contextNote =
+      contextNoteRaw && contextNoteRaw.length > 0
+        ? contextNoteRaw.slice(0, 1000)
+        : undefined;
+
     const reportedUser = await prisma.user.findUnique({
       where: { id: reportedId },
       select: { id: true, trustScore: true },
@@ -46,6 +54,7 @@ router.post("/report", authenticate, async (req, res) => {
       prisma.report.create({
         data: {
           reason: reasonRaw,
+          contextNote,
           reporterId: reporter.id,
           reportedId,
           severity,

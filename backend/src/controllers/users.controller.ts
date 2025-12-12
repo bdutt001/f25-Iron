@@ -158,6 +158,8 @@ export const getUsers = async (req: Request, res: Response) => {
     const users = await prisma.user.findMany({
       where: {
         visibility: true,
+        isAdmin: false,
+        banned: false,
         NOT: {
           OR: [
             // Exclude users that current user has blocked
@@ -184,8 +186,8 @@ export const getUserById = async (req: Request, res: Response) => {
   if (!userId) return res.status(400).json({ error: "User not found" });
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const user = await prisma.user.findFirst({
+      where: { id: userId, isAdmin: false, banned: false },
       select: userWithTagsSelect,
     });
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -418,6 +420,8 @@ export const getNearbyUsers = async (req: Request, res: Response) => {
     const candidates = await prisma.user.findMany({
       where: {
         visibility: true,
+        isAdmin: false,
+        banned: false,
         id: { not: userId },
         NOT: {
           OR: [

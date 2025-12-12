@@ -29,6 +29,7 @@ import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useAppTheme } from "../../context/ThemeContext";
 import { ApiUser, formatDistance } from "../../utils/geo";
+import { AppScreen } from "@/components/layout/AppScreen";
 
 // Fixed center: Old Dominion University (Norfolk, VA)
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -41,6 +42,7 @@ type NearbyWithDistance = ApiUser & {
   distanceMeters: number;
   matchPercent: number;
   locationUpdatedAt?: string;
+  isAdmin?: boolean;
 };
 type SortMode = "match" | "distance";
 
@@ -72,6 +74,7 @@ export default function NearbyScreen() {
   const [sortMode, setSortMode] = useState<SortMode>("match");
 
   const { status, setStatus, isStatusUpdating, accessToken, currentUser, fetchWithAuth } = useUser();
+  const isAdmin = currentUser?.isAdmin;
   const hasLoadedOnceRef = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deviceLocationAttemptedRef = useRef(false);
@@ -110,6 +113,7 @@ export default function NearbyScreen() {
 
           const email = typeof item?.email === "string" ? item.email : "";
           const name = typeof item?.name === "string" ? item.name : email;
+          const isAdmin = item?.isAdmin === true;
 
           return {
             id,
@@ -123,13 +127,16 @@ export default function NearbyScreen() {
             longitude,
             distanceMeters,
             matchPercent,
+            isAdmin,
             locationUpdatedAt:
               typeof item?.locationUpdatedAt === "string" ? item.locationUpdatedAt : undefined,
           };
         })
         .filter(
           (item): item is NearbyWithDistance =>
-            !!item && item.distanceMeters <= NEARBY_RADIUS_METERS
+            !!item &&
+            item.distanceMeters <= NEARBY_RADIUS_METERS &&
+            item.isAdmin !== true
         );
     },
     []
@@ -254,7 +261,7 @@ export default function NearbyScreen() {
 
         const payload = await response.json();
         const normalized = normalizeNearbyResponse(payload).filter(
-          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS
+          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS && user.isAdmin !== true
         );
 
         setUsers(normalized);
@@ -315,22 +322,27 @@ export default function NearbyScreen() {
   );
 
   useEffect(() => {
+    if (isAdmin) return;
     void ensureAndLoad({ silent: false });
-  }, [ensureAndLoad]);
+  }, [ensureAndLoad, isAdmin]);
 
   useEffect(() => {
-    if (!location) return;
+    if (isAdmin || !location) return;
     const silent = hasLoadedOnceRef.current;
     void loadNearbyUsers(location, { silent });
-  }, [location, loadNearbyUsers, sortMode]);
+  }, [isAdmin, location, loadNearbyUsers, sortMode]);
 
   useEffect(() => {
-    if (!hasLoadedOnceRef.current) return;
+    if (isAdmin || !hasLoadedOnceRef.current) return;
     void ensureAndLoad({ silent: true });
-  }, [currentUser?.profilePicture, currentUser?.visibility, ensureAndLoad]);
+  }, [currentUser?.profilePicture, currentUser?.visibility, ensureAndLoad, isAdmin]);
 
   // Pull-to-refresh
   const onRefresh = useCallback(async () => {
+    if (isAdmin) {
+      setRefreshing(false);
+      return;
+    }
     setRefreshing(true);
     try {
       const coords = location ?? (await ensureLocation());
@@ -342,11 +354,12 @@ export default function NearbyScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [ensureLocation, loadNearbyUsers, location]);
+  }, [ensureLocation, isAdmin, loadNearbyUsers, location]);
 
   // Lightweight polling while the tab is focused (mirrors map tab behavior)
   useFocusEffect(
     useCallback(() => {
+      if (isAdmin) return;
       let cancelled = false;
 
       const tick = async () => {
@@ -371,7 +384,7 @@ export default function NearbyScreen() {
           pollTimerRef.current = null;
         }
       };
-    }, [ensureLocation, loadNearbyUsers, location])
+    }, [ensureLocation, isAdmin, loadNearbyUsers, location])
   );
 
   /**
@@ -427,7 +440,7 @@ export default function NearbyScreen() {
     [alertAppearance, currentUser, fetchWithAuth]
   );
 
-  const showInitialLoader = loading && !hasLoadedOnceRef.current && users.length === 0;
+  const showInitialLoader = !isAdmin && loading && !hasLoadedOnceRef.current && users.length === 0;
   const textColor = useMemo(() => ({ color: colors.text }), [colors.text]);
   const mutedText = useMemo(() => ({ color: colors.muted }), [colors.muted]);
   const visibleUsers = useMemo(
@@ -616,17 +629,32 @@ export default function NearbyScreen() {
     [colors, isDark, startChat, textColor]
   );
 
-  if (showInitialLoader) {
-    return (
+  let content: React.ReactNode;
+
+  if (isAdmin) {
+    content = (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Admin-only account</Text>
+        <Text style={[styles.note, { color: colors.muted }]}>
+          Admin accounts cannot browse nearby users. Open the moderation dashboard instead.
+        </Text>
+        <TouchableOpacity
+          style={[styles.visibilityToggle, { backgroundColor: colors.accent }]}
+          onPress={() => router.replace("/(admin)")}
+        >
+          <Text style={[styles.visibilityToggleText, { color: "#fff" }]}>Go to Admin</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  } else if (showInitialLoader) {
+    content = (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.accent} />
         <Text style={[styles.note, mutedText]}>Locating you and finding nearby users...</Text>
       </View>
     );
-  }
-
-  if (error) {
-    return (
+  } else if (error) {
+    content = (
       <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
         <Button
@@ -637,166 +665,166 @@ export default function NearbyScreen() {
         />
       </View>
     );
-  }
-
-  if (!location) {
-    return (
+  } else if (!location) {
+    content = (
       <View style={styles.centered}>
         <Text style={[styles.note, mutedText]}>Location unavailable. Pull to refresh to retry.</Text>
       </View>
     );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-            shadowColor: isDark ? "#000" : "#0f172a",
-          },
-        ]}
-      >
-        <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
-        <TouchableOpacity
-          style={[
-            styles.visibilityToggle,
-            { backgroundColor: colors.accent },
-            status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
-            isStatusUpdating && styles.visibilityToggleDisabled,
-          ]}
-          onPress={() => {
-            if (isStatusUpdating) return;
-            const newStatus = status === "Visible" ? "Hidden" : "Visible";
-            setStatus(newStatus);
-          }}
-          disabled={isStatusUpdating}
-          activeOpacity={0.85}
-        >
-          {isStatusUpdating ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.visibilityToggleText}>
-              {status === "Visible" ? "Hide Me" : "Show Me"}
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* User list */}
-      <FlatList
-        data={visibleUsers}
-        keyExtractor={(item) => item.id.toString()}
-        ListHeaderComponent={
-          <View>
-            <View style={styles.filterBar}>
-              <Pressable
-                onPress={() => setSortMode("match")}
-                style={({ pressed }) => [
-                  styles.toggleOption,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor:
-                      sortMode === "match"
-                        ? isDark
-                          ? "rgba(0,123,255,0.25)"
-                          : "rgba(0,123,255,0.12)"
-                        : isDark
-                        ? "rgba(255,255,255,0.04)"
-                        : "rgba(0,0,0,0.02)",
-                  },
-                  pressed && styles.togglePressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.toggleText,
-                    { color: sortMode === "match" ? colors.accent : colors.text },
-                  ]}
-                >
-                  Sort by Match %
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setSortMode("distance")}
-                style={({ pressed }) => [
-                  styles.toggleOption,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor:
-                      sortMode === "distance"
-                        ? isDark
-                          ? "rgba(0,123,255,0.25)"
-                          : "rgba(0,123,255,0.12)"
-                        : isDark
-                        ? "rgba(255,255,255,0.04)"
-                        : "rgba(0,0,0,0.02)",
-                  },
-                  pressed && styles.togglePressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.toggleText,
-                    { color: sortMode === "distance" ? colors.accent : colors.text },
-                  ]}
-                >
-                  Sort by Distance
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        }
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListEmptyComponent={
-          <View style={styles.centered}>
-            <Text style={[styles.note, mutedText]}>No other users nearby right now.</Text>
-          </View>
-        }
-        renderItem={renderUserCard}
-        contentContainerStyle={[styles.listContent, visibleUsers.length === 0 && styles.flexGrow]}
-        showsVerticalScrollIndicator={false}
-      />
-      <UserOverflowMenu
-        visible={!!menuTarget}
-        onClose={() => setMenuTarget(null)}
-        targetUser={menuTarget}
-        onBlocked={(uid) => {
-          setUsers((prev) => prev.filter((u) => u.id !== uid));
-        }}
-        onReported={(uid) => {
-          void refreshTrustScore(uid);
-        }}
-        onViewProfile={(userId) => {
-          // Close the menu first
-          setMenuTarget(null);
-          // Navigate to the same profile screen you use when pressing the card
-          router.push({
-            pathname: "/user/[id]",
-            params: { id: String(userId), from: "nearby" }, // mark origin
-          });
-        }}
-      />
-      {loading && hasLoadedOnceRef.current && (
+  } else {
+    content = (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
         <View
           style={[
-            styles.floatingLoader,
+            styles.header,
             {
-              backgroundColor: isDark
-                ? "rgba(0,0,0,0.55)"
-                : "rgba(255,255,255,0.78)",
+              backgroundColor: colors.card,
               borderColor: colors.border,
+              shadowColor: isDark ? "#000" : "#0f172a",
             },
           ]}
         >
-          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={[styles.headerTitle, textColor]}>Visibility: {status}</Text>
+          <TouchableOpacity
+            style={[
+              styles.visibilityToggle,
+              { backgroundColor: colors.accent },
+              status === "Visible" ? styles.visibilityHide : styles.visibilityShow,
+              isStatusUpdating && styles.visibilityToggleDisabled,
+            ]}
+            onPress={() => {
+              if (isStatusUpdating) return;
+              const newStatus = status === "Visible" ? "Hidden" : "Visible";
+              setStatus(newStatus);
+            }}
+            disabled={isStatusUpdating}
+            activeOpacity={0.85}
+          >
+            {isStatusUpdating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.visibilityToggleText}>
+                {status === "Visible" ? "Hide Me" : "Show Me"}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
-      )}
-    </View>
-  );
+
+        {/* User list */}
+        <FlatList
+          data={visibleUsers}
+          keyExtractor={(item) => item.id.toString()}
+          ListHeaderComponent={
+            <View>
+              <View style={styles.filterBar}>
+                <Pressable
+                  onPress={() => setSortMode("match")}
+                  style={({ pressed }) => [
+                    styles.toggleOption,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor:
+                        sortMode === "match"
+                          ? isDark
+                            ? "rgba(0,123,255,0.25)"
+                            : "rgba(0,123,255,0.12)"
+                          : isDark
+                          ? "rgba(255,255,255,0.04)"
+                          : "rgba(0,0,0,0.02)",
+                    },
+                    pressed && styles.togglePressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      { color: sortMode === "match" ? colors.accent : colors.text },
+                    ]}
+                  >
+                    Sort by Match %
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setSortMode("distance")}
+                  style={({ pressed }) => [
+                    styles.toggleOption,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor:
+                        sortMode === "distance"
+                          ? isDark
+                            ? "rgba(0,123,255,0.25)"
+                            : "rgba(0,123,255,0.12)"
+                          : isDark
+                          ? "rgba(255,255,255,0.04)"
+                          : "rgba(0,0,0,0.02)",
+                    },
+                    pressed && styles.togglePressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      { color: sortMode === "distance" ? colors.accent : colors.text },
+                    ]}
+                  >
+                    Sort by Distance
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListEmptyComponent={
+            <View style={styles.centered}>
+              <Text style={[styles.note, mutedText]}>No other users nearby right now.</Text>
+            </View>
+          }
+          renderItem={renderUserCard}
+          contentContainerStyle={[styles.listContent, visibleUsers.length === 0 && styles.flexGrow]}
+          showsVerticalScrollIndicator={false}
+        />
+        <UserOverflowMenu
+          visible={!!menuTarget}
+          onClose={() => setMenuTarget(null)}
+          targetUser={menuTarget}
+          onBlocked={(uid) => {
+            setUsers((prev) => prev.filter((u) => u.id !== uid));
+          }}
+          onReported={(uid) => {
+            void refreshTrustScore(uid);
+          }}
+          onViewProfile={(userId) => {
+            // Close the menu first
+            setMenuTarget(null);
+            // Navigate to the same profile screen you use when pressing the card
+            router.push({
+              pathname: "/user/[id]",
+              params: { id: String(userId), from: "nearby" }, // mark origin
+            });
+          }}
+        />
+        {loading && hasLoadedOnceRef.current && (
+          <View
+            style={[
+              styles.floatingLoader,
+              {
+                backgroundColor: isDark
+                  ? "rgba(0,0,0,0.55)"
+                  : "rgba(255,255,255,0.78)",
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <ActivityIndicator size="small" color={colors.accent} />
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  return <AppScreen edges={["left", "right"]}>{content}</AppScreen>;
 }
 
 const styles = StyleSheet.create({

@@ -7,7 +7,8 @@ import tagsRouter from "./routes/tags.routes";
 import messagesRouter from "./routes/messages.routes";
 import reportsRouter from "./routes/reports.routes";
 import reportRouter from "./routes/report.routes";
-
+import adminRouter from "./routes/admin.routes";
+// ✅ Load environment variables before anything else
 dotenv.config();
 
 const app = express();
@@ -25,6 +26,7 @@ app.use("/api", tagsRouter);
 app.use("/api", reportsRouter);
 app.use("/api", reportRouter);
 app.use("/api/messages", messagesRouter);
+app.use("/api", adminRouter);
 
 // Legacy mounts kept active for current clients still hitting non-API-prefixed paths.
 app.use("/auth", authRouter);
@@ -33,4 +35,3 @@ app.use("/", tagsRouter);
 app.use("/messages", messagesRouter);
 
 export default app;
-

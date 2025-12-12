@@ -13,6 +13,7 @@
     "move:user": "ts-node --transpile-only scripts/move_user_by_email.ts",
     "move:larchmont": "ts-node --transpile-only scripts/move_user_larchmont.ts",
     "move:far": "ts-node --transpile-only scripts/move_user_far.ts",
+    "make:admin": "ts-node scripts/promoteAdmin.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js"
   },

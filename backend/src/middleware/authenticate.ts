@@ -27,12 +27,22 @@ const buildUserFromRecord = (record: {
   name: string | null;
   profilePicture: string | null;
   visibility: boolean | null;
+  isAdmin: boolean;
+  trustScore: number | null;
+  banned: boolean;
+  bannedAt: Date | null;
+  banReason: string | null;
 }): AuthenticatedUser => ({
   id: record.id,
   email: record.email,
   name: record.name,
   profilePicture: record.profilePicture,
   visibility: record.visibility ?? true,
+  isAdmin: record.isAdmin,
+  trustScore: record.trustScore ?? undefined,
+  banned: record.banned,
+  bannedAt: record.bannedAt ? record.bannedAt.toISOString() : null,
+  banReason: record.banReason,
 });
 
 // Express middleware to authenticate requests using JWT
@@ -79,6 +89,11 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         profilePicture: true,
         visibility: true,
         tokenVersion: true,
+        isAdmin: true,
+        trustScore: true,
+        banned: true,
+        bannedAt: true,
+        banReason: true,
       },
     });
 
@@ -90,6 +105,14 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     // 6. Check if token version matches (for session invalidation)
     if (typeof payload.tokenVersion !== "number" || payload.tokenVersion !== user.tokenVersion) {
       return res.status(401).json({ error: "Session is no longer valid" });
+    }
+
+    if (user.banned) {
+      return res.status(403).json({
+        error: "Account is banned",
+        bannedAt: user.bannedAt,
+        banReason: user.banReason,
+      });
     }
 
     // 7. Attach authenticated user and token payload to request and response objects

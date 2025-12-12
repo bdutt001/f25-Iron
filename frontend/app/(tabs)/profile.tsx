@@ -162,30 +162,33 @@ export default function ProfileScreen() {
     isInitialPreset ? "" : initialStatus
   );
 
-  const applyUserUpdate = (updated: CurrentUser) => {
-    if (!currentUser) {
-      setCurrentUser(updated);
-      return;
-    }
+  const applyUserUpdate = useCallback(
+    (updated: CurrentUser) => {
+      if (!currentUser) {
+        setCurrentUser(updated);
+        return;
+      }
 
-    setCurrentUser({
-      ...currentUser,
-      ...updated,
-      interestTags: updated.interestTags ?? currentUser.interestTags,
-      profilePicture:
-        updated.profilePicture !== undefined
-          ? updated.profilePicture
-          : currentUser.profilePicture,
-      visibility:
-        typeof updated.visibility === "boolean"
-          ? updated.visibility
-          : currentUser.visibility,
-      profileStatus:
-        typeof updated.profileStatus === "string"
-          ? updated.profileStatus
-          : currentUser.profileStatus,
-    });
-  };
+      setCurrentUser({
+        ...currentUser,
+        ...updated,
+        interestTags: updated.interestTags ?? currentUser.interestTags,
+        profilePicture:
+          updated.profilePicture !== undefined
+            ? updated.profilePicture
+            : currentUser.profilePicture,
+        visibility:
+          typeof updated.visibility === "boolean"
+            ? updated.visibility
+            : currentUser.visibility,
+        profileStatus:
+          typeof updated.profileStatus === "string"
+            ? updated.profileStatus
+            : currentUser.profileStatus,
+      });
+    },
+    [currentUser, setCurrentUser]
+  );
 
   // ✅ Keep local status in sync if currentUser changes (e.g., after refresh/login)
   useEffect(() => {
@@ -397,63 +400,66 @@ export default function ProfileScreen() {
   }, [currentUser, isDeleting, performDeleteAccount]);
 
   // ✅ Stable version for Android + iOS
-  const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
-    if (!asset?.uri) return;
-    try {
-      const uri = asset.uri;
-      const mimeType = asset.mimeType || "image/jpeg";
+  const uploadSelectedAsset = useCallback(
+    async (asset: ImagePicker.ImagePickerAsset) => {
+      if (!asset?.uri) return;
+      try {
+        const uri = asset.uri;
+        const mimeType = asset.mimeType || "image/jpeg";
 
-      if (!currentUser || !accessToken) {
+        if (!currentUser || !accessToken) {
+          Alert.alert(
+            "Error",
+            "You must be logged in to upload a profile picture.",
+            undefined,
+            alertAppearance
+          );
+          return;
+        }
+
+        const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
+
+        const res = await FileSystem.uploadAsync(uploadUrl, uri, {
+          httpMethod: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: "image",
+          mimeType,
+        });
+
+        if (res.status < 200 || res.status >= 300) {
+          throw new Error(`Upload failed (${res.status})`);
+        }
+
+        const data = JSON.parse(res.body || "{}");
+        if (data.profilePicture) {
+          const newUrl = data.profilePicture.startsWith("http")
+            ? `${data.profilePicture}?t=${Date.now()}`
+            : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
+
+          setProfilePicture(newUrl);
+          if (currentUser) {
+            setCurrentUser({ ...currentUser, profilePicture: newUrl });
+          }
+        }
+
+        setPhotoSuccessVisible(true);
+      } catch (error) {
+        console.error("Error uploading image:", error);
         Alert.alert(
-          "Error",
-          "You must be logged in to upload a profile picture.",
+          "Upload failed",
+          "Please try again later.",
           undefined,
           alertAppearance
         );
-        return;
       }
+    },
+    [accessToken, alertAppearance, currentUser, setCurrentUser]
+  );
 
-      const uploadUrl = `${API_BASE_URL}/api/users/${currentUser.id}/profile-picture`;
-
-      const res = await FileSystem.uploadAsync(uploadUrl, uri, {
-        httpMethod: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-        fieldName: "image",
-        mimeType,
-      });
-
-      if (res.status < 200 || res.status >= 300) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
-
-      const data = JSON.parse(res.body || "{}");
-      if (data.profilePicture) {
-        const newUrl = data.profilePicture.startsWith("http")
-          ? `${data.profilePicture}?t=${Date.now()}`
-          : `${API_BASE_URL}${data.profilePicture}?t=${Date.now()}`;
-
-        setProfilePicture(newUrl);
-        if (currentUser) {
-          setCurrentUser({ ...currentUser, profilePicture: newUrl });
-        }
-      }
-
-      setPhotoSuccessVisible(true);
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      Alert.alert(
-        "Upload failed",
-        "Please try again later.",
-        undefined,
-        alertAppearance
-      );
-    }
-  };
-
-  const pickImageFromLibrary = async () => {
+  const pickImageFromLibrary = useCallback(async () => {
     try {
       const permissionResult =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -485,9 +491,9 @@ export default function ProfileScreen() {
         alertAppearance
       );
     }
-  };
+  }, [alertAppearance, uploadSelectedAsset]);
 
-  const takePhoto = async () => {
+  const takePhoto = useCallback(async () => {
     try {
       const permissionResult =
         await ImagePicker.requestCameraPermissionsAsync();
@@ -518,9 +524,9 @@ export default function ProfileScreen() {
         alertAppearance
       );
     }
-  };
+  }, [alertAppearance, uploadSelectedAsset]);
 
-  const removeProfilePicture = async () => {
+  const removeProfilePicture = useCallback(async () => {
     if (!currentUser) return;
     try {
       const updated = await updateUserProfile(
@@ -545,7 +551,7 @@ export default function ProfileScreen() {
         alertAppearance
       );
     }
-  };
+  }, [alertAppearance, applyUserUpdate, currentUser, fetchWithAuth]);
 
   const confirmRemoveProfilePicture = useCallback(() => {
     if (!hasProfilePhoto) return;

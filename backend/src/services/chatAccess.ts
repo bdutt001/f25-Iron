@@ -13,7 +13,11 @@ type AccessCheckResult =
 export const ensureChatAccess = async (chatSessionId: number, userId: number): Promise<AccessCheckResult> => {
   const chat = await prisma.chatSession.findUnique({
     where: { id: chatSessionId },
-    include: { participants: true },
+    include: {
+      participants: {
+        include: { user: { select: { id: true, isAdmin: true, banned: true } } },
+      },
+    },
   });
   if (!chat) {
     return { allowed: false, reason: "not_found" };
@@ -21,6 +25,16 @@ export const ensureChatAccess = async (chatSessionId: number, userId: number): P
 
   const isParticipant = chat.participants.some((p) => p.userId === userId);
   if (!isParticipant) {
+    return { allowed: false, reason: "forbidden" };
+  }
+
+  const hasAdmin = chat.participants.some((p) => p.user?.isAdmin);
+  if (hasAdmin) {
+    return { allowed: false, reason: "forbidden" };
+  }
+
+  const hasBanned = chat.participants.some((p) => p.user?.banned);
+  if (hasBanned) {
     return { allowed: false, reason: "forbidden" };
   }
 
@@ -42,4 +56,3 @@ export const ensureChatAccess = async (chatSessionId: number, userId: number): P
 
   return { allowed: true, otherUserId };
 };
-

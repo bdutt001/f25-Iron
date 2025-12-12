@@ -4,6 +4,10 @@ import prisma from "../prisma";
 // Create a new report
 export const createReport = async (req: Request, res: Response) => {
   const { reason, reporterId, reportedId } = req.body;
+  const contextNoteRaw =
+    typeof req.body.contextNote === "string" ? req.body.contextNote.trim() : "";
+  const contextNote =
+    contextNoteRaw && contextNoteRaw.length > 0 ? contextNoteRaw.slice(0, 1000) : undefined;
   
   // Validation
   if (!reason) return res.status(400).json({ error: "Reason is required" });
@@ -34,7 +38,8 @@ export const createReport = async (req: Request, res: Response) => {
       data: { 
         reason, 
         reporterId, 
-        reportedId 
+        reportedId,
+        contextNote,
       },
       include: {
         reporter: {

@@ -86,6 +86,16 @@ export const toAuthenticatedUser = (user: {
   visibility?: boolean;
   profileStatus?: string | null;
   lastLogin?: Date | string | null;
+  trustScore?: number | null;
+  isAdmin?: boolean | null;
+  banned?: boolean | null;
+  bannedAt?: Date | string | null;
+  banReason?: string | null;
+  phoneNumber?: string | null;
+  phoneVerified?: boolean | null;
+  googleId?: string | null;
+  appleId?: string | null;
+  deviceFingerprint?: string | null;
 }): AuthenticatedUser => ({
   id: user.id,
   email: user.email ?? null,
@@ -102,6 +112,22 @@ export const toAuthenticatedUser = (user: {
     user.lastLogin instanceof Date
       ? user.lastLogin.toISOString()
       : user.lastLogin ?? null,
+  trustScore:
+    typeof user.trustScore === "number" && Number.isFinite(user.trustScore)
+      ? user.trustScore
+      : undefined,
+  isAdmin: user.isAdmin ?? undefined,
+  banned: user.banned ?? undefined,
+  bannedAt:
+    user.bannedAt instanceof Date
+      ? user.bannedAt.toISOString()
+      : (user.bannedAt as string | null | undefined) ?? null,
+  banReason: user.banReason ?? null,
+  phoneNumber: user.phoneNumber ?? null,
+  phoneVerified: user.phoneVerified ?? undefined,
+  googleId: user.googleId ?? null,
+  appleId: user.appleId ?? null,
+  deviceFingerprint: user.deviceFingerprint ?? null,
 });
 
 /**

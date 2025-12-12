@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import OverflowMenu, { type OverflowAction } from "./ui/OverflowMenu";
 import { useUser } from "../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
 import { useThemedAlert } from "../hooks/useThemedAlert";
 import { AppNotice } from "./ui/AppNotice";
+import { useAppTheme } from "@/context/ThemeContext";
+import { CenterModal } from "./ui/CenterModal";
 
 type Props = {
   visible: boolean;
@@ -13,6 +16,8 @@ type Props = {
   onReported?: (userId: number) => void;
   // ✅ Optional handler for "View Profile" (e.g., from map or messages tab)
   onViewProfile?: (userId: number) => void;
+  // Notify parent when any overlay from this menu is visible (menu or report sheet)
+  onOverlayVisibilityChange?: (visible: boolean) => void;
 };
 
 export const REPORT_REASONS = [
@@ -26,34 +31,170 @@ export const REPORT_REASONS = [
 type ReportReasonMenuProps = {
   visible: boolean;
   onClose: () => void;
-  onSelectReason: (reason: string) => void;
+  onSubmit: (reason: string, contextNote: string) => void;
   subjectLabel: string;
 };
 
 export function ReportReasonMenu({
   visible,
   onClose,
-  onSelectReason,
+  onSubmit,
   subjectLabel,
 }: ReportReasonMenuProps) {
-  const actions: OverflowAction[] = REPORT_REASONS.map((reason) => ({
-    key: `report-${reason.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-    label: reason,
-    destructive: true,
-    icon: "alert-circle-outline",
-    onPress: () => onSelectReason(reason),
-  }));
+  const { colors, isDark } = useAppTheme();
+  const [selectedReason, setSelectedReason] = useState<string>(REPORT_REASONS[0]);
+  const [note, setNote] = useState<string>("");
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedReason(REPORT_REASONS[0]);
+      setNote("");
+    }
+  }, [visible]);
 
   return (
-    <OverflowMenu
+    <CenterModal
       visible={visible}
-      onClose={onClose}
-      title={`Report ${subjectLabel}`}
-      message="Tell us what's wrong so we can review quickly."
-      actions={actions}
-    />
+      onRequestClose={() => {
+        Keyboard.dismiss();
+        onClose();
+      }}
+      cardStyle={reportStyles.card}
+      contentContainerStyle={reportStyles.modalContent}
+    >
+      <Text style={[reportStyles.title, { color: colors.text }]}>
+        Report {subjectLabel}
+      </Text>
+      <Text style={[reportStyles.subtitle, { color: colors.muted }]}>
+        Choose a reason and add context so moderators can review quickly.
+      </Text>
+
+      <View style={reportStyles.chipRow}>
+        {REPORT_REASONS.map((reason) => {
+          const active = reason === selectedReason;
+          return (
+            <TouchableOpacity
+              key={reason}
+              onPress={() => {
+                Keyboard.dismiss();
+                setSelectedReason(reason);
+              }}
+              style={[
+                reportStyles.chip,
+                {
+                  borderColor: active ? colors.accent : colors.border,
+                  backgroundColor: active
+                    ? `${colors.accent}1A`
+                    : isDark
+                      ? "rgba(255,255,255,0.04)"
+                      : "#f8fafc",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  reportStyles.chipText,
+                  { color: active ? colors.accent : colors.text },
+                ]}
+              >
+                {reason}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <TextInput
+        style={[
+          reportStyles.input,
+          {
+            borderColor: colors.border,
+            color: colors.text,
+            backgroundColor: isDark ? "#0c1730" : "#f8fafc",
+          },
+        ]}
+        placeholder="Add an optional note (what happened, links, details)"
+        placeholderTextColor={colors.muted}
+        value={note}
+        onChangeText={setNote}
+        multiline
+        maxLength={1000}
+      />
+      <Text style={[reportStyles.counter, { color: colors.muted }]}>
+        {note.length}/1000
+      </Text>
+
+      <View style={reportStyles.actionsRow}>
+        <TouchableOpacity
+          style={[reportStyles.secondaryButton, { borderColor: colors.border }]}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        >
+          <Text style={[reportStyles.secondaryText, { color: colors.text }]}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            reportStyles.primaryButton,
+            { backgroundColor: colors.accent },
+          ]}
+          onPress={() => {
+            Keyboard.dismiss();
+            onSubmit(selectedReason, note.trim());
+          }}
+        >
+          <Text style={reportStyles.primaryText}>Submit</Text>
+        </TouchableOpacity>
+      </View>
+    </CenterModal>
   );
 }
+
+const reportStyles = StyleSheet.create({
+  card: { maxWidth: 520 },
+  modalContent: { paddingBottom: 10 },
+  title: { fontSize: 20, fontWeight: "800", marginBottom: 6, textAlign: "center" },
+  subtitle: { fontSize: 14, marginBottom: 14, lineHeight: 20, textAlign: "center" },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 14 },
+  chip: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  chipText: { fontWeight: "700", fontSize: 13 },
+  input: {
+    minHeight: 120,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    textAlignVertical: "top",
+    fontSize: 15,
+  },
+  counter: { alignSelf: "flex-end", fontSize: 12, marginTop: 6 },
+  actionsRow: { flexDirection: "row", gap: 12, marginTop: 14 },
+  secondaryButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryText: { fontWeight: "700", fontSize: 15 },
+  primaryButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryText: { fontWeight: "800", color: "#fff", fontSize: 15 },
+});
 
 export const REPORT_SUCCESS_NOTICE = {
   title: "Report Submitted",
@@ -67,6 +208,7 @@ export default function UserOverflowMenu({
   onBlocked,
   onReported,
   onViewProfile,
+  onOverlayVisibilityChange,
 }: Props) {
   const { currentUser, fetchWithAuth } = useUser();
   const [persisted, setPersisted] = useState<{ id: number; name: string } | null>(
@@ -93,8 +235,15 @@ export default function UserOverflowMenu({
         name: targetUser.name || targetUser.email || "User",
       });
     }
-    // We intentionally *don’t* clear on close to avoid title flicker
+    // We intentionally *don't* clear on close to avoid title flicker
   }, [visible, targetUser]);
+
+  useEffect(() => {
+    onOverlayVisibilityChange?.(visible || showReportMenu);
+    return () => {
+      onOverlayVisibilityChange?.(false);
+    };
+  }, [onOverlayVisibilityChange, showReportMenu, visible]);
 
   const doReport = async () => {
     const effective = resolveTarget();
@@ -110,7 +259,7 @@ export default function UserOverflowMenu({
     setShowReportMenu(true);
   };
 
-  const submitReport = async (reason: string) => {
+  const submitReport = async (reason: string, contextNote?: string) => {
     const effective = resolveTarget();
     if (!effective) return;
     setShowReportMenu(false);
@@ -118,7 +267,11 @@ export default function UserOverflowMenu({
       const resp = await fetchWithAuth(`${API_BASE_URL}/api/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportedId: effective.id, reason, severity: 1 }),
+        body: JSON.stringify({
+          reportedId: effective.id,
+          reason,
+          contextNote: contextNote?.trim() || undefined,
+        }),
       });
       const payload = (await resp.json()) as { error?: string };
       if (!resp.ok) throw new Error(payload?.error || "Failed to submit report");
@@ -196,13 +349,17 @@ export default function UserOverflowMenu({
 
   return (
     <>
-      <OverflowMenu visible={visible} onClose={onClose} title={name} actions={actions} />
+      <OverflowMenu
+        visible={visible}
+        onClose={onClose}
+        actions={actions}
+      />
 
       <ReportReasonMenu
         visible={showReportMenu}
         onClose={() => setShowReportMenu(false)}
         subjectLabel={persisted?.name || "User"}
-        onSelectReason={submitReport}
+        onSubmit={submitReport}
       />
       <AppNotice
         visible={!!notice}
