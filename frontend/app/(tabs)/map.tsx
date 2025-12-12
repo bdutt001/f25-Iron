@@ -110,7 +110,10 @@ export default function MapScreen() {
       if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       const data = (await response.json()) as ApiUser[];
       const filtered = data.filter(
-        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+        (u) =>
+          (u.visibility ?? true) &&
+          !u.isAdmin &&
+          (currentUserId ? u.id !== currentUserId : true)
       );
       setPrefetchedUsers(filtered);
       setErrorMsg(null);
@@ -217,7 +220,10 @@ export default function MapScreen() {
     if (isAdmin) return;
     if (prefetchedUsers && prefetchedUsers.length > 0) {
       const filtered = prefetchedUsers.filter(
-        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+        (u) =>
+          (u.visibility ?? true) &&
+          !u.isAdmin &&
+          (currentUserId ? u.id !== currentUserId : true)
       );
       // Only scatter for users without a stored position
       const missing = filtered.filter((u) => !positionsRef.current.has(u.id));
@@ -284,7 +290,10 @@ export default function MapScreen() {
   useEffect(() => {
     if (isAdmin || !prefetchedUsers?.length || nearbyUsers.length > 0) return;
     const filtered = prefetchedUsers.filter(
-      (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
+      (u) =>
+        (u.visibility ?? true) &&
+        !u.isAdmin &&
+        (currentUserId ? u.id !== currentUserId : true)
     );
     const missing = filtered.filter((u) => !positionsRef.current.has(u.id));
     if (missing.length) {

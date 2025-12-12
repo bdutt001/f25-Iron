@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/authenticate";
+import { rejectAdmin } from "../middleware/rejectAdmin";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -41,8 +42,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Require authentication for all user routes
-router.use(authenticate);
+// Require authentication for all user routes and block admin actors from user space
+router.use(authenticate, rejectAdmin);
 
 // Core user routes
 router.post("/users", createUser);

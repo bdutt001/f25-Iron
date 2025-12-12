@@ -42,6 +42,7 @@ type NearbyWithDistance = ApiUser & {
   distanceMeters: number;
   matchPercent: number;
   locationUpdatedAt?: string;
+  isAdmin?: boolean;
 };
 type SortMode = "match" | "distance";
 
@@ -112,6 +113,7 @@ export default function NearbyScreen() {
 
           const email = typeof item?.email === "string" ? item.email : "";
           const name = typeof item?.name === "string" ? item.name : email;
+          const isAdmin = item?.isAdmin === true;
 
           return {
             id,
@@ -125,13 +127,16 @@ export default function NearbyScreen() {
             longitude,
             distanceMeters,
             matchPercent,
+            isAdmin,
             locationUpdatedAt:
               typeof item?.locationUpdatedAt === "string" ? item.locationUpdatedAt : undefined,
           };
         })
         .filter(
           (item): item is NearbyWithDistance =>
-            !!item && item.distanceMeters <= NEARBY_RADIUS_METERS
+            !!item &&
+            item.distanceMeters <= NEARBY_RADIUS_METERS &&
+            item.isAdmin !== true
         );
     },
     []
@@ -256,7 +261,7 @@ export default function NearbyScreen() {
 
         const payload = await response.json();
         const normalized = normalizeNearbyResponse(payload).filter(
-          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS
+          (user) => user.distanceMeters <= NEARBY_RADIUS_METERS && user.isAdmin !== true
         );
 
         setUsers(normalized);

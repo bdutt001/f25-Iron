@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/authenticate";
+import { rejectAdmin } from "../middleware/rejectAdmin";
 import prisma from "../prisma";
 import { applyTrustScoreDeduction, normalizeSeverity } from "../services/trust.service";
 
@@ -9,7 +10,7 @@ const router = Router();
  * POST /api/report
  * Create a report and decrement the reported user's trust score.
  */
-router.post("/report", authenticate, async (req, res) => {
+router.post("/report", authenticate, rejectAdmin, async (req, res) => {
   try {
     const reporter = req.user;
     if (!reporter) {

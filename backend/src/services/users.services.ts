@@ -56,7 +56,7 @@ export const buildConnectOrCreate = (tags: string[]) =>
 
 export const getAllUsers = async (): Promise<SerializedUser[]> => {
   const users = await prisma.user.findMany({
-    where: { visibility: true },
+    where: { visibility: true, isAdmin: false, banned: false },
     select: userWithTagsSelect,
   });
 
@@ -107,6 +107,8 @@ export const findUsersByTag = async (tagName: string): Promise<SerializedUser[]>
         some: { name: normalized },
       },
       visibility: true,
+      isAdmin: false,
+      banned: false,
     },
     select: userWithTagsSelect,
   });

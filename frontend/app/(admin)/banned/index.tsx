@@ -207,7 +207,7 @@ export default function AdminBanned() {
 
   if (!currentUser?.isAdmin) {
     return (
-      <AppScreen>
+      <AppScreen edges={["bottom"]}>
         <View style={[styles.centered, { backgroundColor: colors.background }]}>
           <Text style={[styles.heading, { color: colors.text }]}>Not authorized</Text>
           <Text style={[styles.body, { color: colors.muted }]}>
@@ -221,33 +221,33 @@ export default function AdminBanned() {
   const showLoader = loading && !refreshing && bannedUsers.length === 0;
 
   return (
-    <AppScreen>
+    <AppScreen edges={["bottom"]}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.searchRow}>
-        <View style={[styles.searchInput, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <Ionicons name="search" size={16} color={colors.muted} />
-          <TextInput
-            placeholder="Search by email or name"
-            placeholderTextColor={colors.muted}
-            value={queryInput}
-            onChangeText={setQueryInput}
-            onSubmitEditing={onSearch}
-            style={[styles.input, { color: colors.text }]}
-            returnKeyType="search"
-          />
-          {queryInput ? (
-            <TouchableOpacity onPress={clearSearch}>
-              <Ionicons name="close-circle" size={18} color={colors.muted} />
-            </TouchableOpacity>
-          ) : null}
+        <View style={styles.searchRow}>
+          <View style={[styles.searchInput, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            <Ionicons name="search" size={16} color={colors.muted} />
+            <TextInput
+              placeholder="Search by email or name"
+              placeholderTextColor={colors.muted}
+              value={queryInput}
+              onChangeText={setQueryInput}
+              onSubmitEditing={onSearch}
+              style={[styles.input, { color: colors.text }]}
+              returnKeyType="search"
+            />
+            {queryInput ? (
+              <TouchableOpacity onPress={clearSearch}>
+                <Ionicons name="close-circle" size={18} color={colors.muted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <TouchableOpacity
+            style={[styles.searchButton, { backgroundColor: colors.accent }]}
+            onPress={onSearch}
+          >
+            <Text style={styles.searchButtonText}>Search</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.searchButton, { backgroundColor: colors.accent }]}
-          onPress={onSearch}
-        >
-          <Text style={styles.searchButtonText}>Search</Text>
-        </TouchableOpacity>
-      </View>
 
       {headerSummary}
 

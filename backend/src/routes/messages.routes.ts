@@ -1,6 +1,7 @@
 import { Router, Request } from "express";
 import prisma from "../prisma";
 import { authenticate } from "../middleware/authenticate";
+import { rejectAdmin } from "../middleware/rejectAdmin";
 import { AuthenticatedUser } from "../types/auth";
 import { ensureChatAccess } from "../services/chatAccess";
 import { broadcastMessageToChat } from "../realtime/messageHub";
@@ -9,8 +10,10 @@ const router = Router();
 
 type AuthRequest = Request & { user?: AuthenticatedUser };
 
+router.use(authenticate, rejectAdmin);
+
 // Start or get chat session
-router.post("/session", authenticate, async (req: AuthRequest, res) => {
+router.post("/session", async (req: AuthRequest, res) => {
   const { participants } = req.body as { participants: number[] };
   if (!participants || participants.length !== 2) {
     return res.status(400).json({ message: "Two participants required" });
@@ -20,6 +23,25 @@ router.post("/session", authenticate, async (req: AuthRequest, res) => {
     const authUserId = req.user!.id;
     if (!participants.includes(authUserId)) {
       return res.status(403).json({ message: "Authenticated user must be a participant" });
+    }
+
+    const participantRecords = await prisma.user.findMany({
+      where: { id: { in: participants } },
+      select: { id: true, isAdmin: true, banned: true },
+    });
+
+    if (participantRecords.length !== participants.length) {
+      return res.status(404).json({ message: "Participant not found" });
+    }
+
+    const adminParticipant = participantRecords.find((p) => p.isAdmin);
+    if (adminParticipant) {
+      return res.status(403).json({ message: "Admin accounts cannot join chats" });
+    }
+
+    const bannedParticipant = participantRecords.find((p) => p.banned);
+    if (bannedParticipant) {
+      return res.status(403).json({ message: "Cannot chat with a banned account" });
     }
 
     const otherId = participants[0] === authUserId ? participants[1] : participants[0];
@@ -61,7 +83,7 @@ router.post("/session", authenticate, async (req: AuthRequest, res) => {
 });
 
 // Get all conversations for a user
-router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res) => {
+router.get("/conversations/:userId", async (req: AuthRequest, res) => {
   const userId = Number(req.params.userId);
   if (isNaN(userId)) return res.status(400).json({ message: "Invalid userId" });
 
@@ -88,8 +110,10 @@ router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res)
     }
 
     const visibleChats = chats.filter((chat) => {
-      const otherId = chat.participants.find((p) => p.userId !== userId)?.userId;
-      return otherId ? !hiddenIds.has(otherId) : false;
+      const otherParticipant = chat.participants.find((p) => p.userId !== userId)?.user;
+      if (!otherParticipant) return false;
+      if (otherParticipant.isAdmin || otherParticipant.banned) return false;
+      return !hiddenIds.has(otherParticipant.id);
     });
 
     const chatIds = visibleChats.map((chat) => chat.id);
@@ -141,7 +165,7 @@ router.get("/conversations/:userId", authenticate, async (req: AuthRequest, res)
 });
 
 // Get all messages in a chat
-router.get("/:chatId", authenticate, async (req: AuthRequest, res) => {
+router.get("/:chatId", async (req: AuthRequest, res) => {
   const chatId = Number(req.params.chatId);
   if (isNaN(chatId)) return res.status(400).json({ message: "Invalid chatId" });
 
@@ -166,7 +190,7 @@ router.get("/:chatId", authenticate, async (req: AuthRequest, res) => {
 });
 
 // Send a new message
-router.post("/", authenticate, async (req: AuthRequest, res) => {
+router.post("/", async (req: AuthRequest, res) => {
   const { content, chatSessionId } = req.body as { content: string; chatSessionId: number };
   if (!content || !chatSessionId) {
     return res.status(400).json({ message: "Missing required fields" });
@@ -205,4 +229,3 @@ router.post("/", authenticate, async (req: AuthRequest, res) => {
 });
 
 export default router;
-
