@@ -76,6 +76,23 @@ export default function NearbyScreen() {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deviceLocationAttemptedRef = useRef(false);
 
+  if (currentUser?.isAdmin) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Admin-only account</Text>
+        <Text style={[styles.note, { color: colors.muted }]}>
+          Admin accounts can’t browse nearby users. Open the moderation dashboard instead.
+        </Text>
+        <TouchableOpacity
+          style={[styles.visibilityToggle, { backgroundColor: colors.accent }]}
+          onPress={() => router.replace("/(admin)")}
+        >
+          <Text style={[styles.visibilityToggleText, { color: "#fff" }]}>Go to Admin</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const normalizeNearbyResponse = useCallback(
     (payload: unknown): NearbyWithDistance[] => {
       const rawList: any[] = Array.isArray((payload as any)?.users)

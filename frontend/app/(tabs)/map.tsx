@@ -17,6 +17,7 @@ import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
+import { SafeAreaView } from "react-native-safe-area-context";
 // Overlay implementation removed in favor of native sprites
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -64,6 +65,24 @@ export default function MapScreen() {
     isStatusUpdating,
   } = useUser();
   const currentUserId = currentUser?.id;
+
+  if (currentUser?.isAdmin) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: "#0f172a" }]} edges={["top"]}>
+        <View style={[styles.centered, { padding: 24 }]}>
+          <Text style={[styles.title, { color: "#fff" }]}>Admin-only account</Text>
+          <Text style={[styles.subtitle, { color: "#cbd5e1" }]}>
+            Admin accounts can’t access the user map. Open the moderation dashboard instead.
+          </Text>
+          <TouchableOpacity
+            style={[styles.ctaButton, { backgroundColor: "#0ea5e9" }]}
+            onPress={() => router.replace("/(admin)")}>
+            <Text style={[styles.ctaText, { color: "#fff" }]}>Go to Admin Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const selfUser: SelectedUser | null = currentUser
     ? {
@@ -570,6 +589,16 @@ useEffect(() => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: 20, fontWeight: "800", textAlign: "center", marginBottom: 8 },
+  subtitle: { textAlign: "center", fontSize: 14, marginBottom: 16, lineHeight: 20 },
+  ctaButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  ctaText: { fontWeight: "700", fontSize: 15 },
   map: { flex: 1 },
   // Circular marker avatar styles
   markerWrap: {

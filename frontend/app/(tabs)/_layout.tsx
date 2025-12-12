@@ -4,12 +4,17 @@ import React from "react";
 import { useTabHeaderOptions } from "../../hooks/useTabHeaderOptions";
 import { useAppTheme } from "../../context/ThemeContext";
 import { useUser } from "../../context/UserContext";
+import { Redirect } from "expo-router";
 
 export default function TabLayout() {
   const { isDark, colors } = useAppTheme();
   const headerOptions = useTabHeaderOptions();
   const { currentUser } = useUser();
   const isAdmin = !!currentUser?.isAdmin;
+
+  if (isAdmin) {
+    return <Redirect href="/(admin)" />;
+  }
 
   return (
     <Tabs
@@ -57,17 +62,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      {isAdmin ? (
-        <Tabs.Screen
-          name="admin"
-          options={{
-            title: "Admin",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="shield-checkmark-outline" color={color} size={size} />
-            ),
-          }}
-        />
-      ) : null}
     </Tabs>
   );
 }

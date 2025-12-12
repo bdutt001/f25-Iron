@@ -56,7 +56,7 @@ const Unauthorized = ({ onBack }: { onBack?: () => void }) => (
   </View>
 );
 
-export default function AdminReportsScreen() {
+export default function AdminReportsList() {
   const { colors, isDark } = useAppTheme();
   const { currentUser, fetchWithAuth } = useUser();
   const router = useRouter();
@@ -182,7 +182,7 @@ export default function AdminReportsScreen() {
       <Pressable
         onPress={() =>
           router.push({
-            pathname: "/(tabs)/admin/[reportId]",
+            pathname: "/(admin)/reports/[reportId]",
             params: { reportId: String(item.id) },
           })
         }

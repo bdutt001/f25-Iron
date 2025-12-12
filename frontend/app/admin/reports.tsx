@@ -9,5 +9,5 @@ export default function AdminReportsRoute() {
     return <Redirect href="/(tabs)/nearby" />;
   }
 
-  return <Redirect href="/(tabs)/admin" />;
+  return <Redirect href="/(admin)/reports" />;
 }
