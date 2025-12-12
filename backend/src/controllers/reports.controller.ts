@@ -59,10 +59,10 @@ export const getReports = async (_req: Request, res: Response) => {
     const reports = await prisma.report.findMany({
       include: {
         reporter: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         },
         reported: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -88,10 +88,10 @@ export const getReportsByUserId = async (req: Request, res: Response) => {
       where: { reportedId: userIdNum },
       include: {
         reporter: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         },
         reported: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -117,10 +117,10 @@ export const getReportsByReporter = async (req: Request, res: Response) => {
       where: { reporterId: reporterIdNum },
       include: {
         reporter: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         },
         reported: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -146,10 +146,10 @@ export const getReportById = async (req: Request, res: Response) => {
       where: { id: reportId },
       include: {
         reporter: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         },
         reported: {
-          select: { id: true, email: true, name: true }
+          select: { id: true, email: true, name: true, trustScore: true, banned: true }
         }
       }
     });

@@ -1,14 +1,13 @@
-// app/admin/reports.tsx (Expo Router style)
 import { Redirect } from "expo-router";
-import AdminReportsScreen from "@/app/(tabs)/AdminReportsScreen";
+import React from "react";
 import { useUser } from "@/context/UserContext";
 
 export default function AdminReportsRoute() {
   const { currentUser } = useUser();
 
   if (!currentUser?.isAdmin) {
-    return <Redirect href="/" />; // back to home
+    return <Redirect href="/(tabs)/nearby" />;
   }
 
-  return <AdminReportsScreen />;
+  return <Redirect href="/(tabs)/admin" />;
 }

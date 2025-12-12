@@ -30,6 +30,14 @@ export type CurrentUser = {
   trustScore?: number;
   visibility?: boolean;
   isAdmin?: boolean;
+  banned?: boolean;
+  bannedAt?: string | null;
+  banReason?: string | null;
+  phoneNumber?: string | null;
+  phoneVerified?: boolean;
+  googleId?: string | null;
+  appleId?: string | null;
+  deviceFingerprint?: string | null;
   /** Optional profile status shown on profile (e.g. "Looking to Mingle") */
   profileStatus?: string | null;
 };

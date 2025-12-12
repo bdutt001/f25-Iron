@@ -94,6 +94,14 @@ export const toCurrentUser = (payload: JsonRecord): CurrentUser => ({
   visibility: normalizeOptionalBoolean(payload.visibility) ?? true,
   isAdmin: normalizeOptionalBoolean(payload.isAdmin),
   profileStatus: normalizeOptionalString(payload.profileStatus),
+  banned: normalizeOptionalBoolean(payload.banned),
+  bannedAt: normalizeOptionalString(payload.bannedAt),
+  banReason: normalizeOptionalString(payload.banReason),
+  phoneNumber: normalizeOptionalString(payload.phoneNumber),
+  phoneVerified: normalizeOptionalBoolean(payload.phoneVerified),
+  googleId: normalizeOptionalString(payload.googleId),
+  appleId: normalizeOptionalString(payload.appleId),
+  deviceFingerprint: normalizeOptionalString(payload.deviceFingerprint),
 });
 
 const extractErrorMessage = async (response: Response): Promise<string> => {

@@ -10,6 +10,16 @@ export interface AuthenticatedUser {
   profilePicture: string | null;
   interestTags?: string[];
   visibility: boolean;
-  profileStatus?: string | null;  // ✅ from profileView branch
-  lastLogin?: string | null;      // ✅ from main
+  profileStatus?: string | null; // ? from profileView branch
+  lastLogin?: string | null; // ? from main
+  trustScore?: number;
+  isAdmin?: boolean;
+  banned?: boolean;
+  bannedAt?: string | null;
+  banReason?: string | null;
+  phoneNumber?: string | null;
+  phoneVerified?: boolean;
+  googleId?: string | null;
+  appleId?: string | null;
+  deviceFingerprint?: string | null;
 }

@@ -1,19 +1,9 @@
 {
   "cli": {
-    "version": ">= 16.28.0",
+    "version": ">= 16.26.0",
     "appVersionSource": "remote"
   },
   "build": {
-    "internal": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "app-bundle"
-      },
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://f25-iron.onrender.com"
-      }
-    },
     "development": {
       "developmentClient": true,
       "distribution": "internal"
@@ -22,16 +12,15 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://f25-iron.onrender.com"
-      }
+      "distribution": "store",
+      "android": { "buildType": "app-bundle" },
+      "autoIncrement": true
     }
   },
   "submit": {
     "production": {
-      "ios": {
-        "ascAppId": "6756440955"
+      "android": {
+        "track": "internal"
       }
     }
   }
