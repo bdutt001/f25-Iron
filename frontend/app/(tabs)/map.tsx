@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -17,7 +17,7 @@ import { ApiUser, NearbyUser, scatterUsersAround } from "../../utils/geo";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppScreen } from "@/components/layout/AppScreen";
 // Overlay implementation removed in favor of native sprites
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
@@ -38,8 +38,6 @@ export default function MapScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const mapRef = useRef<MapView | null>(null);
-  // Removed markerTracks; no longer needed
-  const [markersVersion, setMarkersVersion] = useState(0);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   const [readyMarkers, setReadyMarkers] = useState<Record<string, boolean>>({});
   // Keep stable map positions across refreshes to avoid jitter
@@ -49,7 +47,7 @@ export default function MapScreen() {
   // Enable LayoutAnimation on Android
   useEffect(() => {
     // @ts-ignore
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
       // @ts-ignore
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
@@ -65,37 +63,24 @@ export default function MapScreen() {
     isStatusUpdating,
   } = useUser();
   const currentUserId = currentUser?.id;
+  const isAdmin = currentUser?.isAdmin;
 
-  if (currentUser?.isAdmin) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: "#0f172a" }]} edges={["top"]}>
-        <View style={[styles.centered, { padding: 24 }]}>
-          <Text style={[styles.title, { color: "#fff" }]}>Admin-only account</Text>
-          <Text style={[styles.subtitle, { color: "#cbd5e1" }]}>
-            Admin accounts can’t access the user map. Open the moderation dashboard instead.
-          </Text>
-          <TouchableOpacity
-            style={[styles.ctaButton, { backgroundColor: "#0ea5e9" }]}
-            onPress={() => router.replace("/(admin)")}>
-            <Text style={[styles.ctaText, { color: "#fff" }]}>Go to Admin Dashboard</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const selfUser: SelectedUser | null = currentUser
-    ? {
-        id: currentUser.id,
-        name: currentUser.name?.trim() || currentUser.email,
-        email: currentUser.email,
-        interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
-        profilePicture: currentUser.profilePicture ?? null,
-        coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
-        trustScore: currentUser.trustScore ?? 99,
-        isCurrentUser: true,
-      }
-    : null;
+  const selfUser: SelectedUser | null = useMemo(
+    () =>
+      currentUser
+        ? {
+            id: currentUser.id,
+            name: currentUser.name?.trim() || currentUser.email,
+            email: currentUser.email,
+            interestTags: Array.isArray(currentUser.interestTags) ? currentUser.interestTags : [],
+            profilePicture: currentUser.profilePicture ?? null,
+            coords: { latitude: myCoords.latitude, longitude: myCoords.longitude },
+            trustScore: currentUser.trustScore ?? 99,
+            isCurrentUser: true,
+          }
+        : null,
+    [currentUser, myCoords]
+  );
   const selfPictureToken = (selfUser?.profilePicture as string | null) ?? null;
   const selfReadyKey = `self:${selfPictureToken ?? "nop"}`;
   const selfImageUri = selfPictureToken
@@ -223,66 +208,76 @@ export default function MapScreen() {
     );
   }, [accessToken, currentUser, selectedUser]);
 
-useEffect(() => {
-  if (prefetchedUsers && prefetchedUsers.length > 0) {
-    const filtered = prefetchedUsers.filter(
-      (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
-    );
-    // Only scatter for users without a stored position
-    const missing = filtered.filter((u) => !positionsRef.current.has(u.id));
-    if (missing.length) {
-      const scattered = scatterUsersAround(missing, center.latitude, center.longitude);
-      for (const u of scattered) positionsRef.current.set(u.id, u.coords);
-    }
-    const next = filtered.map<NearbyUser>((u) => ({
-      id: u.id,
-      name: u.name ?? u.email,
-      email: u.email,
-      interestTags: Array.isArray(u.interestTags) ? u.interestTags : [],
-      profilePicture: (u.profilePicture ?? null) as any,
-      coords: positionsRef.current.get(u.id) as Coords,
-      trustScore: (u as any).trustScore ?? undefined,
-    }));
-    setNearbyUsers((prev) => {
-      if (prev.length === next.length && prev.every((p, i) => p.id === next[i].id)) return prev;
-      return next;
-    });
-    // Seed readyMarkers for new keys (false = not ready -> track until image loads)
-    setReadyMarkers((prev) => {
-      const keys = new Set<string>();
-      if (selfUser) keys.add(`self:${(selfUser.profilePicture as string | null) ?? "nop"}`);
-      for (const u of filtered) keys.add(`${u.id}:${(u.profilePicture as string | null) ?? "nop"}`);
-      const nextMap: Record<string, boolean> = {};
-      // false => not ready => tracksViewChanges stays true until image loads
-      for (const k of keys) nextMap[k] = k in prev ? prev[k] : false;
-      return nextMap;
-    });
-
-    // Animate to first result only once
-    if (!hasAnimatedRegion.current && mapRef.current && next.length > 0) {
-      const first = next[0].coords;
-      mapRef.current.animateToRegion(
-        {
-          latitude: first.latitude,
-          longitude: first.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        },
-        400
+  useEffect(() => {
+    if (isAdmin) return;
+    if (prefetchedUsers && prefetchedUsers.length > 0) {
+      const filtered = prefetchedUsers.filter(
+        (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
       );
-      hasAnimatedRegion.current = true;
-      setTimeout(() => setMarkersVersion((v) => v + 1), 600);
-    }
-    return;
-  }
+      // Only scatter for users without a stored position
+      const missing = filtered.filter((u) => !positionsRef.current.has(u.id));
+      if (missing.length) {
+        const scattered = scatterUsersAround(missing, center.latitude, center.longitude);
+        for (const u of scattered) positionsRef.current.set(u.id, u.coords);
+      }
+      const next = filtered.map<NearbyUser>((u) => ({
+        id: u.id,
+        name: u.name ?? u.email,
+        email: u.email,
+        interestTags: Array.isArray(u.interestTags) ? u.interestTags : [],
+        profilePicture: (u.profilePicture ?? null) as any,
+        coords: positionsRef.current.get(u.id) as Coords,
+        trustScore: (u as any).trustScore ?? undefined,
+      }));
+      setNearbyUsers((prev) => {
+        if (prev.length === next.length && prev.every((p, i) => p.id === next[i].id)) return prev;
+        return next;
+      });
+      // Seed readyMarkers for new keys (false = not ready -> track until image loads)
+      setReadyMarkers((prev) => {
+        const keys = new Set<string>();
+        if (selfUser) keys.add(`self:${(selfUser.profilePicture as string | null) ?? "nop"}`);
+        for (const u of filtered) keys.add(`${u.id}:${(u.profilePicture as string | null) ?? "nop"}`);
+        const nextMap: Record<string, boolean> = {};
+        // false => not ready => tracksViewChanges stays true until image loads
+        for (const k of keys) nextMap[k] = k in prev ? prev[k] : false;
+        return nextMap;
+      });
 
-  if (!accessToken || !currentUser) return;
-  void loadUsers();
-}, [prefetchedUsers, accessToken, currentUserId, currentUser?.profilePicture, center.latitude, center.longitude, loadUsers]);
+      // Animate to first result only once
+      if (!hasAnimatedRegion.current && mapRef.current && next.length > 0) {
+        const first = next[0].coords;
+        mapRef.current.animateToRegion(
+          {
+            latitude: first.latitude,
+            longitude: first.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          },
+          400
+        );
+        hasAnimatedRegion.current = true;
+      }
+      return;
+    }
+
+    if (!accessToken || !currentUser) return;
+    void loadUsers();
+  }, [
+    accessToken,
+    center.latitude,
+    center.longitude,
+    currentUser,
+    currentUserId,
+    isAdmin,
+    loadUsers,
+    prefetchedUsers,
+    selfUser,
+  ]);
 
   // Bridge effect for late prefetched users
   useEffect(() => {
-    if (!prefetchedUsers?.length || nearbyUsers.length > 0) return;
+    if (isAdmin || !prefetchedUsers?.length || nearbyUsers.length > 0) return;
     const filtered = prefetchedUsers.filter(
       (u) => (u.visibility ?? true) && (currentUserId ? u.id !== currentUserId : true)
     );
@@ -301,7 +296,7 @@ useEffect(() => {
       trustScore: (u as any).trustScore ?? undefined,
     }));
     setNearbyUsers(next);
-  }, [prefetchedUsers, nearbyUsers.length, currentUserId, center.latitude, center.longitude]);
+  }, [center.latitude, center.longitude, currentUserId, isAdmin, nearbyUsers.length, prefetchedUsers]);
 
   // Removed markerTracks effect
 
@@ -317,7 +312,22 @@ useEffect(() => {
   };
 
   return (
-    <View style={styles.container}>
+    <AppScreen style={isAdmin ? { backgroundColor: "#0f172a" } : undefined}>
+      {isAdmin ? (
+        <View style={[styles.centered, { padding: 24 }]}>
+          <Text style={[styles.title, { color: "#fff" }]}>Admin-only account</Text>
+          <Text style={[styles.subtitle, { color: "#cbd5e1" }]}>
+            Admin accounts cannot access the user map. Open the moderation dashboard instead.
+          </Text>
+          <TouchableOpacity
+            style={[styles.ctaButton, { backgroundColor: "#0ea5e9" }]}
+            onPress={() => router.replace("/(admin)")}
+          >
+            <Text style={[styles.ctaText, { color: "#fff" }]}>Go to Admin Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -559,7 +569,7 @@ useEffect(() => {
       {/* Inline actions are rendered inside the sheet above */}
 
       {/* 🔘 Controls (lift when sheet is open) */}
-      <View style={[styles.controls, selectedUser ? { display: 'none' } : null]}>
+      <View style={[styles.controls, selectedUser ? { display: "none" } : null]}>
         <Text style={styles.statusText}>Visibility: {status}</Text>
         <TouchableOpacity
           style={[
@@ -583,7 +593,9 @@ useEffect(() => {
         </TouchableOpacity>
         {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
       </View>
-    </View>
+        </View>
+      )}
+    </AppScreen>
   );
 }
 

@@ -1,10 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import React from "react";
 import { useTabHeaderOptions } from "../../hooks/useTabHeaderOptions";
 import { useAppTheme } from "../../context/ThemeContext";
 import { useUser } from "../../context/UserContext";
-import { Redirect } from "expo-router";
 
 export default function TabLayout() {
   const { isDark, colors } = useAppTheme();
@@ -23,6 +22,7 @@ export default function TabLayout() {
         headerShown: true,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: "#9ca3af",
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: isDark ? "#0f172a" : "#ffffff",
           borderTopColor: isDark ? "#111827" : "#e5e7eb",

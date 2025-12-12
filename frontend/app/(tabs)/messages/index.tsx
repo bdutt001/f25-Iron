@@ -1,21 +1,11 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import {
-  ActivityIndicator,
-  AppState,
-  FlatList,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { AppState, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { Edge, SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../../context/UserContext";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { getChatLastReadMap, saveChatLastRead } from "@/utils/chatReadStorage";
 import { API_BASE_URL } from "@/utils/api";
+import { AppScreen } from "@/components/layout/AppScreen";
 
 type Conversation = {
   id: string;
@@ -36,7 +26,6 @@ type User = {
 
 export default function MessagesScreen() {
   const { currentUser, fetchWithAuth, accessToken } = useUser();
-  const safeAreaEdges: Edge[] = ["left", "right"];
   const topPadding = 8;
   const [users, setUsers] = useState<User[]>([]);
   const [conversationsRaw, setConversationsRaw] = useState<Conversation[]>([]);
@@ -52,10 +41,6 @@ export default function MessagesScreen() {
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        safeArea: {
-          flex: 1,
-          backgroundColor: colors.background,
-        },
         container: {
           flex: 1,
           paddingHorizontal: 16,
@@ -261,7 +246,7 @@ export default function MessagesScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+    <AppScreen>
       <View style={styles.container}>
         {error ? (
           <View style={styles.centered}>
@@ -381,6 +366,6 @@ export default function MessagesScreen() {
           />
         )}
       </View>
-    </SafeAreaView>
+    </AppScreen>
   );
 }

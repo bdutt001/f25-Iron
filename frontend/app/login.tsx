@@ -6,6 +6,7 @@ import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
 import { useAppTheme } from "../context/ThemeContext";
 import { AppNotice } from "../components/ui/AppNotice";
+import { AppScreen } from "@/components/layout/AppScreen";
 
 type AuthSuccess = {
   tokenType?: string;
@@ -181,7 +182,7 @@ export default function LoginScreen() {
   }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <AppScreen scroll contentContainerStyle={styles.container}>
       <View style={styles.logoRow}>
         <Image
           source={require("../assets/images/MingleMap-title.png")}
@@ -279,7 +280,7 @@ export default function LoginScreen() {
         title={authModalTitle || "Notice"}
         message={authModalMessage}
       />
-    </View>
+    </AppScreen>
   );
 }
 
@@ -352,4 +353,3 @@ const styles = StyleSheet.create({
   linkBtn: { alignItems: "center", paddingVertical: 12 },
   linkText: { fontWeight: "700", fontSize: 14 },
 });
-

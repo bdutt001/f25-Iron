@@ -16,6 +16,7 @@ import { useAppTheme } from "@/context/ThemeContext";
 import { useUser } from "@/context/UserContext";
 import { useThemedAlert } from "@/hooks/useThemedAlert";
 import { BannedUser, fetchBannedUsers, unbanUser } from "@/utils/admin";
+import { AppScreen } from "@/components/layout/AppScreen";
 
 export default function AdminBanned() {
   const { colors, isDark } = useAppTheme();
@@ -206,17 +207,22 @@ export default function AdminBanned() {
 
   if (!currentUser?.isAdmin) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <Text style={[styles.heading, { color: colors.text }]}>Not authorized</Text>
-        <Text style={[styles.body, { color: colors.muted }]}>Sign in as an admin to manage bans.</Text>
-      </View>
+      <AppScreen>
+        <View style={[styles.centered, { backgroundColor: colors.background }]}>
+          <Text style={[styles.heading, { color: colors.text }]}>Not authorized</Text>
+          <Text style={[styles.body, { color: colors.muted }]}>
+            Sign in as an admin to manage bans.
+          </Text>
+        </View>
+      </AppScreen>
     );
   }
 
   const showLoader = loading && !refreshing && bannedUsers.length === 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <AppScreen>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.searchRow}>
         <View style={[styles.searchInput, { borderColor: colors.border, backgroundColor: colors.card }]}>
           <Ionicons name="search" size={16} color={colors.muted} />
@@ -280,7 +286,8 @@ export default function AdminBanned() {
           }
         />
       )}
-    </View>
+      </View>
+    </AppScreen>
   );
 }
 

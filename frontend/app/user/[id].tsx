@@ -64,7 +64,6 @@ const getStatusAppearance = (
 
 export default function OtherUserProfileScreen() {
   const { id, from } = useLocalSearchParams<{ id?: string; from?: string }>();
-  const cameFromMessages = from === "messages";
 
   const navigation = useNavigation();
   const { colors, isDark } = useAppTheme();
@@ -176,7 +175,7 @@ export default function OtherUserProfileScreen() {
         );
       }
     },
-    [alertAppearance, cameFromMessages, currentUser, fetchWithAuth]
+    [alertAppearance, currentUser, fetchWithAuth]
   );
 
   // Set the header title to "<Name>'s Profile" (or just "Profile" as a fallback)
@@ -233,8 +232,6 @@ export default function OtherUserProfileScreen() {
     user.name && user.name.trim().length > 0 ? user.name : user.email;
 
   // ✅ Safely normalize profileStatus from backend (including custom)
-  const rawStatus =
-    typeof user.profileStatus === "string" ? user.profileStatus.trim() : "";
   const profileStatusRaw =
     (user as any).profileStatus && (user as any).profileStatus.trim().length > 0
       ? (user as any).profileStatus

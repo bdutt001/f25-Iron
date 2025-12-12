@@ -4,6 +4,8 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import React from "react";
 import { ThemeProvider } from "@react-navigation/native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { UserProvider, useUser } from "../context/UserContext";
 import { ThemeProvider as AppThemeProvider, useAppTheme } from "../context/ThemeContext";
@@ -51,10 +53,14 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <AppThemeProvider>
-      <UserProvider>
-        <RootNavigator />
-      </UserProvider>
-    </AppThemeProvider>
+    <SafeAreaProvider>
+      <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+        <AppThemeProvider>
+          <UserProvider>
+            <RootNavigator />
+          </UserProvider>
+        </AppThemeProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
   );
 }

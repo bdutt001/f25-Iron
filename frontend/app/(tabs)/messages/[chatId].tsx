@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
@@ -12,18 +11,16 @@ import {
   View,
 } from "react-native";
 import type { ListRenderItem } from "react-native";
-import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useAppTheme } from "../../../context/ThemeContext";
 import { useUser } from "../../../context/UserContext";
 import UserOverflowMenu from "../../../components/UserOverflowMenu";
 import { useTabHeaderOptions } from "../../../hooks/useTabHeaderOptions";
 import { saveChatLastRead } from "@/utils/chatReadStorage";
 import { API_BASE_URL, WS_BASE_URL } from "@/utils/api";
+import { ChatScreenShell } from "@/components/layout/ChatScreenShell";
 
 type Message = {
   id: number;
@@ -61,10 +58,6 @@ export default function ChatScreen() {
   const { currentUser, fetchWithAuth, setStatus, accessToken } = useUser();
   const { colors, isDark } = useAppTheme();
   const tabHeaderOptions = useTabHeaderOptions();
-  const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
-  const tabBarHeight = useBottomTabBarHeight();
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -82,12 +75,6 @@ export default function ChatScreen() {
 
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
-  const safeAreaEdges: Edge[] =
-    Platform.OS === "ios" ? ["left", "right", "bottom"] : ["left", "right", "bottom"];
-  const bottomInset = Math.max(insets.bottom, 8);
-  const keyboardVerticalOffset = Platform.OS === "ios" ? headerHeight + tabBarHeight : 0;
-  const composerBottomPadding = Math.max(bottomInset, 10);
-  const listBottomPadding = composerBottomPadding + 12;
 
   const resolvedProfileImage = useMemo(() => {
     if (!profilePicture) return null;
@@ -99,7 +86,6 @@ export default function ChatScreen() {
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        safeArea: { flex: 1, backgroundColor: colors.background },
         container: { flex: 1 },
         headerTitleRow: { flexDirection: "row", alignItems: "center" },
         headerAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
@@ -129,7 +115,7 @@ export default function ChatScreen() {
         messagesContainer: {
           paddingHorizontal: 16,
           paddingTop: 6,
-          paddingBottom: listBottomPadding,
+          paddingBottom: 12,
           flexGrow: 1,
           justifyContent: messages.length ? "flex-end" : "center",
         },
@@ -172,7 +158,7 @@ export default function ChatScreen() {
         composerWrapper: {
           paddingHorizontal: 16,
           paddingTop: 8,
-          paddingBottom: composerBottomPadding,
+          paddingBottom: 0,
           backgroundColor: colors.background,
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: colors.border,
@@ -253,7 +239,7 @@ export default function ChatScreen() {
         errorText: { color: isDark ? "#ffd7d5" : "#8b0000" },
         placeholderText: { color: colors.muted, textAlign: "center", marginTop: 12 },
       }),
-    [canSend, colors, composerBottomPadding, isDark, listBottomPadding, messages.length]
+    [canSend, colors, isDark, messages.length]
   );
 
   const scrollToBottom = useCallback(
@@ -575,113 +561,148 @@ export default function ChatScreen() {
     requestAnimationFrame(() => scrollToBottom(false));
   }, [displayItems, loading, scrollToBottom]);
 
+  const renderComposer = useCallback(
+    (inputPadding: number) => (
+      <View style={[styles.composerWrapper, { paddingBottom: inputPadding }]}>
+        <View style={styles.composerSurface}>
+          <TextInput
+            style={styles.input}
+            placeholder="Message"
+            placeholderTextColor={colors.muted}
+            value={newMessage}
+            onChangeText={setNewMessage}
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            multiline
+            autoCorrect
+          />
+          <TouchableOpacity
+            onPress={handleSend}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            disabled={!canSend}
+            style={styles.sendButton}
+          >
+            <Ionicons name="send" size={18} color={canSend ? "#fff" : colors.muted} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    ),
+    [canSend, colors.muted, handleSend, newMessage, setNewMessage, styles]
+  );
+
+  const renderBody = useCallback(
+    (contentPaddingBottom: number) => (
+      <View style={styles.chatBody}>
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+        {!currentUser?.visibility && !invisibilityWarningDismissed && (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningText}>
+              You are invisible.{" "}
+              <Text
+                style={{ fontWeight: "600", color: colors.accent }}
+                onPress={() => {
+                  setStatus("Visible"); // toggle visibility
+                  setInvisibilityWarningDismissed(true); // hide warning
+                  setVisibilityConfirmed(true); // show confirmation
+                  setTimeout(() => setVisibilityConfirmed(false), 3000); // hide after 3s
+                }}
+              >
+                Turn on visibility
+              </Text>{" "}
+              to allow other users to see your messages!
+            </Text>
+
+            <TouchableOpacity onPress={() => setInvisibilityWarningDismissed(true)}>
+              <Ionicons name="close" size={20} color={colors.icon} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {visibilityConfirmed && (
+          <View style={styles.confirmationBanner}>
+            <Text style={styles.confirmationText}>
+              You are now visible to other users!
+            </Text>
+          </View>
+        )}
+
+        <FlatList
+          ref={flatListRef}
+          data={displayItems}
+          keyExtractor={(item) => (item.kind === "separator" ? item.id : item.item.id.toString())}
+          renderItem={({ item, index, separators }) =>
+            item.kind === "separator" ? (
+              <View style={styles.separatorWrap}>
+                <Text style={styles.separatorText}>{item.label}</Text>
+              </View>
+            ) : (
+              renderMessage({ item: item.item, index, separators })
+            )
+          }
+          contentContainerStyle={[
+            styles.messagesContainer,
+            { paddingBottom: contentPaddingBottom },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          onContentSizeChange={() => scrollToBottom(true)}
+          ListEmptyComponent={
+            <Text style={styles.placeholderText}>
+              Start the conversation with {name || "this user"}.
+            </Text>
+          }
+        />
+      </View>
+    ),
+    [
+      colors.accent,
+      colors.icon,
+      currentUser?.visibility,
+      displayItems,
+      error,
+      invisibilityWarningDismissed,
+      name,
+      renderMessage,
+      scrollToBottom,
+      setStatus,
+      styles,
+      visibilityConfirmed,
+    ]
+  );
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
-        <View style={[styles.chatBody, { justifyContent: "center", alignItems: "center" }]}>
-          <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={{ marginTop: 12, color: colors.text }}>Loading chat...</Text>
-        </View>
-      </SafeAreaView>
+      <ChatScreenShell renderInputBar={(inputPadding) => renderComposer(inputPadding)}>
+        {(contentPaddingBottom) => (
+          <View
+            style={[
+              styles.chatBody,
+              {
+                justifyContent: "center",
+                alignItems: "center",
+                paddingBottom: contentPaddingBottom,
+              },
+            ]}
+          >
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={{ marginTop: 12, color: colors.text }}>Loading chat...</Text>
+          </View>
+        )}
+      </ChatScreenShell>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={keyboardVerticalOffset}
-      >
-        <View style={styles.chatBody}>
-          {error ? (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-          {!currentUser?.visibility && !invisibilityWarningDismissed && (
-            <View style={styles.warningBanner}>
-              <Text style={styles.warningText}>
-                You are invisible.{" "}
-                <Text
-                  style={{ fontWeight: "600", color: colors.accent }}
-                  onPress={() => {
-                    setStatus("Visible"); // toggle visibility
-                    setInvisibilityWarningDismissed(true); // hide warning
-                    setVisibilityConfirmed(true); // show confirmation
-                    setTimeout(() => setVisibilityConfirmed(false), 3000); // hide after 3s
-                  }}
-                >
-                  Turn on visibility
-                </Text>{" "}
-                to allow other users to see your messages!
-              </Text>
-
-              <TouchableOpacity onPress={() => setInvisibilityWarningDismissed(true)}>
-                <Ionicons name="close" size={20} color={colors.icon} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {visibilityConfirmed && (
-            <View style={styles.confirmationBanner}>
-              <Text style={styles.confirmationText}>
-                You are now visible to other users!
-              </Text>
-            </View>
-          )}
-
-          <FlatList
-            ref={flatListRef}
-            data={displayItems}
-            keyExtractor={(item) => (item.kind === "separator" ? item.id : item.item.id.toString())}
-            renderItem={({ item, index, separators }) =>
-              item.kind === "separator" ? (
-                <View style={styles.separatorWrap}>
-                  <Text style={styles.separatorText}>{item.label}</Text>
-                </View>
-              ) : (
-                renderMessage({ item: item.item, index, separators })
-              )
-            }
-            contentContainerStyle={styles.messagesContainer}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-            onContentSizeChange={() => scrollToBottom(true)}
-            ListEmptyComponent={
-              <Text style={styles.placeholderText}>
-                Start the conversation with {name || "this user"}.
-              </Text>
-            }
-          />
-        </View>
-
-        <View style={styles.composerWrapper}>
-          <View style={styles.composerSurface}>
-            <TextInput
-              style={styles.input}
-              placeholder="Message"
-              placeholderTextColor={colors.muted}
-              value={newMessage}
-              onChangeText={setNewMessage}
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-              blurOnSubmit={false}
-              multiline
-              autoCorrect
-            />
-            <TouchableOpacity
-              onPress={handleSend}
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-              disabled={!canSend}
-              style={styles.sendButton}
-            >
-              <Ionicons name="send" size={18} color={canSend ? "#fff" : colors.muted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+    <>
+      <ChatScreenShell renderInputBar={(inputPadding) => renderComposer(inputPadding)}>
+        {(contentPaddingBottom) => renderBody(contentPaddingBottom)}
+      </ChatScreenShell>
 
       <UserOverflowMenu
         visible={menuOpen}
@@ -705,10 +726,10 @@ export default function ChatScreen() {
           // navigate to the read-only profile screen
           router.push({
             pathname: "/user/[id]",
-            params: { id: String(userId), from: "messages" },  // 👈 coming from Messages
+            params: { id: String(userId), from: "messages" },  // ?? coming from Messages
           });
         }}
       />
-    </SafeAreaView>
+    </>
   );
 }
