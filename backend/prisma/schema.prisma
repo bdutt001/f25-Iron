@@ -14,24 +14,41 @@ enum Gender {
   OTHER
 }
 
+enum ReportStatus {
+  NEEDS_REVIEW // new report, not yet looked at
+  UNDER_REVIEW // an admin is currently reviewing
+  RESOLVED_ACTION // resolved and some action was taken
+  RESOLVED_NO_ACTION // resolved with no action taken
+}
+
 // ---------- MODELS ----------
 
 model User {
-  id             Int        @id @default(autoincrement())
-  email          String     @unique
-  password       String
-  tokenVersion   Int        @default(0)
-  name           String?
-  profilePicture String?
-  visibility     Boolean    @default(true)
-  trustScore     Int        @default(99)
-  createdAt      DateTime   @default(now())
-  lastLogin      DateTime?
-  dateOfBirth    DateTime?
-  gender         Gender?
-  emailVerified  Boolean    @default(false)
-  isAdmin        Boolean    @default(false)
-  profileStatus  String?    @db.VarChar(160)
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  password          String
+  tokenVersion      Int       @default(0)
+  name              String?
+  profilePicture    String?
+  visibility        Boolean   @default(true)
+  trustScore        Int       @default(99)
+  createdAt         DateTime  @default(now())
+  lastLogin         DateTime?
+  dateOfBirth       DateTime?
+  gender            Gender?
+  emailVerified     Boolean   @default(false)
+  isAdmin           Boolean   @default(false)
+  profileStatus     String?   @db.VarChar(160)
+  banned            Boolean   @default(false)
+  bannedAt          DateTime?
+  banReason         String?
+  bannedByAdminId   Int?
+  phoneNumber       String?   @unique
+  phoneVerified     Boolean   @default(false)
+  googleId          String?   @unique
+  appleId           String?   @unique
+  signupIp          String?
+  deviceFingerprint String?
 
   // Relations
   messagesSent     Message[]         @relation("SentMessages")
@@ -39,11 +56,14 @@ model User {
   wavesRecv        Wave[]            @relation("WavesReceived")
   reportsMade      Report[]          @relation("ReportsMade")
   reportsAgainst   Report[]          @relation("ReportsAgainst")
+  moderatedReports Report[]          @relation("ReportModerators")
   interestTags     Tag[]             @relation("UserInterestTags")
   chatParticipants ChatParticipant[]
   locations        UserLocation[]
   blocksMade       Block[]           @relation("BlocksMade")
   blocksReceived   Block[]           @relation("BlocksReceived")
+  bannedBy         User?             @relation("AdminBans", fields: [bannedByAdminId], references: [id])
+  bansPlaced       User[]            @relation("AdminBans")
 
   @@index([email])
 }
@@ -63,10 +83,10 @@ model UserLocation {
 
 // Chat sessions
 model ChatSession {
-  id         Int       @id @default(autoincrement())
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  expiresAt  DateTime?
+  id        Int       @id @default(autoincrement())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime?
 
   messages     Message[]
   participants ChatParticipant[]
@@ -114,16 +134,23 @@ model Wave {
 
 // Reports (misconduct)
 model Report {
-  id          Int      @id @default(autoincrement())
-  reason      String
-  description String?
-  createdAt   DateTime @default(now())
-  reporterId  Int
-  reportedId  Int
-  severity    Int?     @default(1)
+  id              Int          @id @default(autoincrement())
+  reason          String
+  description     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @default(now()) @updatedAt
+  status          ReportStatus @default(NEEDS_REVIEW)
+  reporterId      Int
+  reportedId      Int
+  severity        Int?         @default(1)
+  resolutionNote  String?
+  lastModeratorId Int?
 
-  reporter User @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
-  reported User @relation("ReportsAgainst", fields: [reportedId], references: [id], onDelete: Cascade)
+  reporter      User  @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported      User  @relation("ReportsAgainst", fields: [reportedId], references: [id], onDelete: Cascade)
+  lastModerator User? @relation("ReportModerators", fields: [lastModeratorId], references: [id])
+
+  @@index([status, createdAt])
 }
 
 // Blocks (prevent user interaction)
