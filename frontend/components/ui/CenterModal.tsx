@@ -20,6 +20,7 @@ type CenterModalProps = {
   cardStyle?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollEnabled?: boolean;
+  onContentSizeChange?: (width: number, height: number) => void;
 };
 
 /**
@@ -33,6 +34,7 @@ export function CenterModal({
   cardStyle,
   contentContainerStyle,
   scrollEnabled = true,
+  onContentSizeChange,
 }: CenterModalProps) {
   const { colors, isDark } = useAppTheme();
 
@@ -76,6 +78,7 @@ export function CenterModal({
               scrollEnabled={scrollEnabled}
               showsVerticalScrollIndicator={false}
               extraScrollHeight={Platform.OS === "ios" ? 18 : 0}
+              onContentSizeChange={onContentSizeChange}
             >
               {children}
             </KeyboardAwareScrollView>
@@ -94,7 +97,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   safeArea: {
+    flex: 1,
     width: "100%",
+    justifyContent: "center",
     alignItems: "center",
   },
   card: {
@@ -103,6 +108,7 @@ const styles = StyleSheet.create({
     maxHeight: "85%",
     minWidth: 280,
     minHeight: 120,
+    flexShrink: 1,
     borderRadius: 20,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,

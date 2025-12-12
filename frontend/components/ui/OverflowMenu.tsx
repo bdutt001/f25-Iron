@@ -1,6 +1,14 @@
-import React, { useMemo } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Keyboard,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../../context/ThemeContext";
 import { CenterModal } from "./CenterModal";
 
@@ -31,6 +39,20 @@ export default function OverflowMenu({
   actions,
 }: OverflowMenuProps) {
   const { colors, isDark } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const [contentHeight, setContentHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const hasHeader = !!title || !!message;
   const palette = useMemo(
     () => ({
@@ -41,13 +63,25 @@ export default function OverflowMenu({
     }),
     [colors.icon, isDark]
   );
+  const maxMenuHeight = useMemo(() => {
+    const safeHeight = Math.max(0, windowHeight - insets.top - insets.bottom);
+    const capped = safeHeight > 0 ? Math.min(safeHeight * 0.85, safeHeight - 32) : 0;
+    const target = Math.max(240, capped);
+    return safeHeight > 0 ? Math.min(target, safeHeight) : target;
+  }, [insets.bottom, insets.top, windowHeight]);
+  const scrollEnabled = keyboardVisible || contentHeight > maxMenuHeight;
+  const handleContentSizeChange = useCallback((_: number, height: number) => {
+    setContentHeight(height);
+  }, []);
 
   return (
     <CenterModal
       visible={visible}
       onRequestClose={onClose}
-      cardStyle={styles.card}
+      cardStyle={[styles.card, { maxHeight: maxMenuHeight }]}
       contentContainerStyle={styles.contentContainer}
+      scrollEnabled={scrollEnabled}
+      onContentSizeChange={handleContentSizeChange}
     >
       <View accessibilityRole="menu">
         {hasHeader ? (
