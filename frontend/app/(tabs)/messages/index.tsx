@@ -246,7 +246,7 @@ export default function MessagesScreen() {
   }, []);
 
   return (
-    <AppScreen>
+    <AppScreen edges={["left", "right"]}>
       <View style={styles.container}>
         {error ? (
           <View style={styles.centered}>

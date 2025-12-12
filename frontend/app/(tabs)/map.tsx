@@ -44,12 +44,17 @@ export default function MapScreen() {
   const positionsRef = useRef<Map<number, Coords>>(new Map());
   
   
-  // Enable LayoutAnimation on Android
+  // Enable LayoutAnimation on Android (skip on New Architecture to avoid warning)
   useEffect(() => {
-    // @ts-ignore
-    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-      // @ts-ignore
-      UIManager.setLayoutAnimationEnabledExperimental(true);
+    const isAndroid = Platform.OS === "android";
+    // Fabric/new architecture exposes __turboModuleProxy; avoid the no-op warning
+    const isNewArch = Boolean((global as any).__turboModuleProxy);
+    if (isAndroid && UIManager.setLayoutAnimationEnabledExperimental && !isNewArch) {
+      try {
+        UIManager.setLayoutAnimationEnabledExperimental(true);
+      } catch {
+        // ignore if unavailable
+      }
     }
   }, []);
 
@@ -312,7 +317,10 @@ export default function MapScreen() {
   };
 
   return (
-    <AppScreen style={isAdmin ? { backgroundColor: "#0f172a" } : undefined}>
+    <AppScreen
+      edges={["left", "right"]}
+      style={isAdmin ? { backgroundColor: "#0f172a" } : undefined}
+    >
       {isAdmin ? (
         <View style={[styles.centered, { padding: 24 }]}>
           <Text style={[styles.title, { color: "#fff" }]}>Admin-only account</Text>

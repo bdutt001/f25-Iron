@@ -62,6 +62,7 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [overflowVisible, setOverflowVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invisibilityWarningDismissed, setInvisibilityWarningDismissed] = useState(false); // state for warning banner
   const [visibilityConfirmed, setVisibilityConfirmed] = useState(false); // ✅ state for confirmation banner
@@ -75,6 +76,7 @@ export default function ChatScreen() {
 
   const trimmedMessage = newMessage.trim();
   const canSend = trimmedMessage.length > 0;
+  const keyboardEnabled = !overflowVisible;
 
   const resolvedProfileImage = useMemo(() => {
     if (!profilePicture) return null;
@@ -678,7 +680,11 @@ export default function ChatScreen() {
 
   if (loading) {
     return (
-      <ChatScreenShell renderInputBar={(inputPadding) => renderComposer(inputPadding)}>
+      <ChatScreenShell
+        edges={["left", "right"]}
+        renderInputBar={(inputPadding) => renderComposer(inputPadding)}
+        keyboardEnabled={keyboardEnabled}
+      >
         {(contentPaddingBottom) => (
           <View
             style={[
@@ -700,7 +706,11 @@ export default function ChatScreen() {
 
   return (
     <>
-      <ChatScreenShell renderInputBar={(inputPadding) => renderComposer(inputPadding)}>
+      <ChatScreenShell
+        edges={["left", "right"]}
+        renderInputBar={(inputPadding) => renderComposer(inputPadding)}
+        keyboardEnabled={keyboardEnabled}
+      >
         {(contentPaddingBottom) => renderBody(contentPaddingBottom)}
       </ChatScreenShell>
 
@@ -729,6 +739,7 @@ export default function ChatScreen() {
             params: { id: String(userId), from: "messages" },  // ?? coming from Messages
           });
         }}
+        onOverlayVisibilityChange={setOverflowVisible}
       />
     </>
   );

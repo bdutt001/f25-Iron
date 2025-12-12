@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useState } from "react";
+import React, { ReactNode, useCallback, useEffect, useState } from "react";
 import { LayoutChangeEvent, StyleProp, View, ViewStyle } from "react-native";
 import { Edge, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -15,6 +15,7 @@ type ChatScreenShellProps = {
   renderInputBar: (bottomPadding: number) => ReactNode;
   edges?: Edge[];
   style?: StyleProp<ViewStyle>;
+  keyboardEnabled?: boolean;
 };
 
 const DEFAULT_EDGES: Edge[] = ["top", "bottom", "left", "right"];
@@ -24,6 +25,7 @@ export function ChatScreenShell({
   renderInputBar,
   edges = DEFAULT_EDGES,
   style,
+  keyboardEnabled = true,
 }: ChatScreenShellProps) {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -39,19 +41,28 @@ export function ChatScreenShell({
     {
       onMove: (event) => {
         "worklet";
+        if (!keyboardEnabled) return;
         const next = Math.max(0, event.height - insets.bottom);
         keyboardHeight.value = next;
         runOnJS(updateKeyboardSpace)(next);
       },
       onEnd: (event) => {
         "worklet";
+        if (!keyboardEnabled) return;
         const next = Math.max(0, event.height - insets.bottom);
         keyboardHeight.value = next;
         runOnJS(updateKeyboardSpace)(next);
       },
     },
-    [insets.bottom, updateKeyboardSpace]
+    [insets.bottom, keyboardEnabled, updateKeyboardSpace]
   );
+
+  useEffect(() => {
+    if (!keyboardEnabled) {
+      keyboardHeight.value = 0;
+      setKeyboardSpace(0);
+    }
+  }, [keyboardEnabled]);
 
   const composerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -keyboardHeight.value }],

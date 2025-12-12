@@ -819,7 +819,7 @@ export default function NearbyScreen() {
     );
   }
 
-  return <AppScreen>{content}</AppScreen>;
+  return <AppScreen edges={["left", "right"]}>{content}</AppScreen>;
 }
 
 const styles = StyleSheet.create({

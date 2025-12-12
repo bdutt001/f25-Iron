@@ -54,7 +54,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+      <KeyboardProvider>
         <AppThemeProvider>
           <UserProvider>
             <RootNavigator />
