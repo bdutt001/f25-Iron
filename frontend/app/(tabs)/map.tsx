@@ -10,7 +10,7 @@ import {
   Alert,
   UIManager,
 } from "react-native";
-import MapView, { Marker, Region } from "react-native-maps";
+import MapLibreGL from "@maplibre/maplibre-react-native";
 import { Image as ExpoImage } from "expo-image";
 import { useUser } from "../../context/UserContext";
 import { API_BASE_URL } from "@/utils/api";
@@ -20,128 +20,139 @@ import { Ionicons } from "@expo/vector-icons";
 import UserOverflowMenu from "../../components/UserOverflowMenu";
 import { AppScreen } from "@/components/layout/AppScreen";
 import { useAppTheme } from "../../context/ThemeContext";
+import { type Feature, type FeatureCollection, type LineString, type Point, type Polygon } from "geojson";
+import {
+  type Expression,
+  type MapViewRef,
+  type CameraRef,
+  type ShapeSourceRef,
+} from "@maplibre/maplibre-react-native";
 
 const ODU_CENTER = { latitude: 36.885, longitude: -76.305 };
-const IS_ANDROID = Platform.OS === "android";
-const MARKER_DIAMETER = IS_ANDROID ? 36 : 44;
-const MARKER_BORDER_WIDTH = IS_ANDROID ? 2 : 3;
-const MARKER_IMAGE_SIZE = MARKER_DIAMETER - MARKER_BORDER_WIDTH * 2;
-const RECENTER_DELTA = 0.012;
+const DEFAULT_ZOOM = 14.2;
+const RECENTER_ZOOM = 15.6;
 const CENTER_EPSILON = 0.0008;
 
-// Lightweight dark map style for night theme
-const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#0b1220" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#f1f5f9" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0b1220" }] },
-  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#334155" }] },
-  { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ color: "#64748b" }] },
-  { featureType: "poi", elementType: "geometry.stroke", stylers: [{ color: "#64748b" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#475569" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#f8fafc" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
-  { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#12324f" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b2f4a" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
+// Allow swapping to a stub map in Expo Go without the native module.
+const DISABLE_NATIVE_MAP = process.env.EXPO_PUBLIC_NO_NATIVE_MAP === "1";
+const MAP_STYLE_LIGHT =
+  process.env.EXPO_PUBLIC_MAP_STYLE_LIGHT_URL || "https://demotiles.maplibre.org/style.json";
+const MAP_STYLE_DARK = process.env.EXPO_PUBLIC_MAP_STYLE_DARK_URL || MAP_STYLE_LIGHT;
+
+const CLUSTER_TEXT_STEPS: Expression = ["step", ["get", "point_count"], "1", 10, "10+", 25, "25+", 50, "50+", 100, "100+"];
+
+const HEATMAP_WEIGHT: Expression = [
+  "interpolate",
+  ["linear"],
+  ["coalesce", ["get", "weight"], 0.4],
+  0,
+  0.2,
+  1,
+  1,
 ];
 
-const LIGHT_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#0f172a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#f8fafc" }] },
-  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }] },
-  { featureType: "landscape.man_made", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }] },
-  { featureType: "poi", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#cbd5e1" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#475569" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "poi.park", elementType: "geometry.fill", stylers: [{ color: "#d9f2e6" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#cfe8ff" }] },
-  { featureType: "transit", stylers: [{ visibility: "off" }] },
+const HEATMAP_COLOR: Expression = [
+  "interpolate",
+  ["linear"],
+  ["heatmap-density"],
+  0,
+  "rgba(56,189,248,0)",
+  0.2,
+  "rgba(56,189,248,0.55)",
+  0.4,
+  "rgba(59,130,246,0.7)",
+  0.6,
+  "rgba(249,115,22,0.78)",
+  0.8,
+  "rgba(239,68,68,0.85)",
+  1,
+  "rgba(220,38,38,0.9)",
 ];
+
+const CAMPUS_ZONES: FeatureCollection<Polygon> = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: {
+        id: "odu-core",
+        name: "ODU Core",
+        fill: "rgba(14,165,233,0.18)",
+        stroke: "#0ea5e9",
+      },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [-76.3112, 36.8885],
+            [-76.3112, 36.8825],
+            [-76.2998, 36.8825],
+            [-76.2998, 36.8885],
+            [-76.3112, 36.8885],
+          ],
+        ],
+      },
+    },
+    {
+      type: "Feature",
+      properties: {
+        id: "student-core",
+        name: "Student Hub",
+        fill: "rgba(34,197,94,0.16)",
+        stroke: "#22c55e",
+      },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [-76.3056, 36.8866],
+            [-76.3056, 36.8842],
+            [-76.3022, 36.8842],
+            [-76.3022, 36.8866],
+            [-76.3056, 36.8866],
+          ],
+        ],
+      },
+    },
+  ],
+};
+
+const CAMPUS_ROUTES: FeatureCollection<LineString> = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { id: "monarch-walk", name: "Monarch Walk", color: "#22d3ee" },
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [-76.3098, 36.8872],
+          [-76.3065, 36.8859],
+          [-76.3041, 36.8852],
+          [-76.3019, 36.8834],
+        ],
+      },
+    },
+    {
+      type: "Feature",
+      properties: { id: "kaufman-loop", name: "Kaufman Loop", color: "#a855f7" },
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [-76.3074, 36.8832],
+          [-76.3058, 36.8846],
+          [-76.3037, 36.8841],
+          [-76.3026, 36.883],
+        ],
+      },
+    },
+  ],
+};
+
+MapLibreGL.setAccessToken("");
 
 type Coords = { latitude: number; longitude: number };
 type SelectedUser = NearbyUser & { isCurrentUser?: boolean };
-
-type AvatarMarkerProps = {
-  coordinate: Coords;
-  borderColor: string;
-  opacity?: number;
-  imageUri: string | null;
-  initial: string;
-  onPress: () => void;
-};
-
-const AvatarMarker = React.memo(function AvatarMarker({
-  coordinate,
-  borderColor,
-  opacity = 1,
-  imageUri,
-  initial,
-  onPress,
-}: AvatarMarkerProps) {
-  const [tracksViewChanges, setTracksViewChanges] = useState(true);
-  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const stopTrackingSoon = useCallback(() => {
-    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(() => {
-      setTracksViewChanges(false);
-    }, 50);
-  }, []);
-
-  useEffect(() => {
-    setTracksViewChanges(true);
-    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    return () => {
-      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    };
-  }, [borderColor, imageUri, initial, opacity, coordinate.latitude, coordinate.longitude]);
-
-  return (
-    <Marker
-      coordinate={coordinate}
-      onPress={onPress}
-      anchor={{ x: 0.5, y: 0.5 }}
-      centerOffset={{ x: 0, y: 0 }}
-      tracksViewChanges={tracksViewChanges}
-    >
-      <View
-        collapsable={false}
-        needsOffscreenAlphaCompositing
-        renderToHardwareTextureAndroid
-        style={[styles.markerWrap, { borderColor, opacity }]}
-      >
-        {imageUri ? (
-          <ExpoImage
-            source={{ uri: imageUri }}
-            style={styles.markerAvatar}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            transition={0}
-            onLoad={stopTrackingSoon}
-            onError={stopTrackingSoon}
-          />
-        ) : (
-          <Text style={styles.markerInitial} onLayout={stopTrackingSoon}>
-            {initial}
-          </Text>
-        )}
-      </View>
-    </Marker>
-  );
-},
-// Avoid re-rendering markers on unrelated state changes (e.g. map panning UI state)
-(prev, next) =>
-  prev.coordinate.latitude === next.coordinate.latitude &&
-  prev.coordinate.longitude === next.coordinate.longitude &&
-  prev.borderColor === next.borderColor &&
-  prev.opacity === next.opacity &&
-  prev.imageUri === next.imageUri &&
-  prev.initial === next.initial
-);
 
 export default function MapScreen() {
   const { colors, isDark } = useAppTheme();
@@ -151,12 +162,14 @@ export default function MapScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<MapViewRef | null>(null);
+  const cameraRef = useRef<CameraRef | null>(null);
+  const userSourceRef = useRef<ShapeSourceRef | null>(null);
   const [menuTarget, setMenuTarget] = useState<SelectedUser | null>(null);
   const positionsRef = useRef<Map<number, Coords>>(new Map());
-  const hasAnimatedRegion = useRef(false);
   const hasAnimatedToUser = useRef(false);
   const [isCenteredOnUser, setIsCenteredOnUser] = useState(true);
+  const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
 
   // Enable LayoutAnimation on Android (skip on New Architecture to avoid warning)
   useEffect(() => {
@@ -202,12 +215,6 @@ export default function MapScreen() {
         : null,
     [currentUser, markerBaseCoords]
   );
-  const selfPictureToken = (selfUser?.profilePicture as string | null) ?? null;
-  const selfImageUri = selfPictureToken
-    ? selfPictureToken.startsWith("http")
-      ? selfPictureToken
-      : `${API_BASE_URL}${selfPictureToken}`
-    : null;
 
   const fetchSavedLocation = useCallback(async (): Promise<Coords | null> => {
     if (!accessToken) return null;
@@ -260,7 +267,6 @@ export default function MapScreen() {
       const sameLng = Math.abs(prev.longitude - coords.longitude) < 1e-6;
       if (!sameLat || !sameLng) {
         positionsRef.current.clear();
-        hasAnimatedRegion.current = false;
         hasAnimatedToUser.current = false;
       }
       return coords;
@@ -414,20 +420,6 @@ export default function MapScreen() {
         if (prev.length === next.length && prev.every((p, i) => p.id === next[i].id)) return prev;
         return next;
       });
-
-      if (!hasAnimatedRegion.current && mapRef.current && next.length > 0) {
-        const first = next[0].coords;
-        mapRef.current.animateToRegion(
-          {
-            latitude: first.latitude,
-            longitude: first.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          },
-          400
-        );
-        hasAnimatedRegion.current = true;
-      }
       return;
     }
 
@@ -476,45 +468,141 @@ export default function MapScreen() {
   }, [hydrateLocation]);
 
   useEffect(() => {
-    if (!myCoords || !mapRef.current || hasAnimatedToUser.current) return;
-    mapRef.current.animateToRegion(
-      {
-        latitude: myCoords.latitude,
-        longitude: myCoords.longitude,
-        latitudeDelta: RECENTER_DELTA,
-        longitudeDelta: RECENTER_DELTA,
-      },
-      350
-    );
+    if (!myCoords || !cameraRef.current || hasAnimatedToUser.current) return;
+    cameraRef.current.setCamera({
+      centerCoordinate: [myCoords.longitude, myCoords.latitude],
+      zoomLevel: RECENTER_ZOOM,
+      animationDuration: 350,
+    });
     hasAnimatedToUser.current = true;
   }, [myCoords]);
 
   const recenterOnUser = useCallback(() => {
     const target = myCoords ?? center;
-    if (!target || !mapRef.current) return;
+    if (!target || !cameraRef.current) return;
     setIsCenteredOnUser(true);
-    mapRef.current.animateToRegion(
-      {
-        latitude: target.latitude,
-        longitude: target.longitude,
-        latitudeDelta: RECENTER_DELTA,
-        longitudeDelta: RECENTER_DELTA,
-      },
-      300
-    );
+    cameraRef.current.setCamera({
+      centerCoordinate: [target.longitude, target.latitude],
+      zoomLevel: RECENTER_ZOOM,
+      animationDuration: 300,
+    });
   }, [center, myCoords]);
 
-  const handleRegionChangeComplete = useCallback(
-    (region: Region) => {
-      const target = myCoords ?? center;
-      if (!target) return;
-      const latDiff = Math.abs(region.latitude - target.latitude);
-      const lngDiff = Math.abs(region.longitude - target.longitude);
-      const centered = latDiff < CENTER_EPSILON && lngDiff < CENTER_EPSILON;
-      setIsCenteredOnUser(centered);
+  const handleRegionDidChange = useCallback(
+    (payload: any) => {
+      const coords = (payload?.geometry?.coordinates ?? []) as number[];
+      const zoomLevel = payload?.properties?.zoomLevel;
+      if (typeof zoomLevel === "number") setCurrentZoom(zoomLevel);
+
+      if (coords.length >= 2) {
+        const target = myCoords ?? center;
+        const latDiff = Math.abs(coords[1] - target.latitude);
+        const lngDiff = Math.abs(coords[0] - target.longitude);
+        const centered = latDiff < CENTER_EPSILON && lngDiff < CENTER_EPSILON;
+        setIsCenteredOnUser(centered);
+      }
     },
     [center, myCoords]
   );
+
+  const mapStyleUrl = isDark ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
+
+  const userLookup = useMemo(() => {
+    const map = new Map<number, SelectedUser>();
+    if (selfUser) map.set(selfUser.id, selfUser);
+    for (const u of nearbyUsers) map.set(u.id, u);
+    return map;
+  }, [nearbyUsers, selfUser]);
+
+  const userFeatures = useMemo<Feature<Point>[]>(() => {
+    const features: Feature<Point>[] = [];
+
+    if (selfUser) {
+      features.push({
+        type: "Feature",
+        id: `self-${selfUser.id}`,
+        properties: {
+          userId: selfUser.id,
+          name: selfUser.name,
+          email: selfUser.email,
+          isSelf: true,
+          trustScore: selfUser.trustScore ?? 0,
+          initial: (selfUser.name || selfUser.email)?.charAt(0)?.toUpperCase() || "?",
+          weight: status === "Hidden" ? 0.25 : 1,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [selfUser.coords.longitude, selfUser.coords.latitude],
+        },
+      });
+    }
+
+    for (const user of nearbyUsers) {
+      features.push({
+        type: "Feature",
+        id: `user-${user.id}`,
+        properties: {
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          isSelf: false,
+          trustScore: user.trustScore ?? 0,
+          initial: (user.name || user.email)?.charAt(0)?.toUpperCase() || "?",
+          weight: 0.9,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [user.coords.longitude, user.coords.latitude],
+        },
+      });
+    }
+
+    return features;
+  }, [nearbyUsers, selfUser, status]);
+
+  const userCollection = useMemo<FeatureCollection<Point>>(
+    () => ({
+      type: "FeatureCollection",
+      features: userFeatures,
+    }),
+    [userFeatures]
+  );
+
+  const heatmapVisible = currentZoom < 15.5;
+
+  const onUserSourcePress = useCallback(
+    async (event: any) => {
+      const feature = event?.features?.[0];
+      if (!feature) return;
+      const props = feature.properties as any;
+      const coords = (feature.geometry?.coordinates ?? []) as number[];
+
+      if (props?.cluster) {
+        try {
+          const zoom = await userSourceRef.current?.getClusterExpansionZoom(props.cluster_id);
+          if (typeof zoom === "number") {
+            cameraRef.current?.setCamera({
+              centerCoordinate: coords,
+              zoomLevel: zoom + 0.5,
+              animationDuration: 400,
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to expand cluster", err);
+        }
+        return;
+      }
+
+      const userId = Number(props?.userId ?? props?.id);
+      const user = userLookup.get(userId);
+      if (user) setSelectedUser(user);
+    },
+    [userLookup]
+  );
+
+  const handleMapPress = useCallback(() => {
+    setSelectedUser(null);
+  }, []);
 
   // Helpers for UI coloring
   const trustColor = (score?: number) => {
@@ -545,52 +633,175 @@ export default function MapScreen() {
         </View>
       ) : (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            initialRegion={{
-              latitude: center.latitude,
-              longitude: center.longitude,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            }}
-            customMapStyle={isDark ? DARK_MAP_STYLE : LIGHT_MAP_STYLE}
-            onRegionChangeComplete={handleRegionChangeComplete}
-          >
-            {/* Current user (opacity lowered when hidden) */}
-            {selfUser && (
-              <AvatarMarker
-                coordinate={selfUser.coords}
-                onPress={() => setSelectedUser(selfUser)}
-                borderColor={status === "Hidden" ? "#94a3b8" : "#1f5fbf"}
-                opacity={status === "Hidden" ? 0.35 : 1}
-                imageUri={selfImageUri}
-                initial={(selfUser.name || selfUser.email)?.charAt(0)?.toUpperCase() || "?"}
+          {DISABLE_NATIVE_MAP ? (
+            <View
+              style={[
+                styles.map,
+                styles.mapStub,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.stubTitle, textPrimary]}>MapLibre disabled</Text>
+              <Text style={[styles.stubBody, textMuted]}>
+                Run a dev build with MapLibre enabled to preview clusters, heatmaps, and zones.
+              </Text>
+            </View>
+          ) : (
+            <MapLibreGL.MapView
+              ref={mapRef}
+              style={styles.map}
+              mapStyle={mapStyleUrl}
+              attributionEnabled={false}
+              logoEnabled={false}
+              compassEnabled={false}
+              onRegionDidChange={handleRegionDidChange}
+              onPress={handleMapPress}
+            >
+              <MapLibreGL.Camera
+                ref={cameraRef}
+                defaultSettings={{
+                  centerCoordinate: [center.longitude, center.latitude],
+                  zoomLevel: DEFAULT_ZOOM,
+                }}
               />
-            )}
 
-            {/* Other users */}
-            {nearbyUsers.map((user) => {
-              const pictureToken = (user.profilePicture as string | null) ?? null;
-              const markerKey = `${user.id}:${pictureToken ?? "nop"}`;
-              const uri =
-                pictureToken && pictureToken.length > 0
-                  ? pictureToken.startsWith("http")
-                    ? pictureToken
-                    : `${API_BASE_URL}${pictureToken}`
-                  : null;
-              return (
-                <AvatarMarker
-                  key={markerKey}
-                  coordinate={user.coords}
-                  onPress={() => setSelectedUser(user)}
-                  borderColor="#e63946"
-                  imageUri={uri}
-                  initial={(user.name || user.email)?.charAt(0)?.toUpperCase() || "?"}
+              <MapLibreGL.ShapeSource
+                id="users"
+                ref={userSourceRef}
+                shape={userCollection}
+                cluster
+                clusterRadius={56}
+                clusterMaxZoomLevel={18}
+                onPress={onUserSourcePress}
+              >
+                {heatmapVisible && (
+                  <MapLibreGL.HeatmapLayer
+                    id="users-heat"
+                    maxZoomLevel={17}
+                    minZoomLevel={9}
+                    style={{
+                      heatmapOpacity: 0.55,
+                      heatmapRadius: ["interpolate", ["linear"], ["zoom"], 10, 18, 16, 32] as Expression,
+                      heatmapWeight: HEATMAP_WEIGHT,
+                      heatmapColor: HEATMAP_COLOR,
+                    }}
+                  />
+                )}
+
+                <MapLibreGL.CircleLayer
+                  id="user-clusters"
+                  filter={["has", "point_count"]}
+                  style={{
+                    circleColor: [
+                      "step",
+                      ["get", "point_count"],
+                      "#2563eb",
+                      10,
+                      "#0ea5e9",
+                      25,
+                      "#22c55e",
+                      50,
+                      "#f59e0b",
+                      100,
+                      "#ef4444",
+                    ],
+                    circleRadius: [
+                      "step",
+                      ["get", "point_count"],
+                      18,
+                      10,
+                      22,
+                      25,
+                      28,
+                      50,
+                      34,
+                      100,
+                      38,
+                    ],
+                    circleOpacity: 0.86,
+                    circleStrokeColor: isDark ? "#0f172a" : "#fff",
+                    circleStrokeWidth: 2,
+                  }}
                 />
-              );
-            })}
-          </MapView>
+                <MapLibreGL.SymbolLayer
+                  id="user-cluster-count"
+                  filter={["has", "point_count"]}
+                  style={{
+                    textField: CLUSTER_TEXT_STEPS,
+                    textColor: "#fff",
+                    textSize: 13,
+                    textIgnorePlacement: true,
+                    textAllowOverlap: true,
+                  }}
+                />
+                <MapLibreGL.CircleLayer
+                  id="user-points"
+                  filter={["!", ["has", "point_count"]]}
+                  style={{
+                    circleRadius: ["interpolate", ["linear"], ["zoom"], 12, 6, 16, 10, 18, 12],
+                    circleColor: [
+                      "case",
+                      ["==", ["get", "isSelf"], true],
+                      status === "Hidden" ? "rgba(148,163,184,0.6)" : "#1f5fbf",
+                      "#e63946",
+                    ],
+                    circleOpacity: [
+                      "case",
+                      ["==", ["get", "isSelf"], true],
+                      status === "Hidden" ? 0.45 : 1,
+                      0.92,
+                    ],
+                    circleStrokeColor: isDark ? "#0f172a" : "#fff",
+                    circleStrokeWidth: 2,
+                  }}
+                />
+                <MapLibreGL.SymbolLayer
+                  id="user-initials"
+                  filter={["!", ["has", "point_count"]]}
+                  style={{
+                    textField: ["get", "initial"],
+                    textColor: "#fff",
+                    textSize: 12,
+                    textIgnorePlacement: true,
+                    textAllowOverlap: true,
+                  }}
+                />
+              </MapLibreGL.ShapeSource>
+
+              <MapLibreGL.ShapeSource id="campus-zones" shape={CAMPUS_ZONES}>
+                <MapLibreGL.FillLayer
+                  id="campus-fill"
+                  style={{
+                    fillColor: ["coalesce", ["get", "fill"], "rgba(14,165,233,0.2)"],
+                    fillOutlineColor: ["coalesce", ["get", "stroke"], "#0ea5e9"],
+                  }}
+                />
+                <MapLibreGL.LineLayer
+                  id="campus-outline"
+                  style={{
+                    lineColor: ["coalesce", ["get", "stroke"], "#0ea5e9"],
+                    lineWidth: 2,
+                    lineDasharray: [2, 1],
+                    lineOpacity: 0.9,
+                  }}
+                />
+              </MapLibreGL.ShapeSource>
+
+              <MapLibreGL.ShapeSource id="campus-routes" shape={CAMPUS_ROUTES}>
+                <MapLibreGL.LineLayer
+                  id="route-lines"
+                  style={{
+                    lineColor: ["coalesce", ["get", "color"], "#22d3ee"],
+                    lineWidth: 4,
+                    lineOpacity: 0.85,
+                    lineCap: "round",
+                    lineJoin: "round",
+                    lineBlur: 0.4,
+                  }}
+                />
+              </MapLibreGL.ShapeSource>
+            </MapLibreGL.MapView>
+          )}
 
           <UserOverflowMenu
             visible={!!menuTarget}
@@ -756,7 +967,7 @@ export default function MapScreen() {
           )}
 
           {/* Recenter button */}
-          {!selectedUser && myCoords && !isCenteredOnUser && (
+          {!DISABLE_NATIVE_MAP && !selectedUser && myCoords && !isCenteredOnUser && (
             <TouchableOpacity
               style={[
                 styles.recenterButton,
@@ -833,31 +1044,15 @@ const styles = StyleSheet.create({
   },
   ctaText: { fontWeight: "700", fontSize: 15 },
   map: { flex: 1 },
-  // Circular marker avatar styles
-  markerWrap: {
-    width: MARKER_DIAMETER,
-    height: MARKER_DIAMETER,
-    borderRadius: MARKER_DIAMETER / 2,
-    borderWidth: MARKER_BORDER_WIDTH,
-    padding: MARKER_BORDER_WIDTH,
-    backgroundColor: "#fff",
-    // Overflow visible avoids Android corner clipping when the map snapshots markers
-    overflow: "visible",
-    alignItems: "center",
+  mapStub: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 16,
     justifyContent: "center",
+    alignItems: "center",
   },
-  markerAvatar: {
-    width: MARKER_IMAGE_SIZE,
-    height: MARKER_IMAGE_SIZE,
-    borderRadius: MARKER_IMAGE_SIZE / 2,
-  },
-  markerInitial: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#555",
-    textAlign: "center",
-    lineHeight: MARKER_IMAGE_SIZE,
-  },
+  stubTitle: { fontSize: 16, fontWeight: "700", marginBottom: 6 },
+  stubBody: { fontSize: 13, textAlign: "center", lineHeight: 18 },
   controls: {
     position: "absolute",
     bottom: 40,
@@ -956,23 +1151,6 @@ const styles = StyleSheet.create({
   calloutEmptyTags: { marginTop: 8, fontSize: 12 },
   trustScoreName: { textAlign: "right", fontSize: 15, marginTop: 6 },
   trustScoreNumber: { fontSize: 15, fontWeight: "700" },
-  inlineActionsWrap: { overflow: "hidden", flexDirection: "row", alignItems: "center", marginRight: 6 },
-  inlineActionsWrapClosed: { width: 0, opacity: 0 },
-  inlineActionsWrapOpen: { width: "auto", opacity: 1 },
-  inlineActionDanger: {
-    color: "#dc3545",
-    fontWeight: "700",
-    paddingVertical: 6,
-    paddingHorizontal: 0,
-    fontSize: 15,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
   // Recenter button
   recenterButton: {
     position: "absolute",
