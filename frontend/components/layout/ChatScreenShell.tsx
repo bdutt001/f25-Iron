@@ -62,7 +62,7 @@ export function ChatScreenShell({
       keyboardHeight.value = 0;
       setKeyboardSpace(0);
     }
-  }, [keyboardEnabled]);
+  }, [keyboardEnabled, keyboardHeight]);
 
   const composerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -keyboardHeight.value }],
