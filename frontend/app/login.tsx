@@ -1,6 +1,8 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { router } from "expo-router";
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 import { useUser, type CurrentUser } from "../context/UserContext";
 import { API_BASE_URL, fetchProfile, toCurrentUser } from "@/utils/api";
 import type { ApiUser } from "@/utils/geo";
@@ -39,15 +41,44 @@ const toUserOrFallback = (value: unknown): CurrentUser => {
   }
 };
 
+const REMEMBERED_EMAIL_KEY = "mm_remembered_email";
+
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
   const { setCurrentUser, setTokens, setPrefetchedUsers } = useUser();
   const [signupSuccessVisible, setSignupSuccessVisible] = useState(false);
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [authModalTitle, setAuthModalTitle] = useState("");
   const [authModalMessage, setAuthModalMessage] = useState("");
   const { colors, isDark } = useAppTheme();
+
+  // ✅ Load remembered email on screen mount
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRememberedEmail = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(REMEMBERED_EMAIL_KEY);
+        if (!mounted) return;
+        if (saved && saved.trim()) {
+          setEmail(saved);
+          setRememberMe(true);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void loadRememberedEmail();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const preloadVisibleUsers = async (accessToken: string) => {
     try {
@@ -98,6 +129,22 @@ export default function LoginScreen() {
     }
   };
 
+  // ✅ Persist/clear email based on rememberMe
+  const persistRememberedEmail = useCallback(
+    async (emailValue: string) => {
+      try {
+        if (rememberMe) {
+          await AsyncStorage.setItem(REMEMBERED_EMAIL_KEY, emailValue);
+        } else {
+          await AsyncStorage.removeItem(REMEMBERED_EMAIL_KEY);
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [rememberMe]
+  );
+
   const handleLogin = async () => {
     const emailTrimmed = email.trim().toLowerCase();
     if (!emailTrimmed || !password) {
@@ -106,6 +153,10 @@ export default function LoginScreen() {
       setAuthModalVisible(true);
       return;
     }
+
+    // Save/clear remembered email when attempting login (good UX)
+    await persistRememberedEmail(emailTrimmed);
+
     try {
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
@@ -141,6 +192,10 @@ export default function LoginScreen() {
       setAuthModalVisible(true);
       return;
     }
+
+    // Optional: also persist here, so after signup they don't retype later
+    await persistRememberedEmail(emailTrimmed);
+
     try {
       // Backend expects username, email, password at /auth/register
       // Derive a simple username from email local-part if none provided.
@@ -221,12 +276,20 @@ export default function LoginScreen() {
           />
 
           <Text style={[styles.label, { color: colors.muted }]}>Password</Text>
+
+        <View
+          style={[
+            styles.passwordRow,
+            {
+              backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+              borderColor: colors.border,
+            },
+          ]}
+        >
           <TextInput
             style={[
-              styles.input,
+              styles.passwordInput,
               {
-                backgroundColor: isDark ? "#0f172a" : "#f8fafc",
-                borderColor: colors.border,
                 color: colors.text,
               },
             ]}
@@ -234,10 +297,45 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             placeholderTextColor={colors.muted}
-            secureTextEntry
+            secureTextEntry={!showPassword}
             textContentType="password"
             autoComplete="password"
           />
+          <TouchableOpacity
+            onPress={() => setShowPassword((prev) => !prev)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.eyeButton}
+          >
+            <Ionicons
+              name={showPassword ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color={colors.muted}
+            />
+          </TouchableOpacity>
+        </View>
+
+          {/* ✅ Remember Me */}
+          <TouchableOpacity
+            style={styles.rememberRow}
+            onPress={() => setRememberMe((prev) => !prev)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: rememberMe }}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: rememberMe ? colors.accent : colors.border,
+                  backgroundColor: rememberMe ? colors.accent : "transparent",
+                },
+              ]}
+            >
+              {rememberMe ? <Text style={styles.checkboxTick}>✓</Text> : null}
+            </View>
+            <Text style={[styles.rememberText, { color: colors.text }]}>Remember me</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.primaryBtn, { backgroundColor: colors.accent }]}
@@ -325,6 +423,56 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: "100%",
     fontSize: 15,
+  },
+  rememberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: -4,
+    marginBottom: 12,
+    gap: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxTick: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 14,
+    marginTop: -1,
+  },
+  rememberText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  passwordRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    width: "100%",
+    marginBottom: 14,
+    paddingLeft: 12,
+    // ✅ controls height (match your email input feel)
+    paddingVertical: 0,
+    minHeight: 48,
+  },
+  passwordInput: {
+    flex: 1,
+    // ✅ reduce vertical padding so it isn't tall
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  eyeButton: {
+    paddingHorizontal: 12,
+    // ✅ don't use height: "100%" (can inflate)
+    paddingVertical: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
   primaryBtn: {
     paddingVertical: 14,
