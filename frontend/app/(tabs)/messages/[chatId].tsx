@@ -85,6 +85,21 @@ export default function ChatScreen() {
 
   const receiverInitial = useMemo(() => name?.[0]?.toUpperCase() || "?", [name]);
 
+  // ✅ Normalized numeric receiver id for navigation
+  const numericReceiverId = useMemo(
+    () => (receiverId ? Number(receiverId) : null),
+    [receiverId]
+  );
+
+  // ✅ Shared handler to open the other user's profile
+  const handleViewProfilePress = useCallback(() => {
+    if (!numericReceiverId) return;
+    router.push({
+      pathname: "/user/[id]",
+      params: { id: String(numericReceiverId), from: "messages" },
+    });
+  }, [numericReceiverId]);
+
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -368,8 +383,15 @@ export default function ChatScreen() {
           <Ionicons name="chevron-back" size={22} color={tabHeaderOptions.headerTintColor} />
         </TouchableOpacity>
       ),
+      // ✅ Make the header avatar/name row tappable to view profile
       headerTitle: () => (
-        <View style={styles.headerTitleRow}>
+        <TouchableOpacity
+          onPress={handleViewProfilePress}
+          activeOpacity={0.7}
+          style={styles.headerTitleRow}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${name}'s profile`}
+        >
           {resolvedProfileImage ? (
             <Image source={{ uri: resolvedProfileImage }} style={styles.headerAvatar} />
           ) : (
@@ -382,7 +404,7 @@ export default function ChatScreen() {
               {name}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
       ),
       headerRight: () => (
         <TouchableOpacity
@@ -396,7 +418,16 @@ export default function ChatScreen() {
         </TouchableOpacity>
       ),
     });
-  }, [name, navigation, receiverInitial, resolvedProfileImage, styles, tabHeaderOptions, goToMessagesList]);
+  }, [
+    name,
+    navigation,
+    receiverInitial,
+    resolvedProfileImage,
+    styles,
+    tabHeaderOptions,
+    goToMessagesList,
+    handleViewProfilePress,
+  ]);
 
   useEffect(() => {
     if (!chatId || messages.length === 0) return;
@@ -485,14 +516,22 @@ export default function ChatScreen() {
 
       return (
         <View style={[styles.messageRow, { justifyContent: isMine ? "flex-end" : "flex-start" }]}>
-          {!isMine &&
-            (resolvedProfileImage ? (
-              <Image source={{ uri: resolvedProfileImage }} style={styles.avatarSmall} />
-            ) : (
-              <View style={styles.avatarSmall}>
-                <Text style={{ color: colors.text, fontWeight: "700" }}>{receiverInitial}</Text>
-              </View>
-            ))}
+          {!isMine && (
+            <TouchableOpacity
+              onPress={handleViewProfilePress}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${name || "this user"}'s profile`}
+            >
+              {resolvedProfileImage ? (
+                <Image source={{ uri: resolvedProfileImage }} style={styles.avatarSmall} />
+              ) : (
+                <View style={styles.avatarSmall}>
+                  <Text style={{ color: colors.text, fontWeight: "700" }}>{receiverInitial}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
           <View
             style={[
               styles.bubbleBase,
@@ -511,7 +550,16 @@ export default function ChatScreen() {
         </View>
       );
     },
-    [colors.text, currentUser?.id, isDark, receiverInitial, resolvedProfileImage, styles]
+    [
+      colors.text,
+      currentUser?.id,
+      isDark,
+      receiverInitial,
+      resolvedProfileImage,
+      styles,
+      handleViewProfilePress,
+      name,
+    ]
   );
 
   const formatSeparatorLabel = useCallback((date: Date): string => {
@@ -717,7 +765,7 @@ export default function ChatScreen() {
       <UserOverflowMenu
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
-        targetUser={{ id: Number(receiverId ?? 0), name: name ?? "" }}
+        targetUser={{ id: numericReceiverId ?? 0, name: name ?? "" }}
         onBlocked={() => {
           setMenuOpen(false);
           try {
@@ -736,7 +784,7 @@ export default function ChatScreen() {
           // navigate to the read-only profile screen
           router.push({
             pathname: "/user/[id]",
-            params: { id: String(userId), from: "messages" },  // ?? coming from Messages
+            params: { id: String(userId), from: "messages" }, // coming from Messages
           });
         }}
         onOverlayVisibilityChange={setOverflowVisible}
