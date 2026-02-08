@@ -43,7 +43,8 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@maplibre/maplibre-react-native"
     ],
     "experiments": {
       "typedRoutes": true
